@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell:*)",
+      "Bash(npm run build:*)",
+      "Bash(dir:*)",
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(timeout:*)",
+      "Bash(curl:*)",
+      "Bash(find:*)",
+      "Bash(npm install:*)",
+      "Bash(cmd /c \"taskkill /F /PID 8000\")",
+      "Bash(type:*)",
+      "Bash(if exist .next rmdir /s /q .next)",
+      "Bash(cd:*)",
+      "Bash(npx playwright install:*)",
+      "Bash(npm run test:e2e:*)",
+      "Bash(npx tsc:*)",
+      "Bash(tree:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

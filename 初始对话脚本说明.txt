@@ -1,0 +1,7 @@
+ C:\Users\Administrator\Desktop\vb\.kiro\specs\feynman-reading-app这个目录下有一个文件名，fix-plan.md，这是关于这个项目需要修复的所有问题，请你帮我先运行项目，再读取内容开始修复所有未解决的问题。
+
+
+C:\Users\Administrator\Desktop\Feynman\.kiro\specs\feynman-reading-app这个目录下有一个文件名，没有的话就新建一个，并且根据requirements-analysis.md创建出一个文件，命名fix-plan.md，这是关于这个项目需要修复的所有问题的修复计划，请你帮我先运行项目，再读取内容开始修复所有未解决的问题。记住对话内容要保存到这个文件里：C:\Users\Administrator\Desktop\Feynman\project_conversation.json
+
+
+现在再将C:\Users\Administrator\Desktop\Feynman\.kiro\specs\feynman-reading-app\requirements-analysis.md文件和fix-plan.md的问题点和修复情况逐一比对，是否已经全部修复了，如果没有完全修复，需要更新fix-plan.md，把未修复的再次更新，加入到修复清单，等待继续修复。

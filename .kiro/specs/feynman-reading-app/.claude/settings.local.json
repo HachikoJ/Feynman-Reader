@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)",
+      "Bash(timeout:*)",
+      "Bash(type:*)",
+      "Bash(\"C:\\\\Users\\\\Administrator\\\\Desktop\\\\vb\\(1\\)\\\\src\\\\components\\\\Toast.tsx\")",
+      "Bash(\"C:\\\\Users\\\\Administrator\\\\Desktop\\\\vb\\(1\\)\\\\src\\\\components\\\\ErrorBoundary.tsx\")",
+      "Bash(npm run build:*)",
+      "Bash(\"C:\\\\Users\\\\Administrator\\\\Desktop\\\\vb\\(1\\)\\\\src\\\\lib\\\\readingProgress.ts\")",
+      "Bash(\"C:\\\\Users\\\\Administrator\\\\Desktop\\\\vb\\(1\\)\\\\src\\\\components\\\\ReadingProgressPanel.tsx\")"
+    ]
+  }
+}
