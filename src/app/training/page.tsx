@@ -27,100 +27,123 @@ export default function TrainingPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* 技术概念 - 使用提取的图标图片 */}
+        {/* 技术概念 - 在文字说明后插入图片 */}
         <section className="mb-16">
           <h2 className="text-3xl font-bold text-gray-900 mb-8 flex items-center gap-3">
             <span className="text-4xl">🤖</span>
             <span>技术概念</span>
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* 大模型 */}
-            <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-purple-100 hover:shadow-2xl transition-shadow">
-              <div className="flex items-start gap-6">
-                <div className="flex-shrink-0 w-24 h-24 relative">
+          
+          {/* 大模型 */}
+          <div className="bg-white rounded-2xl shadow-xl p-8 mb-6 border-2 border-purple-100 hover:shadow-2xl transition-shadow">
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <div className="flex-1 order-2 md:order-1">
+                <h3 className="text-2xl font-bold text-purple-900 mb-4">🧠 大模型</h3>
+                <div className="bg-purple-50 rounded-xl p-6 border-l-4 border-purple-500 mb-4">
+                  <p className="text-purple-700 text-lg leading-relaxed mb-2">
+                    <strong>对话 + 推理 + 联网 + 多模态</strong>
+                  </p>
+                  <p className="text-gray-600">AI可以像人类一样进行对话交流，具备逻辑推理能力，可以联网获取实时信息，并理解处理文本、图像、音频等多种模态的内容。</p>
+                </div>
+              </div>
+              <div className="w-full md:w-1/3 order-1 md:order-2">
+                <div className="relative aspect-square">
                   <Image
                     src="/assets/images/img-002.png"
-                    alt="大模型"
+                    alt="大模型示意图"
                     fill
-                    className="object-contain"
+                    className="object-contain rounded-lg"
                   />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-purple-900 mb-3">🧠 大模型</h3>
-                  <p className="text-purple-700 leading-relaxed">对话 + 推理 + 联网 + 多模态</p>
-                  <p className="text-sm text-gray-500 mt-2">AI的核心能力，可以处理多种类型的任务和输入</p>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* 提示词 */}
-            <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-blue-100 hover:shadow-2xl transition-shadow">
-              <div className="flex items-start gap-6">
-                <div className="flex-shrink-0 w-24 h-24 relative">
+          {/* 提示词 */}
+          <div className="bg-white rounded-2xl shadow-xl p-8 mb-6 border-2 border-blue-100 hover:shadow-2xl transition-shadow">
+            <div className="flex flex-col md:flex-row-reverse items-center gap-8">
+              <div className="flex-1 order-2 md:order-1">
+                <h3 className="text-2xl font-bold text-blue-900 mb-4">💡 提示词</h3>
+                <div className="bg-blue-50 rounded-xl p-6 border-l-4 border-blue-500 mb-4">
+                  <p className="text-blue-700 text-lg leading-relaxed mb-2">
+                    <strong>背景 + 要求 + 限制</strong>
+                  </p>
+                  <p className="text-gray-600">通过提供清晰的背景信息、明确的要求和必要的限制条件，可以让AI更准确地理解任务需求，生成更符合期望的结果。</p>
+                </div>
+              </div>
+              <div className="w-full md:w-1/3 order-1 md:order-2">
+                <div className="relative aspect-square">
                   <Image
                     src="/assets/images/img-001.png"
-                    alt="提示词"
+                    alt="提示词示意图"
                     fill
-                    className="object-contain"
+                    className="object-contain rounded-lg"
                   />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-blue-900 mb-3">💡 提示词</h3>
-                  <p className="text-blue-700 leading-relaxed">背景 + 要求 + 限制</p>
-                  <p className="text-sm text-gray-500 mt-2">结构化的提示方式，让AI更准确地理解需求</p>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* 多模态 */}
+          {/* 多模态和限制 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-green-100 hover:shadow-2xl transition-shadow">
-              <div className="flex items-start gap-6">
-                <div className="flex-shrink-0 w-24 h-24 relative">
-                  <Image
-                    src="/assets/images/img-005.png"
-                    alt="多模态"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-green-900 mb-3">🎨 多模态</h3>
-                  <p className="text-green-700 leading-relaxed">音频 + 图片 + 视频</p>
-                  <p className="text-sm text-gray-500 mt-2">AI可以理解和生成多种媒体形式的内容</p>
-                </div>
+              <h3 className="text-2xl font-bold text-green-900 mb-4">🎨 多模态</h3>
+              <div className="bg-green-50 rounded-xl p-6 border-l-4 border-green-500 mb-4">
+                <p className="text-green-700 text-lg leading-relaxed mb-2">
+                  <strong>音频 + 图片 + 视频</strong>
+                </p>
+                <p className="text-gray-600 text-sm">AI可以理解和生成多种媒体形式的内容，实现跨模态的信息处理和转换。</p>
+              </div>
+              <div className="relative h-48">
+                <Image
+                  src="/assets/images/img-005.png"
+                  alt="多模态"
+                  fill
+                  className="object-contain"
+                />
               </div>
             </div>
 
-            {/* 限制 */}
             <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-red-100 hover:shadow-2xl transition-shadow">
-              <div className="flex items-start gap-6">
-                <div className="flex-shrink-0 w-24 h-24 relative">
-                  <Image
-                    src="/assets/images/img-006.png"
-                    alt="限制"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-red-900 mb-3">⚠️ 限制</h3>
-                  <p className="text-red-700 leading-relaxed">注意幻觉问题</p>
-                  <p className="text-sm text-gray-500 mt-2">AI可能会生成不准确或虚构的内容，需要验证</p>
-                </div>
+              <h3 className="text-2xl font-bold text-red-900 mb-4">⚠️ 限制</h3>
+              <div className="bg-red-50 rounded-xl p-6 border-l-4 border-red-500 mb-4">
+                <p className="text-red-700 text-lg leading-relaxed mb-2">
+                  <strong>注意幻觉问题</strong>
+                </p>
+                <p className="text-gray-600 text-sm">AI可能会生成不准确或虚构的内容（称为"幻觉"），需要人工验证和判断。</p>
+              </div>
+              <div className="relative h-48">
+                <Image
+                  src="/assets/images/img-006.png"
+                  alt="限制"
+                  fill
+                  className="object-contain"
+                />
               </div>
             </div>
           </div>
         </section>
 
-        {/* 提示词示例 */}
+        {/* 提示词示例 - 插入核心示意图 */}
         <section className="mb-16">
           <h2 className="text-3xl font-bold text-gray-900 mb-8 flex items-center gap-3">
             <span className="text-4xl">💬</span>
             <span>提示词示例</span>
           </h2>
-          <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-amber-200">
+          
+          <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-amber-200 mb-6">
             <h3 className="text-2xl font-bold text-gray-800 mb-6 text-center">问题定位</h3>
             
+            {/* 核心示意图 */}
+            <div className="mb-8 relative w-full" style={{ height: '400px' }}>
+              <Image
+                src="/assets/images/img-004.png"
+                alt="提示词结构示意图"
+                fill
+                className="object-contain rounded-lg"
+              />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6">
                 <h4 className="text-lg font-bold text-red-900 mb-4 flex items-center gap-2">
