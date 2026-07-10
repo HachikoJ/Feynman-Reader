@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Language, t } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 import { Book, QAPracticeRecord, getQAPracticeRecords, addQAPracticeRecord, updateQAPracticeRecord, deleteQAPracticeRecord, updateBook } from '@/lib/store'
-import { createDeepSeekClient, generatePersonaQuestions, evaluatePersonaAnswers } from '@/lib/deepseek'
+import { createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
 import MarkdownRenderer from './MarkdownRenderer'
 import LoadingQuotes from './LoadingQuotes'
 import PersonaSelector, { PersonaBadge } from './PersonaSelector'
@@ -21,6 +21,36 @@ interface Props {
   showHistory?: boolean
   onShowHistoryChange?: (show: boolean) => void
   historyRef?: React.RefObject<HTMLDivElement>
+}
+
+export function haveAnswersForUnpassedQuestions(
+  questions: QAPracticeRecord['questions'],
+  answers: Record<number, string>
+): boolean {
+  return questions.every((question, index) => {
+    if (question.passed) return true
+
+    return (answers[index] || question.userAnswer || '').trim().length > 0
+  })
+}
+
+type PersonaEvaluation = {
+  persona: string
+  score: number
+  review: string
+  passed: boolean
+}
+
+export function matchEvaluationsToQuestions(
+  questions: Array<{ index: number; persona: string }>,
+  evaluations: PersonaEvaluation[]
+): Array<{ index: number; evaluation: PersonaEvaluation }> {
+  const evaluationsByPersona = new Map(evaluations.map(evaluation => [evaluation.persona, evaluation]))
+
+  return questions.flatMap(question => {
+    const evaluation = evaluationsByPersona.get(question.persona)
+    return evaluation ? [{ index: question.index, evaluation }] : []
+  })
 }
 
 export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef }: Props) {
@@ -70,7 +100,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       }
 
       // 使用用户选择的角色，如果没有则使用默认角色
-      let personasToUse = selectedPersonaIds
+      let personasToUse = selectedPersonaIds.slice(0, PERSONA_QUESTION_COUNT)
       if (personasToUse.length === 0) {
         // 默认使用3个不同类型的角色
         personasToUse = ['elementary', 'professional', 'scientist']
@@ -131,6 +161,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         .map((q, i) => ({ ...q, index: i }))
         .filter(q => !q.passed && answers[q.index]?.trim()) // 只评估未通过且有新答案的
         .map(q => ({
+          index: q.index,
           persona: q.persona,
           personaName: q.personaName,
           question: q.question,
@@ -139,30 +170,28 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       
       if (questionsToEvaluate.length === 0) return
       
-      const evaluations = await evaluatePersonaAnswers(client, book.name, questionsToEvaluate, book.documentContent)
+      const evaluations = await evaluatePersonaAnswers(
+        client,
+        book.name,
+        questionsToEvaluate.map(({ index: _index, ...question }) => question),
+        book.documentContent
+      )
       
       // 更新记录
       const updatedQuestions = [...currentRecord.questions]
-      questionsToEvaluate.forEach((q, i) => {
-        const evaluation = evaluations[i]
-        if (evaluation) {
-          const originalIndex = currentRecord.questions.findIndex(
-            oq => oq.persona === q.persona && oq.question === q.question
-          )
-          if (originalIndex !== -1) {
-            // 客户端自己计算 passed，不信任 AI 返回的值
-            const passed = evaluation.score >= 60
-            
-            updatedQuestions[originalIndex] = {
-              ...updatedQuestions[originalIndex],
-              userAnswer: q.answer,
-              answeredAt: Date.now(),
-              aiReview: evaluation.review,
-              score: evaluation.score,
-              passed: passed,
-              reviewedAt: Date.now()
-            }
-          }
+      const answersByIndex = new Map(questionsToEvaluate.map(question => [question.index, question.answer]))
+      matchEvaluationsToQuestions(questionsToEvaluate, evaluations).forEach(({ index, evaluation }) => {
+        // 客户端自己计算 passed，不信任 AI 返回的值
+        const passed = evaluation.score >= 60
+
+        updatedQuestions[index] = {
+          ...updatedQuestions[index],
+          userAnswer: answersByIndex.get(index),
+          answeredAt: Date.now(),
+          aiReview: evaluation.review,
+          score: evaluation.score,
+          passed,
+          reviewedAt: Date.now()
         }
       })
       
@@ -204,7 +233,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
 
   // 将 QA 记录转换为进度记录，用于趋势图
   const getProgressRecords = (): ProgressRecord[] => {
-    return qaRecords.map(record => {
+    return qaRecords.filter(record => record.allPassed).map(record => {
       const answeredQuestions = record.questions.filter(q => q.score !== undefined)
       const avgScore = answeredQuestions.length > 0
         ? Math.round(answeredQuestions.reduce((sum, q) => sum + (q.score || 0), 0) / answeredQuestions.length)
@@ -231,13 +260,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
   const hasAnsweredAll = currentRecord?.questions.every(q => q.passed) || false
   
   // 检查是否所有未通过的问题都有回答（至少有内容）
-  const allUnansweredQuestionsHaveAnswers = currentRecord 
-    ? currentRecord.questions
-        .filter(q => !q.passed) // 只检查未通过的问题
-        .every((q, idx) => {
-          const answer = answers[idx] || q.userAnswer || ''
-          return answer.trim().length > 0 // 必须有内容
-        })
+  const allUnansweredQuestionsHaveAnswers = currentRecord
+    ? haveAnswersForUnpassedQuestions(currentRecord.questions, answers)
     : false
   
   const canSubmit = currentRecord && allUnansweredQuestionsHaveAnswers
@@ -300,7 +324,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                   lang={lang}
                   selectedIds={selectedPersonaIds}
                   onSelectionChange={setSelectedPersonaIds}
-                  maxSelect={5}
+                  maxSelect={PERSONA_QUESTION_COUNT}
                   compact={false}
                 />
               </div>
@@ -372,24 +396,38 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                     </div>
                     <p className="text-sm mb-3">{q.question}</p>
                     
+                    {q.userAnswer && q.aiReview && !q.passed && (
+                      <div className="mt-3 border border-yellow-500/30 bg-yellow-500/10 rounded-lg p-3 text-sm">
+                        <p className="font-medium text-yellow-300 mb-2">
+                          {lang === 'zh' ? `本次回答未通过（${q.score} 分）` : `This answer did not pass (${q.score} points)`}
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)] mb-1">
+                          {lang === 'zh' ? '你的回答：' : 'Your answer:'}
+                        </p>
+                        <p className="mb-3 whitespace-pre-wrap">{q.userAnswer}</p>
+                        <p className="text-xs text-[var(--text-secondary)] mb-1">
+                          {lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:'}
+                        </p>
+                        <MarkdownRenderer content={q.aiReview} />
+                      </div>
+                    )}
+
                     {!q.passed && (
                       <textarea
                         value={answers[idx] || q.userAnswer || ''}
                         onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
-                        placeholder={lang === 'zh' ? '输入你的回答...' : 'Your answer...'}
-                        className="input-field min-h-[100px] resize-y text-sm"
+                        placeholder={lang === 'zh' ? '根据点评重新回答...' : 'Revise your answer using the feedback...'}
+                        className="input-field min-h-[100px] resize-y text-sm mt-3"
                       />
                     )}
-                    
-                    {q.userAnswer && q.aiReview && (
-                      <details className="mt-3">
-                        <summary className="cursor-pointer text-sm text-[var(--accent)]">
-                          {lang === 'zh' ? '查看点评' : 'View Review'}
-                        </summary>
-                        <div className="mt-2 p-3 bg-[var(--bg-card)] rounded text-sm">
-                          <MarkdownRenderer content={q.aiReview} />
-                        </div>
-                      </details>
+
+                    {q.userAnswer && q.aiReview && q.passed && (
+                      <div className="mt-3 p-3 bg-[var(--bg-card)] rounded text-sm">
+                        <p className="text-xs text-[var(--text-secondary)] mb-1">
+                          {lang === 'zh' ? 'AI 点评：' : 'AI Review:'}
+                        </p>
+                        <MarkdownRenderer content={q.aiReview} />
+                      </div>
                     )}
                   </div>
                 </div>
@@ -468,35 +506,35 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                       </button>
                     </div>
                   </div>
-                  <details>
-                    <summary className="cursor-pointer text-sm text-[var(--accent)]">
-                      {lang === 'zh' ? '查看详情' : 'View details'}
-                    </summary>
-                    <div className="mt-3 space-y-3">
-                      {record.questions.map((q, idx) => (
-                        <div key={idx} className="bg-[var(--bg-card)] rounded p-3 text-sm">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="font-medium">{q.personaName}</span>
-                            {q.passed && <span className="text-green-400">✓</span>}
-                            {q.score !== undefined && <span className={q.passed ? 'text-green-400' : 'text-yellow-400'}>{q.score}分</span>}
-                          </div>
-                          <p className="text-[var(--text-secondary)] mb-2">{q.question}</p>
-                          {q.userAnswer && (
-                            <>
-                              <p className="text-xs text-[var(--text-secondary)] mb-1">{lang === 'zh' ? '回答：' : 'Answer:'}</p>
-                              <p className="mb-2">{q.userAnswer}</p>
-                            </>
-                          )}
-                          {q.aiReview && (
-                            <>
-                              <p className="text-xs text-[var(--text-secondary)] mb-1">{lang === 'zh' ? 'AI 点评：' : 'AI Review:'}</p>
-                              <MarkdownRenderer content={q.aiReview} />
-                            </>
+                  <div className="space-y-3">
+                    {record.questions.map((q, idx) => (
+                      <div key={idx} className={`rounded p-3 text-sm ${q.score !== undefined && !q.passed ? 'border border-yellow-500/30 bg-yellow-500/10' : 'bg-[var(--bg-card)]'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium">{q.personaName}</span>
+                          {q.passed && <span className="text-green-400">✓</span>}
+                          {q.score !== undefined && <span className={q.passed ? 'text-green-400' : 'text-yellow-400'}>{q.score}分</span>}
+                          {q.score !== undefined && !q.passed && (
+                            <span className="text-yellow-300">{lang === 'zh' ? '未通过' : 'Not passed'}</span>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  </details>
+                        <p className="text-[var(--text-secondary)] mb-2">{q.question}</p>
+                        {q.userAnswer && (
+                          <>
+                            <p className="text-xs text-[var(--text-secondary)] mb-1">{lang === 'zh' ? '你的回答：' : 'Your answer:'}</p>
+                            <p className="mb-3 whitespace-pre-wrap">{q.userAnswer}</p>
+                          </>
+                        )}
+                        {q.aiReview && (
+                          <>
+                            <p className="text-xs text-[var(--text-secondary)] mb-1">
+                              {q.passed ? (lang === 'zh' ? 'AI 点评：' : 'AI Review:') : (lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:')}
+                            </p>
+                            <MarkdownRenderer content={q.aiReview} />
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

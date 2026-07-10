@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { AppSettings, Book, getSettings, saveSettings, getBooks, saveBooks } from '@/lib/store'
+import { AppSettings, Book, saveSettings, saveBooks } from '@/lib/store'
 
 // ============================================================================
 // Zustand 应用状态管理 (P1 修复)
@@ -42,7 +41,7 @@ interface AppState {
 const defaultSettings: AppSettings = {
   apiKey: '',
   language: 'zh',
-  theme: 'cyber',
+  theme: 'light',
   hideApiKeyAlert: false,
   quotes: [],
   quotesInitialized: false
@@ -50,7 +49,6 @@ const defaultSettings: AppSettings = {
 
 // 创建 Zustand store
 export const useAppStore = create<AppState>()(
-  persist(
     (set, get) => ({
       // ========== 设置 ==========
       settings: defaultSettings,
@@ -115,34 +113,7 @@ export const useAppStore = create<AppState>()(
       setMounted: (mounted) => set({ mounted }),
       bookshelfKey: 0,
       refreshBookshelf: () => set((state) => ({ bookshelfKey: state.bookshelfKey + 1 }))
-    }),
-    {
-      name: 'feynman-app-storage',
-      // 只持久化部分状态
-      partialize: (state) => ({
-        settings: state.settings,
-        books: state.books,
-        view: state.view
-      }),
-      // 从 localStorage 初始化
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          // 从 localStorage 同步数据
-          const savedSettings = getSettings()
-          const savedBooks = getBooks()
-
-          state.settings = savedSettings
-          state.books = savedBooks
-          state.mounted = true
-
-          // 应用主题
-          if (typeof document !== 'undefined') {
-            document.documentElement.setAttribute('data-theme', savedSettings.theme)
-          }
-        }
-      }
-    }
-  )
+    })
 )
 
 // ============================================================================

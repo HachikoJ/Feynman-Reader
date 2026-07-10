@@ -15,6 +15,7 @@ interface State {
   hasError: boolean
   error: Error | null
   errorInfo: ErrorInfo | null
+  showDetails: boolean
 }
 
 const errorMessages = {
@@ -76,7 +77,8 @@ export class ErrorBoundary extends Component<Props, State> {
     this.state = {
       hasError: false,
       error: null,
-      errorInfo: null
+      errorInfo: null,
+      showDetails: false
     }
   }
 
@@ -110,13 +112,21 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload()
   }
 
-  handleClearData = (): void => {
+  handleClearData = async (): Promise<void> => {
     if (confirm(this.props.lang === 'zh'
       ? '确定要清除所有数据吗？此操作不可恢复。'
       : 'Are you sure you want to clear all data? This action cannot be undone.')) {
-      localStorage.clear()
-      sessionStorage.clear()
-      window.location.reload()
+      try {
+        const { deleteDatabase } = await import('@/lib/indexedDB')
+        await deleteDatabase()
+        const { resetStoreCache } = await import('@/lib/store')
+        resetStoreCache()
+        localStorage.clear()
+        sessionStorage.clear()
+        window.location.reload()
+      } catch (error) {
+        logger.error('Failed to clear application data:', error)
+      }
     }
   }
 
@@ -124,8 +134,12 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.href = '/'
   }
 
+  handleToggleDetails = (): void => {
+    this.setState(state => ({ showDetails: !state.showDetails }))
+  }
+
   render(): ReactNode {
-    const { hasError, error, errorInfo } = this.state
+    const { hasError, error, errorInfo, showDetails } = this.state
     const { children, lang = 'zh', fallback } = this.props
 
     if (hasError) {
@@ -135,8 +149,6 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       const messages = errorMessages[lang] || errorMessages.zh
-      const [showDetails, setShowDetails] = React.useState(false)
-
       return (
         <div className="min-h-screen flex items-center justify-center p-4 bg-[var(--bg-primary)]">
           <div className="max-w-2xl w-full">
@@ -190,7 +202,7 @@ export class ErrorBoundary extends Component<Props, State> {
               {error && (
                 <div className="mb-6">
                   <button
-                    onClick={() => setShowDetails(!showDetails)}
+                    onClick={this.handleToggleDetails}
                     className="text-sm text-[var(--accent)] hover:underline"
                   >
                     {showDetails ? messages.hideDetails : messages.showDetails}

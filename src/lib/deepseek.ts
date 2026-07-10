@@ -1,7 +1,90 @@
 import OpenAI from 'openai'
 import { logger } from './logger'
+import { getSettings } from './store'
+
+export const DEEPSEEK_MODEL = 'deepseek-v4-flash'
+export const AI_DATA_CONSENT_REQUIRED = 'AI_DATA_CONSENT_REQUIRED'
+
+export interface PracticeEvaluation {
+  scores: {
+    accuracy: number
+    completeness: number
+    clarity: number
+    overall: number
+  }
+  review: string
+  passed: boolean
+}
+
+const SCORE_KEYS = ['accuracy', 'completeness', 'clarity', 'overall'] as const
+
+/**
+ * Treat the model response as untrusted input. A malformed score must never
+ * become a passing practice record through a client-side fallback.
+ */
+export function parsePracticeEvaluation(response: string): PracticeEvaluation {
+  const start = response.indexOf('{')
+  const end = response.lastIndexOf('}')
+  if (start === -1 || end <= start) {
+    throw new Error('AI evaluation did not contain a JSON object')
+  }
+
+  let result: unknown
+  try {
+    result = JSON.parse(response.slice(start, end + 1))
+  } catch {
+    throw new Error('AI evaluation contained invalid JSON')
+  }
+
+  if (!result || typeof result !== 'object') {
+    throw new Error('AI evaluation must be an object')
+  }
+
+  const candidate = result as Record<string, unknown>
+  if (!candidate.scores || typeof candidate.scores !== 'object' ||
+      typeof candidate.review !== 'string' || !candidate.review.trim()) {
+    throw new Error('AI evaluation did not match the required schema')
+  }
+
+  const scores = candidate.scores as Record<string, unknown>
+  for (const key of SCORE_KEYS) {
+    const score = scores[key]
+    if (typeof score !== 'number' || !Number.isInteger(score) || score < 0 || score > 100) {
+      throw new Error(`AI evaluation contained an invalid ${key} score`)
+    }
+  }
+
+  return {
+    scores: {
+      accuracy: scores.accuracy as number,
+      completeness: scores.completeness as number,
+      clarity: scores.clarity as number,
+      overall: scores.overall as number
+    },
+    review: candidate.review.trim(),
+    // Passing is derived locally so the model cannot override the threshold.
+    passed: (scores.overall as number) >= 60
+  }
+}
+
+export function withDeepSeekDefaults<
+  T extends Omit<OpenAI.Chat.Completions.ChatCompletionCreateParams, 'model'>
+>(params: T): T & {
+  model: typeof DEEPSEEK_MODEL
+  thinking: { type: 'disabled' }
+} {
+  return {
+    ...params,
+    model: DEEPSEEK_MODEL,
+    thinking: { type: 'disabled' }
+  }
+}
 
 export async function createDeepSeekClient(apiKey: string) {
+  if (!getSettings().aiDataConsent) {
+    throw new Error(AI_DATA_CONSENT_REQUIRED)
+  }
+
   return new OpenAI({
     baseURL: 'https://api.deepseek.com',
     apiKey: apiKey,
@@ -28,17 +111,53 @@ ${truncatedDoc}
 ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，以上为部分原文）' : ''}`
   }
 
-  const response = await client.chat.completions.create({
-    model: 'deepseek-chat',
+  const response = await client.chat.completions.create(withDeepSeekDefaults({
     messages: [
       { role: 'system', content: enhancedSystemPrompt },
       { role: 'user', content: userMessage }
     ],
     temperature: 0.7,
     max_tokens: 2000
-  })
+  }))
 
   return response.choices[0]?.message?.content || '抱歉，生成回答时出现问题。'
+}
+
+export async function chatJson(
+  client: OpenAI,
+  systemPrompt: string,
+  userMessage: string,
+  documentContent?: string
+): Promise<string> {
+  let enhancedSystemPrompt = systemPrompt
+  if (documentContent) {
+    const truncatedDoc = documentContent.slice(0, 15000)
+    enhancedSystemPrompt = `${systemPrompt}
+
+【知识库 - 书籍原文内容】
+以下是这本书的部分原文内容，请基于这些内容进行分析和回答：
+
+${truncatedDoc}
+
+${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，以上为部分原文）' : ''}`
+  }
+
+  const response = await client.chat.completions.create(withDeepSeekDefaults({
+    messages: [
+      { role: 'system', content: enhancedSystemPrompt },
+      { role: 'user', content: userMessage }
+    ],
+    temperature: 0.2,
+    max_tokens: 1600,
+    response_format: { type: 'json_object' }
+  }))
+
+  const content = response.choices[0]?.message?.content?.trim()
+  if (!content) {
+    throw new Error('AI evaluation returned an empty response')
+  }
+
+  return content
 }
 
 export interface GeneratedTag {
@@ -89,15 +208,14 @@ ${truncatedContent}
 请分析这个文档，提取书籍信息。如果无法确定书名或作者，请如实说明，不要编造。`
 
   try {
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
+    const response = await client.chat.completions.create(withDeepSeekDefaults({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
       ],
       temperature: 0.2,
       max_tokens: 1000
-    })
+    }))
 
     const responseContent = response.choices[0]?.message?.content || '{}'
     const jsonMatch = responseContent.match(/\{[\s\S]*\}/)
@@ -155,15 +273,14 @@ export async function generateBookTags(
   const userMessage = `书名：${bookName}${author ? `\n作者：${author}` : ''}${description ? `\n简介：${description}` : ''}`
 
   try {
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
+    const response = await client.chat.completions.create(withDeepSeekDefaults({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
       ],
       temperature: 0.3,
       max_tokens: 500
-    })
+    }))
 
     const content = response.choices[0]?.message?.content || '[]'
     const jsonMatch = content.match(/\[[\s\S]*\]/)
@@ -183,6 +300,8 @@ export interface PersonaDefinition {
   description: string
   isCritic?: boolean
 }
+
+export const PERSONA_QUESTION_COUNT = 3
 
 export const PERSONAS: PersonaDefinition[] = [
   { type: 'elementary', name: '小学生', description: '10岁小学生，需要用最简单的语言和生活例子来理解' },
@@ -210,14 +329,14 @@ export async function generatePersonaQuestions(
 
   if (customPersonas && customPersonas.length > 0) {
     // 将自定义角色转换为 PersonaDefinition 格式
-    selectedPersonas = customPersonas.map(p => ({
+    selectedPersonas = customPersonas.slice(0, PERSONA_QUESTION_COUNT).map(p => ({
       type: p.id,
       name: p.name.zh || p.name.en,
       description: p.description.zh || p.description.en
     }))
   } else {
     const shuffled = [...PERSONAS].sort(() => Math.random() - 0.5)
-    selectedPersonas = shuffled.slice(0, 3)
+    selectedPersonas = shuffled.slice(0, PERSONA_QUESTION_COUNT)
   }
   
   let systemPrompt = `【安全规则 - 最高优先级】
@@ -288,8 +407,7 @@ ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，�
   }
 
   try {
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
+    const response = await client.chat.completions.create(withDeepSeekDefaults({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: bestTeachingContent 
@@ -298,7 +416,7 @@ ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，�
       ],
       temperature: 0.7,
       max_tokens: 1000
-    })
+    }))
 
     const content = response.choices[0]?.message?.content || '[]'
     const jsonMatch = content.match(/\[[\s\S]*\]/)
@@ -374,7 +492,9 @@ export async function evaluatePersonaAnswers(
 4. 如果回答优秀，也要指出还可以进一步思考的方向
 5. 不要因为鼓励而虚高评分
 
-返回 JSON 格式：[{"persona":"角色类型","score":分数,"review":"点评内容（必须具体指出问题和改进方向）","passed":是否通过}]
+返回 JSON 格式：[{"persona":"角色标识","score":分数,"review":"点评内容（必须具体指出问题和改进方向）","passed":是否通过}]
+
+其中 persona 必须原样复制题目中提供的“角色标识”（例如 elementary），不得改写为角色中文名、英文名称或其他内容。
 
 只返回 JSON 数组，不要其他内容。`
 
@@ -391,19 +511,18 @@ ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，�
   }
 
   const userMessage = questions.map((q, i) => 
-    `问题${i + 1}（${q.personaName}提问）：${q.question}\n用户回答：${q.answer}`
+    `问题${i + 1}（角色标识：${q.persona}；${q.personaName}提问）：${q.question}\n用户回答：${q.answer}`
   ).join('\n\n')
 
   try {
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
+    const response = await client.chat.completions.create(withDeepSeekDefaults({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage }
       ],
       temperature: 0.5,  // 提高温度以增加评分的多样性
       max_tokens: 2000
-    })
+    }))
 
     const content = response.choices[0]?.message?.content || '[]'
     const jsonMatch = content.match(/\[[\s\S]*\]/)

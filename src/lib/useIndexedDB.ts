@@ -91,7 +91,7 @@ export function useSettings(): UseSettingsResult {
       const defaultSettings: AppSettings = {
         apiKey: '',
         language: 'zh',
-        theme: 'cyber',
+        theme: 'light',
         hideApiKeyAlert: false,
         quotes: [],
         quotesInitialized: false

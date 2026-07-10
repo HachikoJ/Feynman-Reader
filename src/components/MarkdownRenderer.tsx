@@ -170,7 +170,7 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
       }
 
       // 无序列表（支持多种符号）
-      const listMatch = line.match(/^[-*•◦▪▸►]\s+(.*)$/) || line.match(/^\d+[.、)]\s*(.*)$/)
+      const listMatch = line.match(/^\s*[-*•◦▪▸►]\s+(.*)$/) || line.match(/^\s*\d+[.、)]\s*(.*)$/)
       if (listMatch) {
         listItems.push(listMatch[1])
         continue

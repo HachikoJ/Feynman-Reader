@@ -5,7 +5,7 @@ import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
 import { Language } from '@/lib/i18n'
 import { Book, addBook, getBooks } from '@/lib/store'
-import { createDeepSeekClient } from '@/lib/deepseek'
+import { createDeepSeekClient, withDeepSeekDefaults } from '@/lib/deepseek'
 import LoadingQuotes from './LoadingQuotes'
 
 interface RecommendedBook {
@@ -139,15 +139,14 @@ export default function BookRecommendations({
 - 推荐理由要具体
 - 考虑难度梯度`
 
-      const response = await client.chat.completions.create({
-        model: 'deepseek-chat',
+      const response = await client.chat.completions.create(withDeepSeekDefaults({
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage }
         ],
         temperature: 0.7,
         max_tokens: 2000
-      })
+      }))
 
       const content = response.choices[0]?.message?.content || '{}'
       const jsonMatch = content.match(/\{[\s\S]*\}/)

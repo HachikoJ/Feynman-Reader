@@ -119,10 +119,10 @@ export function useIsPWA(): boolean {
     if (typeof window === 'undefined') return
 
     // 检查是否在独立窗口中运行
+    const navigatorWithStandalone = window.navigator as Navigator & { standalone?: boolean }
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
-      // @ts-ignore
-      window.navigator.standalone === true
+      navigatorWithStandalone.standalone === true
 
     setIsPWA(isStandalone)
   }, [])

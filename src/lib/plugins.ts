@@ -5,6 +5,7 @@
  */
 
 import { logger } from './logger'
+import { addBook, deleteBook, getBook, getBooks, getSettings, saveSettings, updateBook } from './store'
 
 // ============================================================================
 // 插件类型定义
@@ -213,9 +214,6 @@ class PluginManager {
    * 创建插件 API
    */
   private createAPI(pluginId: string): PluginAPI {
-    const { getBooks, getBook, addBook, updateBook, deleteBook } = require('../lib/store')
-    const { getSettings, saveSettings } = require('../lib/store')
-
     return {
       data: {
         getBooks,

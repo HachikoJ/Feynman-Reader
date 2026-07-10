@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES } from '@/lib/feynman-prompts'
 import { createDeepSeekClient, generateBookTags } from '@/lib/deepseek'
+import { ChartNoAxesCombined, ChevronDown, ChevronRight, Tag } from 'lucide-react'
 import DocumentUpload from './DocumentUpload'
 import { validateBookName, validateAuthorName, validateContent, sanitizeTextInput, detectMaliciousContent } from '@/lib/validation'
 import { undoRedoManager, createDeleteBookAction, createAddBookAction, createUpdateBookAction, createBatchDeleteBooksAction } from '@/lib/undoRedo'
@@ -26,6 +27,12 @@ function MiniProgressBar({ value, max, color }: { value: number; max: number; co
       <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
     </div>
   )
+}
+
+export function getBookshelfProgressPercentage(book: Pick<Book, 'status' | 'currentPhase'>): number {
+  if (book.status === 'finished') return 100
+
+  return Math.min(100, Math.max(0, (book.currentPhase / LEARNING_PHASES.length) * 100))
 }
 
 export default function Bookshelf({ lang, onSelectBook }: Props) {
@@ -210,16 +217,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     const cleanAuthor = newBookAuthor ? sanitizeTextInput(newBookAuthor, 100) : undefined
     const cleanDesc = newBookDesc ? sanitizeTextInput(newBookDesc, 500) : undefined
 
-    const book = addBook(cleanName, cleanAuthor)
-    if (cleanDesc) {
-      updateBook(book.id, { description: cleanDesc })
-      book.description = cleanDesc
-    }
-    if (newBookCover) {
-      updateBook(book.id, { cover: newBookCover })
-      book.cover = newBookCover
-    }
-    setBooks([book, ...books])
+    const book = addBook(cleanName, cleanAuthor, newBookCover || undefined, cleanDesc)
+    setBooks(getBooks())
     resetForm()
     setShowAddModal(false)
 
@@ -650,7 +649,9 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               onClick={() => setShowCharts(!showCharts)}
               className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
             >
-              {showCharts ? '▼' : '▶'} {lang === 'zh' ? '查看详细分析' : 'View Analytics'}
+              {showCharts ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+              <ChartNoAxesCombined size={16} className="text-sky-500" aria-hidden="true" />
+              {lang === 'zh' ? '查看详细分析' : 'View Analytics'}
             </button>
             
             {showCharts && (
@@ -805,7 +806,9 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               onClick={() => setShowTagFilter(!showTagFilter)}
               className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
             >
-              {showTagFilter ? '▼' : '▶'} 🏷️ {t(lang, 'bookshelf.tags.title')}
+              {showTagFilter ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+              <Tag size={16} className="text-violet-500" aria-hidden="true" />
+              {t(lang, 'bookshelf.tags.title')}
               {(selectedCategory || selectedTag) && (
                 <span className="ml-2 px-2 py-0.5 bg-[var(--accent)]/20 rounded text-xs">
                   {lang === 'zh' ? '已筛选' : 'Filtered'}
@@ -997,7 +1000,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 {/* Progress */}
                 <div className="mt-2">
                   <div className="progress-bar h-1">
-                    <div className="progress-fill" style={{ width: `${(book.currentPhase / LEARNING_PHASES.length) * 100}%` }} />
+                    <div className="progress-fill" style={{ width: `${getBookshelfProgressPercentage(book)}%` }} />
                   </div>
                 </div>
               </div>
@@ -1094,10 +1097,10 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   <div className="flex-1">
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="text-[var(--text-secondary)]">{t(lang, 'bookshelf.progress')}</span>
-                      <span>{book.currentPhase}/{LEARNING_PHASES.length}</span>
+                      <span>{book.status === 'finished' ? LEARNING_PHASES.length : book.currentPhase}/{LEARNING_PHASES.length}</span>
                     </div>
                     <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${(book.currentPhase / LEARNING_PHASES.length) * 100}%` }} />
+                      <div className="progress-fill" style={{ width: `${getBookshelfProgressPercentage(book)}%` }} />
                     </div>
                   </div>
                   

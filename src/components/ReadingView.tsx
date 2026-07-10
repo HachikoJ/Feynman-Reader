@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger'
 import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, checkFeynmanComplete, getBook } from '@/lib/store'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
-import { createDeepSeekClient, chat } from '@/lib/deepseek'
+import { AI_DATA_CONSENT_REQUIRED, chat, chatJson, createDeepSeekClient, parsePracticeEvaluation } from '@/lib/deepseek'
 import LoadingQuotes from './LoadingQuotes'
 import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
@@ -19,11 +19,12 @@ interface Props {
   lang: Language
   quotes?: { text: string; author: string }[]
   onBack: () => void
+  onOpenSettings: () => void
 }
 
 type TabType = 'phase' | 'practice' | 'notes' | 'recommendations'
 
-export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack }: Props) {
+export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack, onOpenSettings }: Props) {
   const [book, setBook] = useState(initialBook)
   const [activeTab, setActiveTab] = useState<TabType>('phase')
   // 如果有分析结果，默认显示第一个阶段（索引0），否则显示当前进度
@@ -34,7 +35,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const [loading, setLoading] = useState(false)
   const [analyzingInBackground, setAnalyzingInBackground] = useState(false)
   const [client, setClient] = useState<OpenAI | null>(null)
+  const [aiConsentRequired, setAiConsentRequired] = useState(false)
   const [teachingNote, setTeachingNote] = useState('')
+  const [practiceError, setPracticeError] = useState<string | null>(null)
   const [noteRecords, setNoteRecords] = useState<NoteRecord[]>(initialBook.noteRecords || [])
   const [newNote, setNewNote] = useState('')
   const [recommendations, setRecommendations] = useState<string>(initialBook.recommendations || '')
@@ -47,8 +50,27 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const qaHistoryRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    let cancelled = false
+    setClient(null)
+    setAiConsentRequired(false)
+
     if (apiKey) {
-      createDeepSeekClient(apiKey).then(setClient)
+      void createDeepSeekClient(apiKey)
+        .then(client => {
+          if (!cancelled) setClient(client)
+        })
+        .catch(error => {
+          if (cancelled) return
+          if (error instanceof Error && error.message === AI_DATA_CONSENT_REQUIRED) {
+            setAiConsentRequired(true)
+            return
+          }
+          logger.error('Failed to initialize AI client:', error)
+        })
+    }
+
+    return () => {
+      cancelled = true
     }
   }, [apiKey])
 
@@ -111,7 +133,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const handleCompletePhase = () => {
     // 标记当前查看的阶段为已完成，更新进度
     if (currentPhase >= book.currentPhase) {
-      const newProgress = currentPhase + 1
+      const newProgress = Math.min(currentPhase + 1, LEARNING_PHASES.length - 1)
       saveProgress({ currentPhase: newProgress })
     }
     
@@ -125,7 +147,15 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   }
 
   const handleSubmitPractice = async () => {
-    if (!client || teachingNote.length < 200) return
+    if (!client || teachingNote.length < 200) {
+      if (aiConsentRequired) {
+        setPracticeError(lang === 'zh'
+          ? '请先在设置中同意 AI 数据传输后再提交。'
+          : 'Please consent to AI data transfer in Settings before submitting.')
+      }
+      return
+    }
+    setPracticeError(null)
     setLoading(true)
     
     // 开始实践时，如果还是未读状态，改为在读
@@ -136,46 +166,54 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     try {
       const prompt = generateReviewPrompt(book.name, teachingNote, lang)
       const systemPrompt = generateSystemPrompt(book.name, lang)
-      const response = await chat(client, systemPrompt, prompt, book.documentContent)
-      
-      let result
+      let response: string
+
       try {
-        const jsonMatch = response.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          result = JSON.parse(jsonMatch[0])
-        } else {
-          throw new Error('No JSON')
-        }
-      } catch {
-        result = {
-          scores: { accuracy: 60, completeness: 60, clarity: 60, overall: 60 },
-          review: response,
-          passed: false
-        }
+        response = await chatJson(client, systemPrompt, prompt, book.documentContent)
+      } catch (error) {
+        logger.error('Practice evaluation request failed:', error)
+        setPracticeError(lang === 'zh'
+          ? '评分请求失败，请检查网络和 API Key 后重试。'
+          : 'The evaluation request failed. Check your network and API key, then try again.')
+        return
       }
-      
-      // 客户端自己计算 passed，不信任 AI 返回的值
-      const passed = result.scores.overall >= 60
-      
-      // addPracticeRecord 会自动检查并更新状态
-      addPracticeRecord(book.id, {
-        content: teachingNote,
-        aiReview: result.review,
-        scores: result.scores,
-        passed: passed
-      })
-      
-      // 重新获取更新后的 book 数据
-      const updatedBook = getBook(book.id)
-      if (updatedBook) {
-        setBook(updatedBook)
+
+      let result: ReturnType<typeof parsePracticeEvaluation>
+      try {
+        result = parsePracticeEvaluation(response)
+      } catch (error) {
+        logger.error('Practice evaluation response was invalid:', error)
+        setPracticeError(lang === 'zh'
+          ? 'AI 未返回有效评分，本次内容已保留，请重新提交。'
+          : 'AI did not return a valid evaluation. Your content was kept; please submit again.')
+        return
       }
-      
-      setTeachingNote('')
-    } catch (error) {
-      logger.error('Practice failed:', error)
+
+      try {
+        // addPracticeRecord 会自动检查并更新状态
+        addPracticeRecord(book.id, {
+          content: teachingNote,
+          aiReview: result.review,
+          scores: result.scores,
+          passed: result.passed
+        })
+
+        // 重新获取更新后的 book 数据
+        const updatedBook = getBook(book.id)
+        if (updatedBook) {
+          setBook(updatedBook)
+        }
+
+        setTeachingNote('')
+      } catch (error) {
+        logger.error('Practice record save failed:', error)
+        setPracticeError(lang === 'zh'
+          ? '评分已完成，但保存记录失败。请稍后重试。'
+          : 'The evaluation completed, but the record could not be saved. Please try again later.')
+      }
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleDeleteRecord = (recordId: string) => {
@@ -241,11 +279,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const phase = LEARNING_PHASES[currentPhase]
   const phaseResponse = phase ? responses[phase.id] : null
   const practiceRecords = book.practiceRecords || []
-  const hasPassed = practiceRecords.some(r => r.passed)
+  const teachingPassed = practiceRecords.some(r => r.passed)
   const qaPassed = book.qaPracticeRecords && book.qaPracticeRecords.length > 0
     ? book.qaPracticeRecords.some(r => r.allPassed)
     : false
-  const shouldBeFinished = hasPassed && qaPassed
+  const practiceComplete = teachingPassed && qaPassed
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -254,16 +292,29 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         <div>
           <p className="text-[var(--text-secondary)] text-sm">{t(lang, 'reading.currentBook')}</p>
           <h1 className="text-2xl font-bold">《{book.name}》</h1>
-          {book.bestScore > 0 && (
+          {practiceComplete && book.bestScore > 0 && (
             <p className="text-sm mt-1">
               <span className="text-[var(--text-secondary)]">{t(lang, 'practice.bestScore')}: </span>
-              <span className={book.bestScore >= 60 ? 'text-green-400' : 'text-yellow-400'}>{book.bestScore}分</span>
-              {hasPassed && <span className="ml-2 text-green-400">✓ {t(lang, 'practice.passed')}</span>}
+              <span className={practiceComplete ? 'text-green-400' : 'text-yellow-400'}>{book.bestScore}分</span>
+              {practiceComplete && <span className="ml-2 text-green-400">✓ {t(lang, 'practice.passed')}</span>}
             </p>
           )}
         </div>
         <button onClick={onBack} className="btn-secondary text-sm py-2">← {t(lang, 'reading.changeBook')}</button>
       </div>
+
+      {aiConsentRequired && (
+        <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-yellow-500/40 bg-yellow-500/10 p-4 text-sm text-yellow-200 rounded-lg">
+          <span>
+            {lang === 'zh'
+              ? 'AI 功能已暂停，需先确认向 DeepSeek 传输相关学习内容。'
+              : 'AI features are paused until you confirm sending relevant learning content to DeepSeek.'}
+          </span>
+          <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
+            {lang === 'zh' ? '前往设置' : 'Open Settings'}
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 p-1 bg-[var(--bg-secondary)] rounded-xl">
@@ -372,7 +423,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                   ))}
                 </div>
                 <div className="mt-4 progress-bar">
-                  <div className="progress-fill" style={{ width: `${((book.currentPhase + 1) / LEARNING_PHASES.length) * 100}%` }} />
+                  <div className="progress-fill" style={{ width: `${(Math.min(book.currentPhase + 1, LEARNING_PHASES.length) / LEARNING_PHASES.length) * 100}%` }} />
                 </div>
                 
                 {analyzingInBackground && (
@@ -523,6 +574,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 (() => {
                   const latestRecord = book.qaPracticeRecords[book.qaPracticeRecords.length - 1]
                   const answeredQuestions = latestRecord.questions.filter(q => q.score !== undefined)
+                  const passedQuestions = latestRecord.questions.filter(q => q.passed)
                   const avgScore = answeredQuestions.length > 0
                     ? Math.round(answeredQuestions.reduce((sum, q) => sum + (q.score || 0), 0) / answeredQuestions.length)
                     : 0
@@ -531,11 +583,17 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                     <>
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-3xl font-bold text-green-400 mb-1">
-                            {avgScore}
-                          </div>
+                          {latestRecord.allPassed ? (
+                            <div className="text-3xl font-bold text-green-400 mb-1">{avgScore}</div>
+                          ) : (
+                            <div className="text-3xl font-bold text-yellow-400 mb-1">
+                              {passedQuestions.length} / {latestRecord.questions.length}
+                            </div>
+                          )}
                           <div className="text-xs text-[var(--text-secondary)]">
-                            {lang === 'zh' ? '最新平均分' : 'Latest Avg'}
+                            {latestRecord.allPassed
+                              ? (lang === 'zh' ? '最新平均分' : 'Latest Avg')
+                              : (lang === 'zh' ? '已通过问题' : 'Questions passed')}
                           </div>
                         </div>
                         <div className={`px-4 py-2 rounded-xl font-bold ${
@@ -566,7 +624,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           </div>
 
           {/* 完成提示 */}
-          {!hasPassed && (
+          {!practiceComplete && (
             <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-400 rounded-xl p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -612,10 +670,19 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 
                 <textarea
                   value={teachingNote}
-                  onChange={e => setTeachingNote(e.target.value)}
+                  onChange={e => {
+                    setTeachingNote(e.target.value)
+                    setPracticeError(null)
+                  }}
                   placeholder={t(lang, 'practice.teachPlaceholder')}
                   className="input-field min-h-[250px] resize-y mb-2"
                 />
+
+                {practiceError && (
+                  <p role="alert" className="mb-3 text-sm text-red-400">
+                    {practiceError}
+                  </p>
+                )}
                 
                 <div className="flex items-center justify-between">
                   <span className={`text-sm ${teachingNote.length >= 200 ? 'text-green-400' : 'text-[var(--text-secondary)]'}`}>

@@ -31,13 +31,12 @@ async function ensureInit(): Promise<void> {
 // 设置操作
 // ============================================================================
 
-const SETTINGS_KEY = 'feynman-settings'
-
 const defaultSettings: AppSettings = {
   apiKey: '',
   language: 'zh',
-  theme: 'cyber',
+  theme: 'light',
   hideApiKeyAlert: false,
+  aiDataConsent: false,
   quotes: [],
   quotesInitialized: false
 }
@@ -59,20 +58,6 @@ export async function getSettings(): Promise<AppSettings> {
     logger.error('Failed to get settings from IndexedDB:', e)
   }
 
-  // 回退到 LocalStorage
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem(SETTINGS_KEY)
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        const quotes = parsed?.quotes || parsed?.customQuotes || []
-        return { ...parsed, quotes, quotesInitialized: parsed?.quotesInitialized || false }
-      } catch (e) {
-        logger.error('Failed to parse settings from localStorage:', e)
-      }
-    }
-  }
-
   return defaultSettings
 }
 
@@ -82,14 +67,9 @@ export async function getSettings(): Promise<AppSettings> {
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await ensureInit()
 
-  try {
-    await indexedDB.put('settings', { id: 'app', ...settings })
-  } catch (e) {
-    logger.error('Failed to save settings to IndexedDB:', e)
-    // 回退到 LocalStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
-    }
+  const saved = await indexedDB.put('settings', { id: 'app', ...settings })
+  if (!saved) {
+    throw new Error('Failed to save settings to IndexedDB')
   }
 }
 
@@ -104,8 +84,6 @@ export async function resetSettings(): Promise<void> {
 // 书籍操作
 // ============================================================================
 
-const BOOKS_KEY = 'feynman-books'
-
 /**
  * 获取所有书籍
  */
@@ -119,19 +97,6 @@ export async function getBooks(): Promise<Book[]> {
     logger.error('Failed to get books from IndexedDB:', e)
   }
 
-  // 回退到 LocalStorage
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem(BOOKS_KEY)
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        return Array.isArray(parsed) ? parsed : []
-      } catch (e) {
-        logger.error('Failed to parse books from localStorage:', e)
-      }
-    }
-  }
-
   return []
 }
 
@@ -141,16 +106,26 @@ export async function getBooks(): Promise<Book[]> {
 export async function saveBooks(books: Book[]): Promise<void> {
   await ensureInit()
 
-  try {
-    // 先清空再批量添加
-    await indexedDB.clear('books')
-    await indexedDB.batchPut('books', books)
-  } catch (e) {
-    logger.error('Failed to save books to IndexedDB:', e)
-    // 回退到 LocalStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(BOOKS_KEY, JSON.stringify(books))
-    }
+  await indexedDB.replaceAll('books', books)
+}
+
+/** Save one changed book without rewriting every document in the library. */
+export async function saveBook(book: Book): Promise<void> {
+  await ensureInit()
+
+  const saved = await indexedDB.put('books', book)
+  if (!saved) {
+    throw new Error(`Failed to save book ${book.id}`)
+  }
+}
+
+/** Delete one book without rewriting every document in the library. */
+export async function deleteBookById(id: string): Promise<void> {
+  await ensureInit()
+
+  const deleted = await indexedDB.delete('books', id)
+  if (!deleted) {
+    throw new Error(`Failed to delete book ${id}`)
   }
 }
 
@@ -269,16 +244,13 @@ function calculateFinalScore(book: Book): number {
     ? book.practiceRecords.reduce((max, r) => Math.max(max, r.scores.overall), 0)
     : 0
 
-  let qaMaxAvgScore = 0
-  if (book.qaPracticeRecords && book.qaPracticeRecords.length > 0) {
-    book.qaPracticeRecords.forEach(record => {
-      const answeredQuestions = record.questions.filter(q => q.score !== undefined)
-      if (answeredQuestions.length > 0) {
-        const avgScore = answeredQuestions.reduce((sum, q) => sum + (q.score || 0), 0) / answeredQuestions.length
-        qaMaxAvgScore = Math.max(qaMaxAvgScore, avgScore)
-      }
-    })
-  }
+  const completedQARecords = (book.qaPracticeRecords || []).filter(record => record.allPassed && record.questions.length > 0)
+  const qaMaxAvgScore = completedQARecords.reduce((max, record) => {
+    const avgScore = record.questions.reduce((sum, question) => sum + (question.score || 0), 0) / record.questions.length
+    return Math.max(max, avgScore)
+  }, 0)
+
+  if (teachingMaxScore < 60 || qaMaxAvgScore < 60) return 0
 
   return Math.round((teachingMaxScore + qaMaxAvgScore) / 2)
 }
@@ -294,25 +266,12 @@ function checkFeynmanComplete(book: Book): boolean {
     : 0
   const teachingPassed = teachingMaxScore >= 60
 
-  let qaMaxAvgScore = 0
-  let allQARecordsPassed = true
-
-  if (book.qaPracticeRecords && book.qaPracticeRecords.length > 0) {
-    book.qaPracticeRecords.forEach(record => {
-      const answeredQuestions = record.questions.filter(q => q.score !== undefined)
-      if (answeredQuestions.length > 0) {
-        const avgScore = answeredQuestions.reduce((sum, q) => sum + (q.score || 0), 0) / answeredQuestions.length
-        qaMaxAvgScore = Math.max(qaMaxAvgScore, avgScore)
-        if (avgScore < 60) {
-          allQARecordsPassed = false
-        }
-      }
-    })
-  } else {
-    allQARecordsPassed = false
-  }
-
-  const qaPassed = qaMaxAvgScore >= 60 && allQARecordsPassed
+  const completedQARecords = (book.qaPracticeRecords || []).filter(record => record.allPassed && record.questions.length > 0)
+  const qaMaxAvgScore = completedQARecords.reduce((max, record) => {
+    const avgScore = record.questions.reduce((sum, question) => sum + (question.score || 0), 0) / record.questions.length
+    return Math.max(max, avgScore)
+  }, 0)
+  const qaPassed = qaMaxAvgScore >= 60
   const finalScore = (teachingMaxScore + qaMaxAvgScore) / 2
   const finalPassed = finalScore >= 60
 

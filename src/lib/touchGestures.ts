@@ -23,7 +23,7 @@ export interface TouchPosition {
 /**
  * 检测元素上的滑动手势
  */
-export function useSwipeGestures(
+function attachSwipeGestures(
   element: HTMLElement | null,
   options: SwipeGestureOptions
 ): () => void {
@@ -131,6 +131,8 @@ export function useSwipeGestures(
   }
 }
 
+export const useSwipeGestures = attachSwipeGestures
+
 /**
  * React Hook: 滑动手势
  */
@@ -144,7 +146,7 @@ export function useSwipe<T extends HTMLElement>(
     const element = ref.current
     if (!element) return
 
-    const cleanup = useSwipeGestures(element, options)
+    const cleanup = attachSwipeGestures(element, options)
     return cleanup
   }, [ref, options])
 }
@@ -315,11 +317,11 @@ export function usePinchZoom(
  */
 export function isTouchDevice(): boolean {
   if (typeof window === 'undefined') return false
+  const navigatorWithLegacyTouch = navigator as Navigator & { msMaxTouchPoints?: number }
   return (
     'ontouchstart' in window ||
     navigator.maxTouchPoints > 0 ||
-    // @ts-ignore
-    navigator.msMaxTouchPoints > 0
+    (navigatorWithLegacyTouch.msMaxTouchPoints || 0) > 0
   )
 }
 

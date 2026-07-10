@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { logger } from '@/lib/logger'
-import { AppSettings, Book, getBooks, getSettings, saveSettings } from '@/lib/store'
+import { AppSettings, Book, getBooks, getSettings, initializeStore, saveSettings } from '@/lib/store'
 import { Language, t } from '@/lib/i18n'
 import Settings from '@/components/Settings'
 import Bookshelf from '@/components/Bookshelf'
@@ -15,10 +15,6 @@ import Toast from '@/components/Toast'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import UndoRedoControls, { useUndoRedoShortcuts } from '@/components/UndoRedoControls'
 
-// P0 新增：IndexedDB 支持
-import { initDB, migrateFromLocalStorage, getDatabaseStats } from '@/lib/db'
-import { useIndexedDBInit } from '@/lib/useIndexedDB'
-
 type View = 'bookshelf' | 'reading' | 'settings'
 
 export default function Home() {
@@ -26,7 +22,7 @@ export default function Home() {
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
     language: 'zh',
-    theme: 'cyber',
+    theme: 'light',
     hideApiKeyAlert: false,
     quotes: [],
     quotesInitialized: false
@@ -37,61 +33,42 @@ export default function Home() {
   const [bookshelfKey, setBookshelfKey] = useState(0) // 用于强制刷新书架
   const [showOnboarding, setShowOnboarding] = useState(false) // P0 新增：新手引导
 
-  // P0 新增：IndexedDB 状态
-  const { initialized: dbInitialized, migrating: dbMigrating } = useIndexedDBInit()
-  const [showMigrationStatus, setShowMigrationStatus] = useState(false)
-  const [migrationInfo, setMigrationInfo] = useState<{
-    booksCount: number
-    dbSize: string
-  } | null>(null)
-
   // P1 新增：启用撤销/重做快捷键
   useUndoRedoShortcuts()
 
   useEffect(() => {
-    // P0 新增：初始化 IndexedDB（异步，不阻塞）
-    initDB().catch(e => {
-      logger.warn('IndexedDB 初始化失败，将使用 LocalStorage:', e)
-    })
+    let cancelled = false
 
-    const saved = getSettings()
-    setSettings(saved)
-    document.documentElement.setAttribute('data-theme', saved.theme)
-    setMounted(true)
+    const initialize = async () => {
+      try {
+        await initializeStore()
+      } catch (error) {
+        logger.error('IndexedDB initialization failed:', error)
+      }
 
-    // Show alert if no API key and not hidden
-    if (!saved.apiKey && !saved.hideApiKeyAlert) {
-      setShowApiKeyAlert(true)
+      if (cancelled) return
+
+      const saved = getSettings()
+      setSettings(saved)
+      document.documentElement.setAttribute('data-theme', saved.theme)
+
+      if (!saved.apiKey && !saved.hideApiKeyAlert) {
+        setShowApiKeyAlert(true)
+      }
+
+      const hasCompletedOnboarding = localStorage.getItem('feynman-onboarding-completed')
+      if (!hasCompletedOnboarding && getBooks().length === 0) {
+        setShowOnboarding(true)
+      }
+
+      setMounted(true)
     }
 
-    // P0 新增：检查是否需要显示新手引导
-    const hasCompletedOnboarding = localStorage.getItem('feynman-onboarding-completed')
-    const hasBooks = getBooks().length > 0
-    if (!hasCompletedOnboarding && !hasBooks) {
-      setShowOnboarding(true)
-    }
-
-    // P0 新增：检查是否刚完成迁移，显示提示
-    const justMigrated = localStorage.getItem('feynman-indexedb-just-migrated')
-    if (justMigrated === 'true') {
-      loadMigrationInfo()
-      setShowMigrationStatus(true)
-      localStorage.removeItem('feynman-indexedb-just-migrated')
+    void initialize()
+    return () => {
+      cancelled = true
     }
   }, [])
-
-  // P0 新增：加载迁移信息
-  async function loadMigrationInfo() {
-    try {
-      const stats = await getDatabaseStats()
-      setMigrationInfo({
-        booksCount: stats.booksCount,
-        dbSize: stats.dbSize.formatted
-      })
-    } catch (e) {
-      logger.error('Failed to load migration info:', e)
-    }
-  }
 
   const handleSettingsChange = (newSettings: AppSettings) => {
     setSettings(newSettings)
@@ -172,6 +149,7 @@ export default function Home() {
                 setView('bookshelf')
                 setBookshelfKey(prev => prev + 1) // 强制刷新书架以显示最新数据
               }}
+              onOpenSettings={() => setView('settings')}
             />
           )}
           

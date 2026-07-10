@@ -1,5 +1,11 @@
-import { renderHook, act } from '@testing-library/react'
-import { useAppStore, useSettings, useBooks, useAppActions } from '../appStore'
+/** @jest-environment node */
+
+jest.mock('@/lib/store', () => ({
+  saveSettings: jest.fn(),
+  saveBooks: jest.fn()
+}))
+
+import { useAppStore } from '../appStore'
 
 describe('appStore', () => {
   beforeEach(() => {
@@ -11,36 +17,24 @@ describe('appStore', () => {
 
   describe('Settings Management', () => {
     it('should have default settings', () => {
-      const { result } = renderHook(() => useSettings())
-      expect(result.current.language).toBe('zh')
-      expect(result.current.theme).toBe('cyber')
+      expect(useAppStore.getState().settings.language).toBe('zh')
+      expect(useAppStore.getState().settings.theme).toBe('light')
     })
 
     it('should update settings', () => {
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.updateSettings({ language: 'en' })
-      })
+      useAppStore.getState().updateSettings({ language: 'en' })
 
       const settings = useAppStore.getState().settings
       expect(settings.language).toBe('en')
     })
 
     it('should reset settings to defaults', () => {
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.updateSettings({ language: 'en', theme: 'dark' })
-      })
-
-      act(() => {
-        result.current.resetSettings()
-      })
+      useAppStore.getState().updateSettings({ language: 'en', theme: 'dark' })
+      useAppStore.getState().resetSettings()
 
       const settings = useAppStore.getState().settings
       expect(settings.language).toBe('zh')
-      expect(settings.theme).toBe('cyber')
+      expect(settings.theme).toBe('light')
     })
   })
 
@@ -61,11 +55,7 @@ describe('appStore', () => {
     }
 
     it('should add a book', () => {
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.addBook(mockBook)
-      })
+      useAppStore.getState().addBook(mockBook)
 
       const books = useAppStore.getState().books
       expect(books).toHaveLength(1)
@@ -73,41 +63,23 @@ describe('appStore', () => {
     })
 
     it('should update a book', () => {
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.addBook(mockBook)
-      })
-
-      act(() => {
-        result.current.updateBook('1', { status: 'reading' })
-      })
+      useAppStore.getState().addBook(mockBook)
+      useAppStore.getState().updateBook('1', { status: 'reading' })
 
       const book = useAppStore.getState().getBook('1')
       expect(book?.status).toBe('reading')
     })
 
     it('should delete a book', () => {
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.addBook(mockBook)
-      })
-
-      act(() => {
-        result.current.deleteBook('1')
-      })
+      useAppStore.getState().addBook(mockBook)
+      useAppStore.getState().deleteBook('1')
 
       const books = useAppStore.getState().books
       expect(books).toHaveLength(0)
     })
 
     it('should get a book by id', () => {
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.addBook(mockBook)
-      })
+      useAppStore.getState().addBook(mockBook)
 
       const book = useAppStore.getState().getBook('1')
       expect(book).toBeDefined()
@@ -122,17 +94,12 @@ describe('appStore', () => {
 
   describe('UI State', () => {
     it('should change view', () => {
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.setView('settings')
-      })
+      useAppStore.getState().setView('settings')
 
       expect(useAppStore.getState().view).toBe('settings')
     })
 
     it('should set selected book', () => {
-      const { result } = renderHook(() => useAppActions())
       const mockBook = {
         id: '1',
         name: 'Test',
@@ -147,20 +114,14 @@ describe('appStore', () => {
         updatedAt: Date.now()
       }
 
-      act(() => {
-        result.current.setSelectedBook(mockBook)
-      })
+      useAppStore.getState().setSelectedBook(mockBook)
 
       expect(useAppStore.getState().selectedBook).toEqual(mockBook)
     })
 
     it('should refresh bookshelf key', () => {
       const initialKey = useAppStore.getState().bookshelfKey
-      const { result } = renderHook(() => useAppActions())
-
-      act(() => {
-        result.current.refreshBookshelf()
-      })
+      useAppStore.getState().refreshBookshelf()
 
       expect(useAppStore.getState().bookshelfKey).toBe(initialKey + 1)
     })

@@ -172,7 +172,7 @@ export default function AuthGuard({ children }: Props) {
           </div>
           
           <p className="text-xs text-[var(--text-secondary)] mb-4">
-            请将机器码发送给管理员获取激活码
+            请添加微信 hostrow，并发送机器码获取激活码
           </p>
           
           {/* 激活码输入 */}

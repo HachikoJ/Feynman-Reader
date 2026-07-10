@@ -16,7 +16,7 @@
 - Next.js 14 (App Router)
 - TypeScript
 - Tailwind CSS
-- DeepSeek API
+- DeepSeek V4 Flash API
 
 ## 快速开始
 
@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-打开 http://localhost:3000，配置你的 DeepSeek API Key，输入书名即可开始。
+打开 http://localhost:8080，配置你的 DeepSeek API Key，输入书名即可开始。
 
 ## 获取 DeepSeek API Key
 

@@ -1,5 +1,15 @@
 import { Language } from './i18n'
 import { logger } from './logger'
+import {
+  initDB,
+  getSettings as getIndexedDBSettings,
+  saveSettings as saveIndexedDBSettings,
+  getBooks as getIndexedDBBooks,
+  saveBooks as saveIndexedDBBooks,
+  saveBook as saveIndexedDBBook,
+  deleteBookById as deleteIndexedDBBook
+} from './db'
+import { indexedDB as indexedDBStorage } from './indexedDB'
 
 export type Theme = 'dark' | 'light' | 'cyber'
 export type BookStatus = 'unread' | 'reading' | 'finished'
@@ -98,58 +108,110 @@ export interface AppSettings {
   language: Language
   theme: Theme
   hideApiKeyAlert: boolean
+  aiDataConsent?: boolean
   quotes: CustomQuote[]  // 改名，包含预设和自定义
   quotesInitialized?: boolean  // 标记是否已初始化预设金句
 }
 
-const SETTINGS_KEY = 'feynman-settings'
-const BOOKS_KEY = 'feynman-books'
+const DEFAULT_SETTINGS: AppSettings = {
+  apiKey: '',
+  language: 'zh',
+  theme: 'light',
+  hideApiKeyAlert: false,
+  aiDataConsent: false,
+  quotes: [],
+  quotesInitialized: false
+}
+
+let settingsCache: AppSettings = DEFAULT_SETTINGS
+let booksCache: Book[] = []
+let initializationPromise: Promise<void> | null = null
+let settingsWriteQueue = Promise.resolve()
+let booksWriteQueue = Promise.resolve()
+
+function cloneForStorage<T>(value: T): T {
+  return typeof structuredClone === 'function'
+    ? structuredClone(value)
+    : JSON.parse(JSON.stringify(value))
+}
+
+export async function initializeStore(): Promise<void> {
+  if (typeof window === 'undefined') return
+  if (initializationPromise) return initializationPromise
+
+  initializationPromise = (async () => {
+    await initDB()
+    const [settings, books] = await Promise.all([
+      getIndexedDBSettings(),
+      getIndexedDBBooks()
+    ])
+
+    const quotes = settings.quotes || (settings as any).customQuotes || []
+    const theme = settings.theme === 'cyber' ? 'light' : settings.theme
+    settingsCache = {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      theme,
+      quotes,
+      quotesInitialized: settings.quotesInitialized || false
+    }
+    if (settings.theme === 'cyber') {
+      saveSettings(settingsCache)
+    }
+    const loadedBooks = Array.isArray(books) ? books : []
+    booksCache = loadedBooks.map(book => {
+      const bestScore = calculateFinalScore(book)
+      return book.bestScore === bestScore ? book : { ...book, bestScore }
+    })
+    booksCache.forEach((book, index) => {
+      if (book !== loadedBooks[index]) persistBook(book)
+    })
+  })().catch(error => {
+    initializationPromise = null
+    throw error
+  })
+
+  return initializationPromise
+}
 
 export function getSettings(): AppSettings {
-  if (typeof window === 'undefined') {
-    return { apiKey: '', language: 'zh', theme: 'cyber', hideApiKeyAlert: false, quotes: [], quotesInitialized: false }
-  }
-  const saved = localStorage.getItem(SETTINGS_KEY)
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      // 兼容旧版本的 customQuotes
-      const quotes = parsed?.quotes || parsed?.customQuotes || []
-      return { ...parsed, quotes, quotesInitialized: parsed?.quotesInitialized || false }
-    } catch (e) {
-      logger.error('Failed to parse settings from localStorage:', e)
-      return { apiKey: '', language: 'zh', theme: 'cyber', hideApiKeyAlert: false, quotes: [], quotesInitialized: false }
-    }
-  }
-  return { apiKey: '', language: 'zh', theme: 'cyber', hideApiKeyAlert: false, quotes: [], quotesInitialized: false }
+  return settingsCache
 }
 
 export function saveSettings(settings: AppSettings): void {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+  settingsCache = settings
+  const snapshot = cloneForStorage(settings)
+  settingsWriteQueue = settingsWriteQueue
+    .then(() => saveIndexedDBSettings(snapshot), () => saveIndexedDBSettings(snapshot))
+    .catch(error => logger.error('Failed to persist settings to IndexedDB:', error))
 }
 
 export function getBooks(): Book[] {
-  if (typeof window === 'undefined') return []
-  const saved = localStorage.getItem(BOOKS_KEY)
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      // 确保返回的是数组
-      return Array.isArray(parsed) ? parsed : []
-    } catch (e) {
-      logger.error('Failed to parse books from localStorage:', e)
-      return []
-    }
-  }
-  return []
+  return [...booksCache]
 }
 
 export function saveBooks(books: Book[]): void {
-  localStorage.setItem(BOOKS_KEY, JSON.stringify(books))
+  booksCache = [...books]
+  const snapshot = cloneForStorage(books)
+  booksWriteQueue = booksWriteQueue
+    .then(() => saveIndexedDBBooks(snapshot), () => saveIndexedDBBooks(snapshot))
+    .catch(error => logger.error('Failed to persist books to IndexedDB:', error))
+}
+
+function persistBook(book: Book): void {
+  const snapshot = cloneForStorage(book)
+  booksWriteQueue = booksWriteQueue
+    .then(() => saveIndexedDBBook(snapshot), () => saveIndexedDBBook(snapshot))
+    .catch(error => logger.error('Failed to persist book to IndexedDB:', error))
+}
+
+function persistBookDeletion(id: string): void {
+  booksWriteQueue = booksWriteQueue
+    .then(() => deleteIndexedDBBook(id), () => deleteIndexedDBBook(id))
+    .catch(error => logger.error('Failed to delete book from IndexedDB:', error))
 }
 
 export function addBook(name: string, author?: string, cover?: string, description?: string, tags?: BookTag[], documentContent?: string): Book {
-  const books = getBooks()
   const newBook: Book = {
     id: Date.now().toString(),
     name,
@@ -168,8 +230,8 @@ export function addBook(name: string, author?: string, cover?: string, descripti
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
-  books.unshift(newBook)
-  saveBooks(books)
+  booksCache = [newBook, ...booksCache]
+  persistBook(newBook)
   return newBook
 }
 
@@ -199,31 +261,44 @@ export function getAllCategories(): string[] {
 }
 
 export function updateBook(id: string, updates: Partial<Book>): void {
-  const books = getBooks()
-  const index = books.findIndex(b => b.id === id)
-  if (index !== -1) {
-    logger.debug('🔄 updateBook:', { id, updates, oldStatus: books[index].status })
-    books[index] = { ...books[index], ...updates, updatedAt: Date.now() }
-    saveBooks(books)
-    logger.debug('🔄 updateBook 完成，新状态:', books[index].status)
+  const existingBook = booksCache.find(book => book.id === id)
+  if (existingBook) {
+    logger.debug('🔄 updateBook:', { id, updates, oldStatus: existingBook.status })
+    const updatedBook = { ...existingBook, ...updates, updatedAt: Date.now() }
+    booksCache = booksCache.map(book => book.id === id ? updatedBook : book)
+    persistBook(updatedBook)
+    logger.debug('🔄 updateBook 完成，新状态:', updatedBook.status)
   } else {
     logger.error('❌ updateBook: 找不到书籍', id)
   }
 }
 
 export function deleteBook(id: string): void {
-  const books = getBooks().filter(b => b.id !== id)
-  saveBooks(books)
+  booksCache = booksCache.filter(book => book.id !== id)
+  persistBookDeletion(id)
+}
+
+/** Reset in-memory state after the browser database has been deleted. */
+export function resetStoreCache(): void {
+  settingsCache = { ...DEFAULT_SETTINGS }
+  booksCache = []
+  initializationPromise = null
+  settingsWriteQueue = Promise.resolve()
+  booksWriteQueue = Promise.resolve()
 }
 
 export function getBook(id: string): Book | undefined {
   return getBooks().find(b => b.id === id)
 }
 
+function replaceBookInCache(book: Book): void {
+  booksCache = booksCache.map(existing => existing.id === book.id ? book : existing)
+  persistBook(book)
+}
+
 
 export function addPracticeRecord(bookId: string, record: Omit<PracticeRecord, 'id' | 'bookId' | 'createdAt'>): PracticeRecord {
-  const books = getBooks()
-  const book = books.find(b => b.id === bookId)
+  const book = getBook(bookId)
   if (!book) throw new Error('Book not found')
   
   const newRecord: PracticeRecord = {
@@ -233,16 +308,13 @@ export function addPracticeRecord(bookId: string, record: Omit<PracticeRecord, '
     createdAt: Date.now()
   }
   
-  if (!book.practiceRecords) {
-    book.practiceRecords = []
+  const updatedBook = {
+    ...book,
+    practiceRecords: [...(book.practiceRecords || []), newRecord],
+    updatedAt: Date.now()
   }
-  book.practiceRecords.push(newRecord)
-  
-  // 更新最终总分（传入 book 对象）
-  book.bestScore = calculateFinalScore(book)
-  
-  book.updatedAt = Date.now()
-  saveBooks(books)
+  updatedBook.bestScore = calculateFinalScore(updatedBook)
+  replaceBookInCache(updatedBook)
   
   logger.debug('📝 addPracticeRecord 保存完成，开始检查状态')
   
@@ -253,7 +325,7 @@ export function addPracticeRecord(bookId: string, record: Omit<PracticeRecord, '
   if (shouldFinish) {
     logger.debug('✅ 满足已读条件，更新状态为 finished')
     updateBook(bookId, { status: 'finished' })
-  } else if (book.status === 'finished') {
+  } else if (updatedBook.status === 'finished') {
     logger.debug('⚠️ 不满足已读条件，改回 reading')
     // 如果之前是已读，但现在不满足条件了（比如重新提交了一个不合格的），改回在读
     updateBook(bookId, { status: 'reading' })
@@ -270,20 +342,19 @@ export function getPracticeRecords(bookId: string): PracticeRecord[] {
 }
 
 export function deletePracticeRecord(bookId: string, recordId: string): void {
-  const books = getBooks()
-  const book = books.find(b => b.id === bookId)
+  const book = getBook(bookId)
   if (!book || !book.practiceRecords) return
-  
-  book.practiceRecords = book.practiceRecords.filter(r => r.id !== recordId)
-  
-  // 重新计算最终总分（传入 book 对象）
-  book.bestScore = calculateFinalScore(book)
-  
-  book.updatedAt = Date.now()
-  saveBooks(books)
+
+  const updatedBook = {
+    ...book,
+    practiceRecords: book.practiceRecords.filter(record => record.id !== recordId),
+    updatedAt: Date.now()
+  }
+  updatedBook.bestScore = calculateFinalScore(updatedBook)
+  replaceBookInCache(updatedBook)
   
   // 保存后再检查是否还满足已读条件
-  if (!checkFeynmanComplete(bookId) && book.status === 'finished') {
+  if (!checkFeynmanComplete(bookId) && updatedBook.status === 'finished') {
     updateBook(bookId, { status: 'reading' })
   }
 }
@@ -295,8 +366,7 @@ export function getQAPracticeRecords(bookId: string): QAPracticeRecord[] {
 }
 
 export function addQAPracticeRecord(bookId: string, record: Omit<QAPracticeRecord, 'id' | 'bookId' | 'createdAt' | 'updatedAt'>): QAPracticeRecord {
-  const books = getBooks()
-  const book = books.find(b => b.id === bookId)
+  const book = getBook(bookId)
   if (!book) throw new Error('Book not found')
   
   const newRecord: QAPracticeRecord = {
@@ -307,16 +377,13 @@ export function addQAPracticeRecord(bookId: string, record: Omit<QAPracticeRecor
     updatedAt: Date.now()
   }
   
-  if (!book.qaPracticeRecords) {
-    book.qaPracticeRecords = []
+  const updatedBook = {
+    ...book,
+    qaPracticeRecords: [...(book.qaPracticeRecords || []), newRecord],
+    updatedAt: Date.now()
   }
-  book.qaPracticeRecords.push(newRecord)
-  
-  // 更新最终总分（传入 book 对象）
-  book.bestScore = calculateFinalScore(book)
-  
-  book.updatedAt = Date.now()
-  saveBooks(books)
+  updatedBook.bestScore = calculateFinalScore(updatedBook)
+  replaceBookInCache(updatedBook)
   
   logger.debug('💬 addQAPracticeRecord 保存完成，开始检查状态')
   
@@ -327,7 +394,7 @@ export function addQAPracticeRecord(bookId: string, record: Omit<QAPracticeRecor
   if (shouldFinish) {
     logger.debug('✅ 满足已读条件，更新状态为 finished')
     updateBook(bookId, { status: 'finished' })
-  } else if (book.status === 'finished') {
+  } else if (updatedBook.status === 'finished') {
     logger.debug('⚠️ 不满足已读条件，改回 reading')
     updateBook(bookId, { status: 'reading' })
   } else {
@@ -338,23 +405,17 @@ export function addQAPracticeRecord(bookId: string, record: Omit<QAPracticeRecor
 }
 
 export function updateQAPracticeRecord(bookId: string, recordId: string, updates: Partial<QAPracticeRecord>): void {
-  const books = getBooks()
-  const book = books.find(b => b.id === bookId)
+  const book = getBook(bookId)
   if (!book || !book.qaPracticeRecords) return
   
   const index = book.qaPracticeRecords.findIndex(r => r.id === recordId)
   if (index !== -1) {
-    book.qaPracticeRecords[index] = { 
-      ...book.qaPracticeRecords[index], 
-      ...updates, 
-      updatedAt: Date.now() 
-    }
-    
-    // 更新最终总分（传入 book 对象）
-    book.bestScore = calculateFinalScore(book)
-    
-    book.updatedAt = Date.now()
-    saveBooks(books)
+    const qaPracticeRecords = book.qaPracticeRecords.map((record, recordIndex) =>
+      recordIndex === index ? { ...record, ...updates, updatedAt: Date.now() } : record
+    )
+    const updatedBook = { ...book, qaPracticeRecords, updatedAt: Date.now() }
+    updatedBook.bestScore = calculateFinalScore(updatedBook)
+    replaceBookInCache(updatedBook)
     
     logger.debug('💬 updateQAPracticeRecord 保存完成，开始检查状态')
     
@@ -365,7 +426,7 @@ export function updateQAPracticeRecord(bookId: string, recordId: string, updates
     if (shouldFinish) {
       logger.debug('✅ 满足已读条件，更新状态为 finished')
       updateBook(bookId, { status: 'finished' })
-    } else if (book.status === 'finished') {
+    } else if (updatedBook.status === 'finished') {
       logger.debug('⚠️ 不满足已读条件，改回 reading')
       updateBook(bookId, { status: 'reading' })
     } else {
@@ -375,20 +436,19 @@ export function updateQAPracticeRecord(bookId: string, recordId: string, updates
 }
 
 export function deleteQAPracticeRecord(bookId: string, recordId: string): void {
-  const books = getBooks()
-  const book = books.find(b => b.id === bookId)
+  const book = getBook(bookId)
   if (!book || !book.qaPracticeRecords) return
-  
-  book.qaPracticeRecords = book.qaPracticeRecords.filter(r => r.id !== recordId)
-  
-  // 更新最终总分（传入 book 对象）
-  book.bestScore = calculateFinalScore(book)
-  
-  book.updatedAt = Date.now()
-  saveBooks(books)
+
+  const updatedBook = {
+    ...book,
+    qaPracticeRecords: book.qaPracticeRecords.filter(record => record.id !== recordId),
+    updatedAt: Date.now()
+  }
+  updatedBook.bestScore = calculateFinalScore(updatedBook)
+  replaceBookInCache(updatedBook)
   
   // 保存后再检查是否还满足已读条件
-  if (!checkFeynmanComplete(bookId) && book.status === 'finished') {
+  if (!checkFeynmanComplete(bookId) && updatedBook.status === 'finished') {
     updateBook(bookId, { status: 'reading' })
   }
 }
@@ -404,29 +464,13 @@ export function checkFeynmanComplete(bookId: string): boolean {
     : 0
   const teachingPassed = teachingMaxScore >= 60
   
-  // 2. 检查问答实践：计算每次记录的平均分，找出最高平均分
-  let qaMaxAvgScore = 0
-  let allQARecordsPassed = true
-  
-  if (book.qaPracticeRecords && book.qaPracticeRecords.length > 0) {
-    book.qaPracticeRecords.forEach(record => {
-      // 计算这次记录的平均分（只计算已回答的问题）
-      const answeredQuestions = record.questions.filter(q => q.score !== undefined)
-      if (answeredQuestions.length > 0) {
-        const avgScore = answeredQuestions.reduce((sum, q) => sum + (q.score || 0), 0) / answeredQuestions.length
-        qaMaxAvgScore = Math.max(qaMaxAvgScore, avgScore)
-        
-        // 检查这次记录的平均分是否 >= 60
-        if (avgScore < 60) {
-          allQARecordsPassed = false
-        }
-      }
-    })
-  } else {
-    allQARecordsPassed = false
-  }
-  
-  const qaPassed = qaMaxAvgScore >= 60 && allQARecordsPassed
+  // 2. 只有一组问题全部通过，才允许问答成绩参与完成判定。
+  const completedQARecords = (book.qaPracticeRecords || []).filter(record => record.allPassed && record.questions.length > 0)
+  const qaMaxAvgScore = completedQARecords.reduce((max, record) => {
+    const avgScore = record.questions.reduce((sum, question) => sum + (question.score || 0), 0) / record.questions.length
+    return Math.max(max, avgScore)
+  }, 0)
+  const qaPassed = qaMaxAvgScore >= 60
   
   // 3. 计算最终总分：(教学最高分 + 问答最高平均分) / 2
   const finalScore = (teachingMaxScore + qaMaxAvgScore) / 2
@@ -442,7 +486,6 @@ export function checkFeynmanComplete(bookId: string): boolean {
     teachingPassed,
     qaMaxAvgScore: Math.round(qaMaxAvgScore),
     qaPassed,
-    allQARecordsPassed,
     finalScore: Math.round(finalScore),
     finalPassed,
     allConditionsMet,
@@ -461,17 +504,14 @@ export function calculateFinalScore(book: Book): number {
     ? book.practiceRecords.reduce((max, r) => Math.max(max, r.scores.overall), 0)
     : 0
 
-  // 问答实践最高平均分
-  let qaMaxAvgScore = 0
-  if (book.qaPracticeRecords && book.qaPracticeRecords.length > 0) {
-    book.qaPracticeRecords.forEach(record => {
-      const answeredQuestions = record.questions.filter(q => q.score !== undefined)
-      if (answeredQuestions.length > 0) {
-        const avgScore = answeredQuestions.reduce((sum, q) => sum + (q.score || 0), 0) / answeredQuestions.length
-        qaMaxAvgScore = Math.max(qaMaxAvgScore, avgScore)
-      }
-    })
-  }
+  // 问答未全部通过时不产生综合得分。
+  const completedQARecords = (book.qaPracticeRecords || []).filter(record => record.allPassed && record.questions.length > 0)
+  const qaMaxAvgScore = completedQARecords.reduce((max, record) => {
+    const avgScore = record.questions.reduce((sum, question) => sum + (question.score || 0), 0) / record.questions.length
+    return Math.max(max, avgScore)
+  }, 0)
+
+  if (teachingMaxScore < 60 || qaMaxAvgScore < 60) return 0
 
   // 最终总分 = (教学最高分 + 问答最高平均分) / 2
   const finalScore = (teachingMaxScore + qaMaxAvgScore) / 2
@@ -680,13 +720,15 @@ async function getCryptoKey(): Promise<CryptoKey | null> {
   }
 
   try {
-    // 从 localStorage 获取存储的密钥材料
-    const storedKey = localStorage.getItem(ENCRYPTION_KEY_NAME)
+    await initDB()
+    const storedKey = await indexedDBStorage.get<{ key: string; value: number[] }>(
+      'metadata',
+      ENCRYPTION_KEY_NAME
+    )
 
     if (storedKey) {
       // 导入现有密钥
-      const keyMaterial = JSON.parse(storedKey)
-      const keyData = new Uint8Array(Object.values(keyMaterial))
+      const keyData = new Uint8Array(storedKey.value)
       return await window.crypto.subtle.importKey(
         'raw',
         keyData,
@@ -703,9 +745,13 @@ async function getCryptoKey(): Promise<CryptoKey | null> {
       ['encrypt', 'decrypt']
     )
 
-    // 导出并存储密钥
+    // 导出并存储密钥材料
     const exportedKey = await window.crypto.subtle.exportKey('raw', key)
-    localStorage.setItem(ENCRYPTION_KEY_NAME, JSON.stringify(Array.from(new Uint8Array(exportedKey))))
+    const saved = await indexedDBStorage.put('metadata', {
+      key: ENCRYPTION_KEY_NAME,
+      value: Array.from(new Uint8Array(exportedKey))
+    })
+    if (!saved) throw new Error('Failed to persist encryption key')
 
     return key
   } catch (e) {

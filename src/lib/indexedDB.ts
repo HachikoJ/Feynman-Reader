@@ -110,6 +110,7 @@ export interface AppSettings {
   language: Language
   theme: Theme
   hideApiKeyAlert: boolean
+  aiDataConsent?: boolean
   quotes: CustomQuote[]
   quotesInitialized?: boolean
 }
@@ -324,6 +325,31 @@ class IndexedDBHelper {
       logger.error(`[IndexedDB] 清空存储失败 [${storeName}]:`, error)
       return false
     }
+  }
+
+  /**
+   * Replaces every record in a store in one transaction. This is used for
+   * explicit imports, where a partial clear-and-rewrite would lose data.
+   */
+  async replaceAll<T>(storeName: string, items: T[]): Promise<void> {
+    const db = await this.init()
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error || new Error(`Failed to replace ${storeName}`))
+
+      const clearRequest = store.clear()
+      clearRequest.onerror = () => transaction.abort()
+      clearRequest.onsuccess = () => {
+        for (const item of items) {
+          store.put(item)
+        }
+      }
+    })
   }
 
   /**
@@ -757,6 +783,11 @@ export async function rollbackToLocalStorage(): Promise<boolean> {
 
 export { indexedDB }
 export default indexedDB
+
+export async function deleteDatabase(): Promise<void> {
+  indexedDB.close()
+  await IndexedDBHelper.deleteDatabase()
+}
 
 // ============================================================================
 // 使用示例

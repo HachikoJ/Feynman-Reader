@@ -9,20 +9,27 @@ const localStorageMock = {
 }
 global.localStorage = localStorageMock
 
-// Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: jest.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  })),
-})
+if (typeof document === 'undefined') {
+  global.document = {
+    documentElement: { setAttribute: jest.fn() }
+  }
+}
+
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: jest.fn().mockImplementation(query => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    })),
+  })
+}
 
 // Mock Web Crypto API
 global.crypto = {
@@ -43,4 +50,4 @@ global.crypto = {
     encrypt: jest.fn().mockResolvedValue(new Uint8Array(48)),
     decrypt: jest.fn().mockResolvedValue(new Uint8Array(32)),
   },
-} as any
+}

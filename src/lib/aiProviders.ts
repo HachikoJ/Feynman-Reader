@@ -3,6 +3,8 @@
  * 支持多个 AI 提供商（DeepSeek、OpenAI、Claude 等）
  */
 
+import { getSettings } from './store'
+
 // AI 提供商类型
 export type AIProviderType = 'deepseek' | 'openai' | 'claude' | 'gemini' | 'custom'
 
@@ -56,16 +58,15 @@ class DeepSeekProvider implements IAIProvider {
   name = 'DeepSeek'
 
   async chat(messages: AIMessage[], options: ChatOptions = {}): Promise<AIResponse> {
-    const { createDeepSeekClient } = await import('./deepseek')
+    const { createDeepSeekClient, withDeepSeekDefaults } = await import('./deepseek')
     const apiKey = this.getApiKey()
 
     const client = await createDeepSeekClient(apiKey)
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
+    const response = await client.chat.completions.create(withDeepSeekDefaults({
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2000
-    })
+    }))
 
     return {
       content: response.choices[0]?.message?.content || '',
@@ -79,17 +80,16 @@ class DeepSeekProvider implements IAIProvider {
   }
 
   async *streamChat(messages: AIMessage[], options: ChatOptions = {}): AsyncIterable<string> {
-    const { createDeepSeekClient } = await import('./deepseek')
+    const { createDeepSeekClient, withDeepSeekDefaults } = await import('./deepseek')
     const apiKey = this.getApiKey()
 
     const client = await createDeepSeekClient(apiKey)
-    const stream = await client.chat.completions.create({
-      model: 'deepseek-chat',
+    const stream = await client.chat.completions.create(withDeepSeekDefaults({
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2000,
       stream: true
-    })
+    }))
 
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content || ''
@@ -102,13 +102,7 @@ class DeepSeekProvider implements IAIProvider {
   }
 
   private getApiKey(): string {
-    if (typeof window === 'undefined') return ''
-    const settings = localStorage.getItem('feynman-settings')
-    if (settings) {
-      const parsed = JSON.parse(settings)
-      return parsed.apiKey || ''
-    }
-    return ''
+    return getSettings().apiKey
   }
 }
 
@@ -212,14 +206,8 @@ class OpenAIProvider implements IAIProvider {
   }
 
   private getApiKey(): string {
-    if (typeof window === 'undefined') return ''
-    const settings = localStorage.getItem('feynman-settings')
-    if (settings) {
-      const parsed = JSON.parse(settings)
-      // 尝试从额外配置中获取 OpenAI API Key
-      return parsed.openaiApiKey || parsed.apiKey || ''
-    }
-    return ''
+    const settings = getSettings() as { apiKey: string; openaiApiKey?: string }
+    return settings.openaiApiKey || settings.apiKey || ''
   }
 }
 
@@ -328,13 +316,8 @@ class ClaudeProvider implements IAIProvider {
   }
 
   private getApiKey(): string {
-    if (typeof window === 'undefined') return ''
-    const settings = localStorage.getItem('feynman-settings')
-    if (settings) {
-      const parsed = JSON.parse(settings)
-      return parsed.claudeApiKey || ''
-    }
-    return ''
+    const settings = getSettings() as { apiKey: string; claudeApiKey?: string }
+    return settings.claudeApiKey || ''
   }
 }
 

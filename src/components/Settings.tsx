@@ -2,20 +2,40 @@
 
 import { useState, useEffect, useRef } from 'react'
 import {
+  ArrowUpRight,
+  Check,
+  Database,
+  Download,
+  Eye,
+  EyeOff,
+  FileText,
+  HardDrive,
+  Languages,
+  Moon,
+  Pencil,
+  Quote,
+  Sun,
+  Trash2,
+  Upload,
+  X
+} from 'lucide-react'
+import {
   AppSettings,
   CustomQuote,
   getSettings,
   saveSettings,
-  Theme,
   downloadDataBackup,
   previewImportData,
   applyImportData,
   getDataStats,
-  ExportData
+  ExportData,
+  resetStoreCache
 } from '@/lib/store'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
+import { privacyPolicyContent } from '@/lib/privacyPolicy'
 import { defaultQuotesZh, defaultQuotesEn } from './LoadingQuotes'
+import MarkdownRenderer from './MarkdownRenderer'
 
 // P0 新增：IndexedDB 支持
 import {
@@ -31,13 +51,16 @@ export default function Settings({ onSettingsChange }: Props) {
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
     language: 'zh',
-    theme: 'cyber',
+    theme: 'light',
     hideApiKeyAlert: false,
     quotes: [],
     quotesInitialized: false
   })
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [apiKeyConsentError, setApiKeyConsentError] = useState<string | null>(null)
+  const [showConsentPolicy, setShowConsentPolicy] = useState(false)
+  const [hasReadConsentPolicy, setHasReadConsentPolicy] = useState(false)
   const [newQuoteText, setNewQuoteText] = useState('')
   const [newQuoteAuthor, setNewQuoteAuthor] = useState('')
   const [showQuoteManager, setShowQuoteManager] = useState(false)
@@ -66,6 +89,8 @@ export default function Settings({ onSettingsChange }: Props) {
   })
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const aiConsentRef = useRef<HTMLInputElement>(null)
+  const consentPolicyScrollRef = useRef<HTMLDivElement>(null)
 
   // P0 新增：IndexedDB 相关状态
   const [dbInfo, setDbInfo] = useState<{
@@ -170,6 +195,17 @@ export default function Settings({ onSettingsChange }: Props) {
   }
 
   const handleSave = () => {
+    if (settings.apiKey.trim() && !settings.aiDataConsent) {
+      setApiKeyConsentError(settings.language === 'zh'
+        ? '保存 API Key 前，请先确认 AI 数据传输同意。'
+        : 'Confirm AI data transfer consent before saving an API key.')
+      requestAnimationFrame(() => {
+        aiConsentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        aiConsentRef.current?.focus()
+      })
+      return
+    }
+
     saveSettings(settings)
     onSettingsChange(settings)
     setSaved(true)
@@ -180,6 +216,9 @@ export default function Settings({ onSettingsChange }: Props) {
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     const newSettings = { ...settings, [key]: value }
     setSettings(newSettings)
+    if (key === 'apiKey' || key === 'aiDataConsent') {
+      setApiKeyConsentError(null)
+    }
     if (key === 'theme') {
       document.documentElement.setAttribute('data-theme', value as string)
     }
@@ -320,22 +359,65 @@ export default function Settings({ onSettingsChange }: Props) {
   }
 
   // 清除所有数据
-  const handleClearData = () => {
+  const handleClearData = async () => {
     if (confirm(settings.language === 'zh'
       ? '确定要清除所有数据吗？此操作不可撤销！'
       : 'Are you sure you want to clear all data? This action cannot be undone!')) {
-      localStorage.clear()
-      showToast('数据已清除', 'success')
-      setTimeout(() => window.location.reload(), 500)
+      try {
+        const { deleteDatabase } = await import('@/lib/indexedDB')
+        await deleteDatabase()
+        resetStoreCache()
+        localStorage.clear()
+        sessionStorage.clear()
+        showToast(settings.language === 'zh' ? '数据已清除' : 'Data cleared', 'success')
+        setTimeout(() => window.location.reload(), 500)
+      } catch (error) {
+        logger.error('Failed to clear application data:', error)
+        showToast(settings.language === 'zh' ? '清除数据失败，请关闭其他页面后重试' : 'Failed to clear data. Close other tabs and try again.', 'error')
+      }
     }
   }
 
+  const openConsentPolicy = () => {
+    setHasReadConsentPolicy(false)
+    setShowConsentPolicy(true)
+    requestAnimationFrame(() => {
+      const container = consentPolicyScrollRef.current
+      if (!container) return
+
+      container.scrollTop = 0
+      setHasReadConsentPolicy(container.scrollHeight <= container.clientHeight)
+    })
+  }
+
+  const handleConsentChange = (checked: boolean) => {
+    if (!checked) {
+      updateSetting('aiDataConsent', false)
+      return
+    }
+
+    if (!settings.aiDataConsent) openConsentPolicy()
+  }
+
+  const handleConsentPolicyScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const container = event.currentTarget
+    setHasReadConsentPolicy(
+      container.scrollTop + container.clientHeight >= container.scrollHeight - 8
+    )
+  }
+
+  const acceptConsentPolicy = () => {
+    updateSetting('aiDataConsent', true)
+    setShowConsentPolicy(false)
+  }
+
   const lang = settings.language
+  const consentPolicy = privacyPolicyContent[lang]
   const presetCount = settings.quotes.filter(q => q.isPreset).length
   const customCount = settings.quotes.filter(q => !q.isPreset).length
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-lg ${
           toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
@@ -344,11 +426,39 @@ export default function Settings({ onSettingsChange }: Props) {
         </div>
       )}
 
-      <h1 className="text-3xl font-bold mb-8">{t(lang, 'settings.title')}</h1>
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <h1 className="text-2xl font-bold">{t(lang, 'settings.title')}</h1>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleLanguageChange(lang === 'zh' ? 'en' : 'zh')}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
+            aria-label={lang === 'zh' ? 'Switch to English' : '切换至中文'}
+            title={lang === 'zh' ? 'Switch to English' : '切换至中文'}
+          >
+            <Languages size={18} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => updateSetting('theme', settings.theme === 'dark' ? 'light' : 'dark')}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-amber-500 hover:bg-[var(--bg-secondary)]"
+            aria-label={settings.theme === 'dark'
+              ? (lang === 'zh' ? '切换至浅色主题' : 'Switch to light theme')
+              : (lang === 'zh' ? '切换至深色主题' : 'Switch to dark theme')}
+            title={settings.theme === 'dark'
+              ? (lang === 'zh' ? '切换至浅色主题' : 'Switch to light theme')
+              : (lang === 'zh' ? '切换至深色主题' : 'Switch to dark theme')}
+          >
+            {settings.theme === 'dark'
+              ? <Sun size={18} aria-hidden="true" />
+              : <Moon size={18} aria-hidden="true" />}
+          </button>
+        </div>
+      </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* API Key */}
-        <div className="card">
+        <div className="card p-4">
           <label className="block text-sm font-medium mb-2">{t(lang, 'settings.apiKey')}</label>
           <div className="relative mb-2">
             <input
@@ -356,17 +466,38 @@ export default function Settings({ onSettingsChange }: Props) {
               value={settings.apiKey}
               onChange={(e) => updateSetting('apiKey', e.target.value)}
               placeholder={t(lang, 'settings.apiKeyPlaceholder')}
-              className="input-field pr-12"
+              aria-describedby={apiKeyConsentError ? 'api-key-consent-error' : undefined}
+              className="input-field pr-24"
             />
             <button
               type="button"
               onClick={() => setShowKey(!showKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="absolute right-11 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              aria-label={showKey ? (lang === 'zh' ? '隐藏 API Key' : 'Hide API key') : (lang === 'zh' ? '显示 API Key' : 'Show API key')}
             >
-              {showKey ? '🙈' : '👁️'}
+              {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          <p className="text-sm text-[var(--text-secondary)] mb-2">{t(lang, 'settings.apiKeyHelp')}</p>
+          <p className="text-xs text-[var(--text-secondary)] mb-2">{t(lang, 'settings.apiKeyHelp')}</p>
+          <label className="mt-3 flex items-start gap-3 text-sm text-[var(--text-secondary)] cursor-pointer">
+            <input
+              ref={aiConsentRef}
+              type="checkbox"
+              checked={settings.aiDataConsent ?? false}
+              onChange={(event) => handleConsentChange(event.target.checked)}
+              className="mt-1 h-4 w-4"
+            />
+            <span>
+              {lang === 'zh'
+                ? '我理解使用 AI 功能会将相关学习内容直接发送至 DeepSeek，并同意进行该传输。'
+                : 'I understand that AI features send relevant learning content directly to DeepSeek, and I consent to that transfer.'}
+            </span>
+          </label>
+          {apiKeyConsentError && (
+            <p id="api-key-consent-error" role="alert" className="mt-3 text-sm text-red-400">
+              {apiKeyConsentError}
+            </p>
+          )}
           <a
             href="https://platform.deepseek.com/api_keys"
             target="_blank"
@@ -377,68 +508,21 @@ export default function Settings({ onSettingsChange }: Props) {
           </a>
         </div>
 
-        {/* Language */}
-        <div className="card">
-          <label className="block text-sm font-medium mb-3">{t(lang, 'settings.language')}</label>
-          <div className="flex gap-3">
-            {(['zh', 'en'] as Language[]).map((l) => (
-              <button
-                key={l}
-                onClick={() => handleLanguageChange(l)}
-                className={`px-6 py-3 rounded-xl transition-all ${
-                  settings.language === l
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--bg-secondary)] hover:bg-[var(--border)]'
-                }`}
-              >
-                {l === 'zh' ? '中文' : 'English'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Theme */}
-        <div className="card">
-          <label className="block text-sm font-medium mb-3">{t(lang, 'settings.theme')}</label>
-          <div className="flex gap-3">
-            {([
-              { value: 'cyber', label: t(lang, 'settings.themeCyber'), color: '#38bdf8' },
-              { value: 'dark', label: t(lang, 'settings.themeDark'), color: '#64748b' },
-              { value: 'light', label: t(lang, 'settings.themeLight'), color: '#f8fafc' }
-            ] as { value: Theme; label: string; color: string }[]).map((theme) => (
-              <button
-                key={theme.value}
-                onClick={() => updateSetting('theme', theme.value)}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl transition-all ${
-                  settings.theme === theme.value
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--bg-secondary)] hover:bg-[var(--border)]'
-                }`}
-              >
-                <span
-                  className="w-4 h-4 rounded-full border-2"
-                  style={{ backgroundColor: theme.color, borderColor: theme.color }}
-                />
-                {theme.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
+        <div className="grid gap-4 sm:grid-cols-2">
         {/* 数据管理 (P0 新增) */}
-        <div className="card">
+        <div className="card p-4">
           <button
             onClick={() => {
-              setShowDataManagement(!showDataManagement)
-              if (!showDataManagement) {
-                setDataStats(getDataStats())
-              }
+              setDataStats(getDataStats())
+              void loadDbInfo()
+              setShowDataManagement(true)
             }}
             className="w-full flex items-center justify-between"
           >
             <div>
-              <h3 className="font-medium text-left">
-                {lang === 'zh' ? '💾 数据管理' : '💾 Data Management'}
+              <h3 className="flex items-center gap-2 font-medium text-left">
+                <Database size={18} className="text-sky-500" aria-hidden="true" />
+                {lang === 'zh' ? '数据管理' : 'Data Management'}
               </h3>
               <p className="text-sm text-[var(--text-secondary)] text-left">
                 {lang === 'zh'
@@ -446,103 +530,20 @@ export default function Settings({ onSettingsChange }: Props) {
                   : `${dataStats.totalBooks} books, ${dataStats.dataSize}`}
               </p>
             </div>
-            <span className={`transition-transform ${showDataManagement ? 'rotate-180' : ''}`}>▼</span>
+            <ArrowUpRight size={18} className="text-[var(--text-secondary)]" aria-hidden="true" />
           </button>
-
-          {showDataManagement && (
-            <div className="mt-4 pt-4 border-t border-[var(--border)] space-y-3">
-              {/* P0 新增：存储类型显示 */}
-              <div className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">
-                    {dbInfo.usingIndexedDB ? '🗄️' : '💾'}
-                  </span>
-                  <div>
-                    <div className="text-sm font-medium">
-                      {lang === 'zh' ? '存储方式' : 'Storage'}
-                    </div>
-                    <div className="text-xs text-[var(--text-secondary)]">
-                      {dbInfo.usingIndexedDB
-                        ? (lang === 'zh' ? 'IndexedDB (大容量)' : 'IndexedDB (Large Capacity)')
-                        : (lang === 'zh' ? 'LocalStorage (兼容模式)' : 'LocalStorage (Legacy Mode)')
-                      }
-                    </div>
-                  </div>
-                </div>
-                {!dbInfo.usingIndexedDB && dbInfo.needsMigration && (
-                  <button
-                    onClick={handleMigration}
-                    disabled={migrating}
-                    className="px-3 py-1 text-xs bg-[var(--accent)] text-white rounded-lg hover:opacity-80 disabled:opacity-50"
-                  >
-                    {migrating
-                      ? (lang === 'zh' ? '迁移中...' : 'Migrating...')
-                      : (lang === 'zh' ? '升级到 IndexedDB' : 'Upgrade to IndexedDB')
-                    }
-                  </button>
-                )}
-              </div>
-
-              {/* 数据统计 */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
-                  <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.totalBooks}</div>
-                  <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '书籍' : 'Books'}</div>
-                </div>
-                <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
-                  <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.totalNotes}</div>
-                  <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '笔记' : 'Notes'}</div>
-                </div>
-                <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
-                  <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.totalPractices}</div>
-                  <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '实践' : 'Practices'}</div>
-                </div>
-                <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
-                  <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.dataSize}</div>
-                  <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '大小' : 'Size'}</div>
-                </div>
-              </div>
-
-              {/* 操作按钮 */}
-              <div className="flex gap-2">
-                <button
-                  onClick={handleExport}
-                  className="btn-secondary flex-1"
-                >
-                  📥 {lang === 'zh' ? '导出数据' : 'Export'}
-                </button>
-                <button
-                  onClick={() => setShowImportModal(true)}
-                  className="btn-secondary flex-1"
-                >
-                  📤 {lang === 'zh' ? '导入数据' : 'Import'}
-                </button>
-                <button
-                  onClick={handleClearData}
-                  className="px-4 py-2 text-red-400 border border-red-400/30 rounded-xl hover:bg-red-400/10"
-                >
-                  🗑️
-                </button>
-              </div>
-
-              <p className="text-xs text-[var(--text-secondary)] text-center">
-                {lang === 'zh'
-                  ? '导出数据可备份到本地，导入可恢复数据。清除数据将删除所有内容。'
-                  : 'Export to backup locally, import to restore. Clear data will delete everything.'}
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Quote Manager */}
-        <div className="card">
+        <div className="card p-4">
           <button
-            onClick={() => setShowQuoteManager(!showQuoteManager)}
+            onClick={() => setShowQuoteManager(true)}
             className="w-full flex items-center justify-between"
           >
             <div>
-              <h3 className="font-medium text-left">
-                {lang === 'zh' ? '💬 金句管理' : '💬 Quote Manager'}
+              <h3 className="flex items-center gap-2 font-medium text-left">
+                <Quote size={18} className="text-amber-500" aria-hidden="true" />
+                {lang === 'zh' ? '金句管理' : 'Quote Manager'}
               </h3>
               <p className="text-sm text-[var(--text-secondary)] text-left">
                 {lang === 'zh'
@@ -550,152 +551,272 @@ export default function Settings({ onSettingsChange }: Props) {
                   : `Total ${settings.quotes.length} (${presetCount} preset, ${customCount} custom)`}
               </p>
             </div>
-            <span className={`transition-transform ${showQuoteManager ? 'rotate-180' : ''}`}>▼</span>
+            <ArrowUpRight size={18} className="text-[var(--text-secondary)]" aria-hidden="true" />
           </button>
 
-          {showQuoteManager && (
-            <div className="mt-4 pt-4 border-t border-[var(--border)]">
-              {/* Add New Quote */}
-              <div className="mb-4 p-4 bg-[var(--bg-secondary)] rounded-xl">
-                <h4 className="text-sm font-medium mb-2">
-                  {lang === 'zh' ? '➕ 添加新金句' : '➕ Add New Quote'}
-                </h4>
-                <textarea
-                  value={newQuoteText}
-                  onChange={(e) => setNewQuoteText(e.target.value)}
-                  placeholder={lang === 'zh' ? '输入金句内容...' : 'Enter quote text...'}
-                  className="input-field min-h-[60px] resize-y mb-2"
-                />
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newQuoteAuthor}
-                    onChange={(e) => setNewQuoteAuthor(e.target.value)}
-                    placeholder={lang === 'zh' ? '作者（选填）' : 'Author (optional)'}
-                    className="input-field flex-1"
-                  />
-                  <button
-                    onClick={addQuote}
-                    disabled={!newQuoteText.trim()}
-                    className="btn-primary"
-                  >
-                    {lang === 'zh' ? '添加' : 'Add'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Quotes List */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-medium">
-                    {lang === 'zh' ? '📝 金句列表' : '📝 Quote List'}
-                  </h4>
-                  <button
-                    onClick={resetToDefault}
-                    className="text-xs text-[var(--accent)] hover:underline"
-                  >
-                    {lang === 'zh' ? '恢复默认' : 'Reset to Default'}
-                  </button>
-                </div>
-
-                {settings.quotes.length === 0 ? (
-                  <p className="text-sm text-[var(--text-secondary)] text-center py-4">
-                    {lang === 'zh' ? '暂无金句，请添加或恢复默认' : 'No quotes, please add or reset'}
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                    {settings.quotes.map((quote, idx) => (
-                      <div key={idx} className="bg-[var(--bg-secondary)] rounded-xl p-3">
-                        {editingIndex === idx ? (
-                          // 编辑模式
-                          <div className="space-y-2">
-                            <textarea
-                              value={editText}
-                              onChange={(e) => setEditText(e.target.value)}
-                              className="input-field min-h-[60px] resize-y"
-                              autoFocus
-                            />
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                value={editAuthor}
-                                onChange={(e) => setEditAuthor(e.target.value)}
-                                placeholder={lang === 'zh' ? '作者' : 'Author'}
-                                className="input-field flex-1"
-                              />
-                              <button onClick={saveEdit} className="btn-primary text-sm py-2">
-                                {lang === 'zh' ? '保存' : 'Save'}
-                              </button>
-                              <button onClick={cancelEdit} className="btn-secondary text-sm py-2">
-                                {lang === 'zh' ? '取消' : 'Cancel'}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          // 显示模式
-                          <div className="flex items-start gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                {quote.isPreset && (
-                                  <span className="text-xs bg-[var(--accent)]/20 text-[var(--accent)] px-2 py-0.5 rounded">
-                                    {lang === 'zh' ? '预设' : 'Preset'}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm">"{quote.text}"</p>
-                              <p className="text-xs text-[var(--text-secondary)] mt-1">— {quote.author}</p>
-                            </div>
-                            <div className="flex gap-1 shrink-0">
-                              <button
-                                onClick={() => startEdit(idx)}
-                                className="text-[var(--accent)] hover:bg-[var(--accent)]/10 p-1.5 rounded"
-                                title={lang === 'zh' ? '编辑' : 'Edit'}
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() => removeQuote(idx)}
-                                className="text-red-400 hover:bg-red-400/10 p-1.5 rounded"
-                                title={lang === 'zh' ? '删除' : 'Delete'}
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+        </div>
         </div>
 
         {/* Save Button */}
-        <button onClick={handleSave} className="btn-primary w-full">
-          {saved ? '✓ ' + t(lang, 'settings.saved') : t(lang, 'settings.save')}
+        <button onClick={handleSave} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
+          {saved && <Check size={18} aria-hidden="true" />}
+          {saved ? t(lang, 'settings.saved') : t(lang, 'settings.save')}
         </button>
 
         {/* P0 新增：隐私政策链接 */}
-        <div className="text-center mt-6 text-sm text-[var(--text-secondary)]">
+        <div className="text-center text-sm text-[var(--text-secondary)]">
           <a
             href="/privacy"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[var(--accent)] hover:underline"
+            className="inline-flex items-center gap-1.5 text-[var(--accent)] hover:underline"
           >
-            {lang === 'zh' ? '📋 隐私政策' : '📋 Privacy Policy'}
+            <FileText size={16} aria-hidden="true" />
+            {lang === 'zh' ? '隐私政策' : 'Privacy Policy'}
           </a>
         </div>
       </div>
+
+      {showQuoteManager && (
+        <div className="modal-overlay" onClick={() => setShowQuoteManager(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={lang === 'zh' ? '金句管理' : 'Quote Manager'}
+            className="modal-content max-w-2xl max-h-[85vh] flex flex-col overflow-hidden p-5"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 mb-3 shrink-0">
+              <div>
+                <h2 className="text-xl font-bold">{lang === 'zh' ? '金句管理' : 'Quote Manager'}</h2>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {lang === 'zh'
+                    ? `共 ${settings.quotes.length} 条（预设 ${presetCount}，自定义 ${customCount}）`
+                    : `Total ${settings.quotes.length} (${presetCount} preset, ${customCount} custom)`}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowQuoteManager(false)}
+                className="btn-secondary px-3 py-2"
+                aria-label={lang === 'zh' ? '关闭金句管理' : 'Close quote manager'}
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-[var(--bg-secondary)] rounded-xl shrink-0">
+              <h3 className="text-sm font-medium mb-2">
+                {lang === 'zh' ? '添加新金句' : 'Add New Quote'}
+              </h3>
+              <textarea
+                value={newQuoteText}
+                onChange={(e) => setNewQuoteText(e.target.value)}
+                placeholder={lang === 'zh' ? '输入金句内容...' : 'Enter quote text...'}
+                className="input-field min-h-[60px] resize-y mb-2"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newQuoteAuthor}
+                  onChange={(e) => setNewQuoteAuthor(e.target.value)}
+                  placeholder={lang === 'zh' ? '作者（选填）' : 'Author (optional)'}
+                  className="input-field flex-1"
+                />
+                <button onClick={addQuote} disabled={!newQuoteText.trim()} className="btn-primary">
+                  {lang === 'zh' ? '添加' : 'Add'}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 min-h-0 flex flex-1 flex-col">
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <h3 className="text-sm font-medium">
+                  {lang === 'zh' ? '金句列表' : 'Quote List'}
+                </h3>
+                <button onClick={resetToDefault} className="text-xs text-[var(--accent)] hover:underline">
+                  {lang === 'zh' ? '恢复默认' : 'Reset to Default'}
+                </button>
+              </div>
+
+              {settings.quotes.length === 0 ? (
+                <p className="text-sm text-[var(--text-secondary)] text-center py-4">
+                  {lang === 'zh' ? '暂无金句，请添加或恢复默认' : 'No quotes, please add or reset'}
+                </p>
+              ) : (
+                <div className="space-y-2 min-h-0 flex-1 overflow-y-auto pr-1">
+                  {settings.quotes.map((quote, idx) => (
+                    <div key={idx} className="bg-[var(--bg-secondary)] rounded-xl p-3">
+                      {editingIndex === idx ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            className="input-field min-h-[60px] resize-y"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={editAuthor}
+                              onChange={(e) => setEditAuthor(e.target.value)}
+                              placeholder={lang === 'zh' ? '作者' : 'Author'}
+                              className="input-field flex-1"
+                            />
+                            <button onClick={saveEdit} className="btn-primary text-sm py-2">
+                              {lang === 'zh' ? '保存' : 'Save'}
+                            </button>
+                            <button onClick={cancelEdit} className="btn-secondary text-sm py-2">
+                              {lang === 'zh' ? '取消' : 'Cancel'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            {quote.isPreset && (
+                              <span className="text-xs bg-[var(--accent)]/20 text-[var(--accent)] px-2 py-0.5 rounded">
+                                {lang === 'zh' ? '预设' : 'Preset'}
+                              </span>
+                            )}
+                            <p className="text-sm mt-1">"{quote.text}"</p>
+                            <p className="text-xs text-[var(--text-secondary)] mt-1">- {quote.author}</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <button
+                              onClick={() => startEdit(idx)}
+                              className="text-[var(--accent)] hover:bg-[var(--accent)]/10 p-1.5 rounded"
+                              aria-label={lang === 'zh' ? '编辑金句' : 'Edit quote'}
+                              title={lang === 'zh' ? '编辑' : 'Edit'}
+                            >
+                              <Pencil size={16} aria-hidden="true" />
+                            </button>
+                            <button
+                              onClick={() => removeQuote(idx)}
+                              className="text-red-400 hover:bg-red-400/10 p-1.5 rounded"
+                              aria-label={lang === 'zh' ? '删除金句' : 'Delete quote'}
+                              title={lang === 'zh' ? '删除' : 'Delete'}
+                            >
+                              <Trash2 size={16} aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDataManagement && (
+        <div className="modal-overlay" onClick={() => setShowDataManagement(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={lang === 'zh' ? '数据管理' : 'Data Management'}
+            className="modal-content max-w-md max-h-[85vh] overflow-y-auto p-5"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-xl font-bold">{lang === 'zh' ? '数据管理' : 'Data Management'}</h2>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {lang === 'zh'
+                    ? `共 ${dataStats.totalBooks} 本书，数据大小 ${dataStats.dataSize}`
+                    : `${dataStats.totalBooks} books, ${dataStats.dataSize}`}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDataManagement(false)}
+                className="btn-secondary px-3 py-2"
+                aria-label={lang === 'zh' ? '关闭数据管理' : 'Close data management'}
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-lg mb-3">
+              <div className="flex items-center gap-2">
+                <HardDrive size={20} className="text-violet-500" aria-hidden="true" />
+                <div>
+                  <div className="text-sm font-medium">{lang === 'zh' ? '存储方式' : 'Storage'}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">
+                    {dbInfo.usingIndexedDB
+                      ? (lang === 'zh' ? 'IndexedDB (大容量)' : 'IndexedDB (Large Capacity)')
+                      : (lang === 'zh' ? 'LocalStorage (兼容模式)' : 'LocalStorage (Legacy Mode)')}
+                  </div>
+                </div>
+              </div>
+              {!dbInfo.usingIndexedDB && dbInfo.needsMigration && (
+                <button
+                  onClick={handleMigration}
+                  disabled={migrating}
+                  className="px-3 py-1 text-xs bg-[var(--accent)] text-white rounded-lg hover:opacity-80 disabled:opacity-50"
+                >
+                  {migrating
+                    ? (lang === 'zh' ? '迁移中...' : 'Migrating...')
+                    : (lang === 'zh' ? '升级到 IndexedDB' : 'Upgrade to IndexedDB')}
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
+                <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.totalBooks}</div>
+                <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '书籍' : 'Books'}</div>
+              </div>
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
+                <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.totalNotes}</div>
+                <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '笔记' : 'Notes'}</div>
+              </div>
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
+                <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.totalPractices}</div>
+                <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '实践' : 'Practices'}</div>
+              </div>
+              <div className="bg-[var(--bg-secondary)] p-3 rounded-lg text-center">
+                <div className="text-2xl font-bold text-[var(--accent)]">{dataStats.dataSize}</div>
+                <div className="text-[var(--text-secondary)] text-xs">{lang === 'zh' ? '大小' : 'Size'}</div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={handleExport} className="btn-secondary flex flex-1 items-center justify-center gap-1.5">
+                <Download size={16} className="text-emerald-500" aria-hidden="true" />
+                {lang === 'zh' ? '导出数据' : 'Export'}
+              </button>
+              <button onClick={() => setShowImportModal(true)} className="btn-secondary flex flex-1 items-center justify-center gap-1.5">
+                <Upload size={16} className="text-sky-500" aria-hidden="true" />
+                {lang === 'zh' ? '导入数据' : 'Import'}
+              </button>
+              <button
+                onClick={handleClearData}
+                className="flex items-center justify-center px-4 py-2 text-red-400 border border-red-400/30 rounded-xl hover:bg-red-400/10"
+                aria-label={lang === 'zh' ? '清除所有数据' : 'Clear all data'}
+              >
+                <Trash2 size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-[var(--text-secondary)] text-center">
+              {lang === 'zh'
+                ? '导出数据可备份到本地，导入可恢复数据。清除数据将删除所有内容。'
+                : 'Export to backup locally, import to restore. Clear data will delete everything.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 数据导入模态框 */}
       {showImportModal && (
         <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
           <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
             <h2 className="text-xl font-bold mb-4">
-              {lang === 'zh' ? '📤 导入数据' : '📤 Import Data'}
+              <span className="flex items-center gap-2">
+                <Upload size={20} className="text-sky-500" aria-hidden="true" />
+                {lang === 'zh' ? '导入数据' : 'Import Data'}
+              </span>
             </h2>
 
             {/* 文件选择 */}
@@ -791,6 +912,54 @@ export default function Settings({ onSettingsChange }: Props) {
                 disabled={!importPreview || importing}
               >
                 {importing ? (lang === 'zh' ? '导入中...' : 'Importing...') : (lang === 'zh' ? '导入' : 'Import')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConsentPolicy && (
+        <div className="modal-overlay z-[60]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="consent-policy-title"
+            className="modal-content !max-w-3xl h-[85vh] flex flex-col overflow-hidden !p-0"
+          >
+            <div className="shrink-0 px-6 py-5 border-b border-[var(--border)]">
+              <h2 id="consent-policy-title" className="flex items-center gap-2 text-xl font-bold">
+                <FileText size={20} className="text-[var(--accent)]" aria-hidden="true" />
+                {consentPolicy.title}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">{consentPolicy.lastUpdated}</p>
+            </div>
+
+            <div
+              ref={consentPolicyScrollRef}
+              onScroll={handleConsentPolicyScroll}
+              className="min-h-0 flex-1 overflow-y-auto px-6 py-5"
+            >
+              <div className="space-y-5">
+                {consentPolicy.sections.map((section) => (
+                  <section key={section.title} className="border-b border-[var(--border)] pb-5 last:border-b-0">
+                    <h3 className="mb-3 text-base font-semibold text-[var(--text-primary)]">{section.title}</h3>
+                    <MarkdownRenderer content={section.content} />
+                  </section>
+                ))}
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-[var(--border)] px-6 py-4">
+              <button
+                type="button"
+                onClick={acceptConsentPolicy}
+                disabled={!hasReadConsentPolicy}
+                className="btn-primary w-full flex items-center justify-center gap-2"
+              >
+                <Check size={18} aria-hidden="true" />
+                {hasReadConsentPolicy
+                  ? (lang === 'zh' ? '已阅读并同意' : 'I have read and agree')
+                  : (lang === 'zh' ? '请阅读至政策末尾' : 'Read to the end to continue')}
               </button>
             </div>
           </div>
