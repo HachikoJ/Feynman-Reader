@@ -39,7 +39,7 @@ export default function RootLayout({
     <html lang="zh" suppressHydrationWarning>
       <head>
         {/* P1 新增：PWA 支持 */}
-        <link rel="icon" href="/favicon.ico" />
+        <link rel="icon" href="/icon-192.png" type="image/png" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />

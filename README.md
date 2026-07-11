@@ -1,5 +1,9 @@
 # 费曼读书助手 - Feynman Reader
 
+<p align="center">
+  <img src="assets/brand/feynman-reader-logo.png" alt="费曼读书助手 Logo" width="144">
+</p>
+
 ![Next.js](https://img.shields.io/badge/Next.js-14-111111)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
 ![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
@@ -54,35 +58,43 @@
 ### 书架与学习状态
 
 <p>
-  <img src="assets/product-gallery/01-bookshelf.png" alt="费曼读书助手书架页面，展示书籍、阅读状态、搜索和学习统计" width="100%">
+  <img src="docs/product/submission/screenshots/01-bookshelf-safari.png" alt="费曼读书助手书架页面，展示已读和在读书籍、学习进度和综合得分" width="100%">
 </p>
 
-书架展示在读/已读状态、搜索、统计和添加入口。示例书使用《乌合之众》，截图来自当前版本的真实浏览器会话。
+书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《乌合之众》，完整呈现深度阅读流程。
 
-### 阅读状态分析
+### 六阶段阅读
 
 <p>
-  <img src="assets/product-gallery/02-bookshelf-analysis.png" alt="费曼读书助手书架详细分析页面，展示阅读状态分布和得分分布" width="100%">
+  <img src="docs/product/submission/screenshots/04-six-phase-learning-safari.png" alt="费曼读书助手六阶段学习页面" width="100%">
 </p>
 
-详细分析将书架中的阅读状态和得分分布放在一起，方便用户回看自己的学习情况。
+每个阶段的内容可以折叠查看，用户不需要一开始被长文淹没，需要时再展开原理、背景和思考角度。
 
-### 书架列表与检索
+### 教学模拟与角色问答
 
 <p>
-  <img src="assets/product-gallery/03-bookshelf-list.png" alt="费曼读书助手书架列表视图，展示检索、筛选和书籍信息" width="100%">
+  <img src="docs/product/submission/screenshots/05-feynman-practice-safari.png" alt="费曼读书助手教学模拟与角色问答页面" width="100%">
 </p>
 
-网格和列表视图可以切换，书名、作者和标签都能直接检索。
+<p>
+  <img src="docs/product/submission/screenshots/06-teaching-score-history-safari.png" alt="费曼读书助手教学模拟评分记录，展示分维度评分和 AI 点评" width="100%">
+</p>
+
+<p>
+  <img src="docs/product/submission/screenshots/07-role-qa-record-safari.png" alt="费曼读书助手角色问答记录，展示三题回答、评分和 AI 点评" width="100%">
+</p>
+
+AI 的作用不是给出“你很棒”的空泛鼓励，而是保留原回答、具体得分和改进方向，让用户知道自己下一次应该怎么讲。
 
 ### 设置与隐私
 
 <p>
-  <img src="assets/product-gallery/04-settings.png" alt="费曼读书助手设置页面，展示本地 API Key、数据管理和 AI 数据同意" width="100%">
+  <img src="docs/product/submission/screenshots/08-settings-local-first-safari.png" alt="费曼读书助手设置页面，展示本地 API Key、数据管理和 AI 数据同意" width="100%">
 </p>
 
 <p>
-  <img src="assets/product-gallery/05-privacy-policy.png" alt="费曼读书助手隐私政策页面，展示本地数据和 DeepSeek 传输说明" width="100%">
+  <img src="docs/product/submission/screenshots/09-privacy-policy-safari.png" alt="费曼读书助手隐私政策页面，展示本地数据和 DeepSeek 传输说明" width="100%">
 </p>
 
 API Key 和学习记录默认留在浏览器本地。用户在调用 AI 前需要完成数据传输同意，并可在设置中管理或导出数据。

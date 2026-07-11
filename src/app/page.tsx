@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { logger } from '@/lib/logger'
 import { AppSettings, Book, getBooks, getSettings, initializeStore, saveSettings } from '@/lib/store'
 import { Language, t } from '@/lib/i18n'
@@ -106,7 +107,13 @@ export default function Home() {
           <div className="max-w-6xl mx-auto px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-2xl">📖</span>
+                <Image
+                  src="/icon-192.png"
+                  alt=""
+                  width={32}
+                  height={32}
+                  priority
+                />
                 <span className="text-xl font-bold text-gradient">{t(lang, 'app.title')}</span>
               </div>
               
