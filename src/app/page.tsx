@@ -110,8 +110,8 @@ export default function Home() {
                 <Image
                   src="/icon-192.png"
                   alt=""
-                  width={32}
-                  height={32}
+                  width={48}
+                  height={48}
                   priority
                 />
                 <span className="text-xl font-bold text-gradient">{t(lang, 'app.title')}</span>
