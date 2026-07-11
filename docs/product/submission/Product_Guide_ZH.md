@@ -11,28 +11,25 @@ npm run dev
 
 ## 建议体验路径
 
-1. 进入书架，展示已读/在读状态、搜索、统计、详细分析和标签筛选。
-2. 打开《乌合之众》，展示 6/6 阶段学习、阶段内容折叠和综合得分。
-3. 切换至“费曼实践”，展示教学模拟输入区、分维度评分记录和角色问答生成入口。
-4. 展开角色问答记录，展示 3 道题均通过、用户原回答和 AI 点评。
-5. 进入设置，展示本地 API Key 掩码、AI 数据同意、数据管理、金句管理与隐私政策。
+1. 进入书架，查看书籍、搜索、统计和添加入口。
+2. 展开详细分析，查看阅读状态和得分分布。
+3. 切换列表视图，按书名、作者或标签检索。
+4. 进入设置，查看本地 Key、AI 数据同意和数据管理。
+5. 打开隐私政策，确认本地存储和 DeepSeek 直接传输的边界。
 
-## Safari 真实页面截图
+## 当前产品图集
 
-以下截图均从 Safari 中正在运行的 Feynman Reader 页面采集。截图中的示例书为《乌合之众》，API Key 已掩码；其中的成绩和问答内容仅用于展示功能流程。
+以下截图均从 `http://localhost:8080` 的当前版本采集，浏览器标题和页面导航均为“费曼读书助手”。示例书为《乌合之众》，截图尺寸统一为 `1367 x 768`。
 
 | 文件 | 展示重点 |
 | --- | --- |
-| `screenshots/04-bookshelf-safari.jpeg` | 有实际书籍数据的书架、阅读状态、综合得分和添加/上传入口。 |
-| `screenshots/05-bookshelf-analytics-safari.jpeg` | 书架详细分析：阅读状态分布与得分分布。 |
-| `screenshots/06-bookshelf-tags-safari.jpeg` | 分类与标签筛选。 |
-| `screenshots/07-six-phase-learning-safari.jpeg` | 《乌合之众》6/6 阶段学习、阶段内容与已读状态。 |
-| `screenshots/08-feynman-practice-safari.jpeg` | 教学模拟、角色问答、三种角色组合与生成问题入口。 |
-| `screenshots/09-teaching-score-history-safari.jpeg` | 教学模拟评分记录：83 分及准确度/完整度/清晰度。 |
-| `screenshots/10-role-qa-record-safari.jpeg` | 3/3 角色问答记录、逐题回答和 AI 点评。 |
-| `screenshots/11-settings-local-first-safari.jpeg` | 本地 API Key、隐私同意、数据管理和金句管理。 |
+| `../../../assets/product-gallery/01-bookshelf.png` | 书架、搜索、阅读统计和添加入口。 |
+| `../../../assets/product-gallery/02-bookshelf-analysis.png` | 书架详细分析：阅读状态与得分分布。 |
+| `../../../assets/product-gallery/03-bookshelf-list.png` | 列表视图和书籍信息。 |
+| `../../../assets/product-gallery/04-settings.png` | 本地 API Key、AI 数据同意、数据管理和金句管理。 |
+| `../../../assets/product-gallery/05-privacy-policy.png` | 隐私政策中的本地存储和数据传输说明。 |
 
-早期的三张基础截图保留在 `screenshots/01-03`，作为空书架、未配置 Key 设置页和独立隐私政策页补充材料。
+角色问答和教学模拟的截图需要真实 API Key 与实际 AI 结果。当前图集不使用旧产品名的历史结果图，也不伪造 AI 生成内容。
 
 ## 产品边界说明
 
