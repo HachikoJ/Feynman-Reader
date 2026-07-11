@@ -18,7 +18,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
     sections: [
       {
         title: '1. 信息收集',
-        content: `本应用（"费曼阅读法"）尊重您的隐私。我们收集的信息包括：
+        content: `本应用（"费曼读书助手"）尊重您的隐私。我们收集的信息包括：
 
 • **书籍数据**：您添加的书籍、笔记、实践记录等学习数据
 • **应用设置**：语言偏好、主题选择等个性化设置
@@ -118,7 +118,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
     sections: [
       {
         title: '1. Information Collection',
-        content: `This app ("Feynman Reading") respects your privacy. We collect:
+        content: `This app ("Feynman Reader") respects your privacy. We collect:
 
 • **Book Data**: Books, notes, practice records, and other learning data
 • **App Settings**: Language preference, theme selection, and other personalized settings

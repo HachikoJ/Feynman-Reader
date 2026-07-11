@@ -5,13 +5,13 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: '费曼阅读法 | Feynman Reading',
+  title: '费曼读书助手 | Feynman Reader',
   description: '用费曼学习法深度理解一本书',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '费曼阅读法'
+    title: '费曼读书助手'
   },
   formatDetection: {
     telephone: false,
@@ -43,9 +43,9 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="费曼阅读法" />
+        <meta name="apple-mobile-web-app-title" content="费曼读书助手" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="application-name" content="费曼阅读法" />
+        <meta name="application-name" content="费曼读书助手" />
         <meta name="msapplication-TileColor" content="#38bdf8" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
       </head>

@@ -1,4 +1,4 @@
-# AI 费曼读书助手 - Feynman Reader
+# 费曼读书助手 - Feynman Reader
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-111111)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
@@ -9,7 +9,7 @@
 
 **读完不算懂，能讲清楚才算。**
 
-AI 费曼读书助手不是再帮你总结一本书，而是让你把书里的内容讲给 AI 听。AI 会先看你的解释，再从 3 个不同角色的角度追问你，直到你真的知道自己哪里没懂、该怎么改。
+费曼读书助手不是再帮你总结一本书，而是让你把书里的内容讲给 AI 听。AI 会先看你的解释，再从 3 个不同角色的角度追问你，直到你真的知道自己哪里没懂、该怎么改。
 
 **产品访问：** [https://www.deline.top](https://www.deline.top)
 
@@ -82,7 +82,7 @@ AI 的作用不是给出“你很棒”的空泛鼓励，而是保留原回答�
 ### 核心交互流程
 
 <p>
-  <img src="docs/product/core-learning-flow.png" alt="AI 费曼读书助手核心交互流程" width="100%">
+  <img src="docs/product/core-learning-flow.png" alt="费曼读书助手核心交互流程" width="100%">
 </p>
 
 ```text

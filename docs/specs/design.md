@@ -1,7 +1,7 @@
-# 费曼阅读法应用 - 设计文档
+# 费曼读书助手 - 设计文档
 
 ## 文档信息
-- **功能名称**: feynman-reading-app
+- **功能名称**: feynman-reader
 - **版本**: v1.0
 - **创建日期**: 2026-01-21
 - **设计语言**: TypeScript + Next.js 14
@@ -10,7 +10,7 @@
 
 ## 1. 概述
 
-费曼阅读法应用是一个基于费曼学习法的智能阅读辅助工具，通过系统化的六阶段学习流程和严格的实践评估，帮助用户深度理解书籍内容。
+费曼读书助手是一个基于费曼学习法的智能阅读辅助工具，通过系统化的六阶段学习流程和严格的实践评估，帮助用户深度理解书籍内容。
 
 ### 1.1 核心功能
 - 书架管理系统：书籍的增删改查、标签分类、批量操作
@@ -1018,13 +1018,13 @@ const ERROR_MESSAGES = {
 **配置要求**:
 - 每个属性测试最少运行100次迭代（由于随机化）
 - 每个测试必须引用其设计文档属性
-- 标签格式: **Feature: feynman-reading-app, Property {number}: {property_text}**
+- 标签格式: **Feature: feynman-reader, Property {number}: {property_text}**
 
 **示例配置**:
 ```typescript
 import fc from 'fast-check'
 
-describe('Feature: feynman-reading-app, Property 1: 书籍创建必须包含书名', () => {
+describe('Feature: feynman-reader, Property 1: 书籍创建必须包含书名', () => {
   it('should reject book creation without name', () => {
     fc.assert(
       fc.property(
@@ -1415,7 +1415,7 @@ window.addEventListener('unhandledrejection', (event) => {
 
 ## 15. 总结
 
-费曼阅读法应用的设计遵循以下核心原则：
+费曼读书助手的设计遵循以下核心原则：
 
 1. **模块化**: 清晰的模块划分，便于维护和扩展
 2. **类型安全**: 使用TypeScript确保类型安全

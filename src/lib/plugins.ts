@@ -382,7 +382,7 @@ const studyTimePlugin: Plugin = {
     id: 'study-time-tracker',
     name: '学习时长统计',
     version: { major: 1, minor: 0, patch: 0 },
-    author: 'Feynman Reading',
+    author: 'Feynman Reader',
     description: '自动统计每日学习时长',
     icon: '⏱️'
   },
@@ -409,7 +409,7 @@ const dailyQuotePlugin: Plugin = {
     id: 'daily-quote',
     name: '每日学习名言',
     version: { major: 1, minor: 0, patch: 0 },
-    author: 'Feynman Reading',
+    author: 'Feynman Reader',
     description: '每次打开应用显示学习名言',
     icon: '💬'
   },

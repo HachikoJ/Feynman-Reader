@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 /**
- * 费曼阅读法 - E2E 测试
+ * 费曼读书助手 - E2E 测试
  * 覆盖关键用户流程
  */
 
@@ -10,7 +10,7 @@ test.describe('应用启动和导航', () => {
     await page.goto('/')
 
     // 检查页面标题
-    await expect(page).toHaveTitle(/费曼阅读法/)
+    await expect(page).toHaveTitle(/费曼读书助手/)
 
     // 检查导航栏
     await expect(page.locator('nav')).toBeVisible()

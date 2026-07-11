@@ -44,7 +44,7 @@ export interface ExportOptions {
  * 生成 Notion 兼容的 Markdown
  */
 export function exportToNotion(books: Book[], options: ExportOptions = { format: 'notion' }): string {
-  let markdown = '# 费曼阅读法 - 学习笔记\n\n'
+  let markdown = '# 费曼读书助手 - 学习笔记\n\n'
   markdown += `导出时间: ${new Date().toLocaleString()}\n\n`
   markdown += '---\n\n'
 
@@ -123,7 +123,7 @@ export function exportToObsidian(books: Book[]): Map<string, string> {
   const files = new Map<string, string>()
 
   // 创建索引文件
-  let indexContent = '# 费曼阅读法 - 书籍索引\n\n'
+  let indexContent = '# 费曼读书助手 - 书籍索引\n\n'
   indexContent += `## 📚 书籍列表 (${books.length})\n\n`
 
   books.forEach((book) => {
@@ -211,7 +211,7 @@ interface AnkiCard {
  */
 export function exportToAnki(books: Book[]): string {
   const cards: AnkiCard[] = []
-  const tagsBase = '费曼阅读法'
+  const tagsBase = '费曼读书助手'
 
   books.forEach(book => {
     // 为每本书添加基本信息卡片
@@ -285,7 +285,7 @@ export function exportToBibtex(books: Book[]): string {
       bibtex += `  author = {${book.author}},\n`
     }
     bibtex += `  year = {${new Date(book.createdAt).getFullYear()}},\n`
-    bibtex += `  note = {费曼阅读法学习笔记, 得分: ${book.bestScore}/100},\n`
+    bibtex += `  note = {费曼读书助手学习笔记, 得分: ${book.bestScore}/100},\n`
     bibtex += `}\n\n`
   })
 
@@ -324,9 +324,9 @@ export function exportToOPML(books: Book[]): string {
   let opml = `<?xml version="1.0" encoding="UTF-8"?>\n`
   opml += `<opml version="2.0">\n`
   opml += `  <head>\n`
-  opml += `    <title>费曼阅读法 - 书籍大纲</title>\n`
+  opml += `    <title>费曼读书助手 - 书籍大纲</title>\n`
   opml += `    <dateCreated>${date}</dateCreated>\n`
-  opml += `    <ownerName>费曼阅读法</ownerName>\n`
+  opml += `    <ownerName>费曼读书助手</ownerName>\n`
   opml += `  </head>\n`
   opml += `  <body>\n`
 
@@ -506,7 +506,7 @@ function generateHTMLExport(books: Book[]): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>费曼阅读法 - 学习笔记</title>
+  <title>费曼读书助手 - 学习笔记</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
     h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
@@ -527,7 +527,7 @@ function generateHTMLExport(books: Book[]): string {
   </style>
 </head>
 <body>
-  <h1>📚 费曼阅读法 - 学习笔记</h1>
+  <h1>📚 费曼读书助手 - 学习笔记</h1>
   <p>导出时间: ${new Date().toLocaleString()}</p>
 `
 
@@ -585,7 +585,7 @@ function generateHTMLExport(books: Book[]): string {
 
   html += `
   <footer style="margin-top: 60px; text-align: center; color: #999; font-size: 0.9em;">
-    <p>📖 由费曼阅读法生成</p>
+    <p>📖 由费曼读书助手生成</p>
   </footer>
 </body>
 </html>`

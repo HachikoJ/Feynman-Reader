@@ -12,7 +12,7 @@ interface Props {
 const onboardingSteps = {
   zh: [
     {
-      title: '👋 欢迎使用费曼阅读法',
+      title: '👋 欢迎使用费曼读书助手',
       description: '这是一个基于费曼学习法的智能阅读工具，通过"以教代学"的方式帮助你深度理解每一本书。',
       icon: '📖',
       tips: [
@@ -71,7 +71,7 @@ const onboardingSteps = {
   ],
   en: [
     {
-      title: '👋 Welcome to Feynman Reading',
+      title: '👋 Welcome to Feynman Reader',
       description: 'An intelligent reading tool based on the Feynman Technique, helping you deeply understand every book through teaching.',
       icon: '📖',
       tips: [

@@ -3,7 +3,7 @@ export type Language = 'zh' | 'en'
 export const translations = {
   zh: {
     app: {
-      title: '费曼阅读法',
+      title: '费曼读书助手',
       subtitle: '用费曼学习法深度理解一本书',
       quote: '"如果你不能简单地解释它，你就没有真正理解它。"',
       quoteAuthor: '— 理查德·费曼'
@@ -166,7 +166,7 @@ export const translations = {
   },
   en: {
     app: {
-      title: 'Feynman Reading',
+      title: 'Feynman Reader',
       subtitle: 'Deeply understand a book with the Feynman Technique',
       quote: '"If you can\'t explain it simply, you don\'t understand it well enough."',
       quoteAuthor: '— Richard Feynman'

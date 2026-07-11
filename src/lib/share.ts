@@ -124,8 +124,8 @@ export async function generateNoteShareImage(
     ctx.fillStyle = 'rgba(255,255,255,0.6)'
     ctx.textAlign = 'center'
     const footer = lang === 'zh'
-      ? '📖 来自费曼阅读法'
-      : '📖 From Feynman Reading App'
+      ? '📖 来自费曼读书助手'
+      : '📖 From Feynman Reader'
     ctx.fillText(footer, width / 2, height - 30)
 
     // 转换为 Blob
@@ -190,7 +190,7 @@ ${note.content}
 
 ---
 
-*📖 来自费曼阅读法*
+*📖 来自费曼读书助手*
 `
 }
 
@@ -211,7 +211,7 @@ export function generateNoteHTML(book: Book, noteId: string): string {
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
     <div style="color: #333; line-height: 1.6;">${note.content.replace(/\n/g, '<br>')}</div>
   </div>
-  <p style="text-align: center; color: rgba(255,255,255,0.8); font-size: 12px; margin-top: 15px;">📖 来自费曼阅读法</p>
+  <p style="text-align: center; color: rgba(255,255,255,0.8); font-size: 12px; margin-top: 15px;">📖 来自费曼读书助手</p>
 </div>
   `
 }
@@ -251,7 +251,7 @@ ${practice.aiReview}
 
 ---
 
-*📖 来自费曼阅读法*
+*📖 来自费曼读书助手*
 `
   }
 
@@ -503,7 +503,7 @@ export function exportPracticeAsPDF(book: Book, practiceId: string): void {
   </div>
 
   <footer style="margin-top: 60px; text-align: center; color: #999; font-size: 12px;">
-    <p>📖 来自费曼阅读法</p>
+    <p>📖 来自费曼读书助手</p>
   </footer>
 </body>
 </html>`

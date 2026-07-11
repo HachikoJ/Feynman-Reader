@@ -145,8 +145,8 @@ export default function ShareDialog({ lang, book, onClose, noteId, practiceId }:
 
   const handleSocialShare = async (platform: 'twitter' | 'facebook' | 'weibo') => {
     const shareData = {
-      title: `${book.name} - 费曼阅读法`,
-      description: `我正在使用费曼阅读法深度阅读《${book.name}》`,
+      title: `${book.name} - 费曼读书助手`,
+      description: `我正在使用费曼读书助手深度阅读《${book.name}》`,
       url: window.location.href
     }
     await shareToSocialMedia(platform, shareData)
@@ -154,8 +154,8 @@ export default function ShareDialog({ lang, book, onClose, noteId, practiceId }:
 
   const handleNativeShare = async () => {
     const success = await nativeShare({
-      title: `${book.name} - 费曼阅读法`,
-      text: `我正在使用费曼阅读法深度阅读《${book.name}》`,
+      title: `${book.name} - 费曼读书助手`,
+      text: `我正在使用费曼读书助手深度阅读《${book.name}》`,
       url: window.location.href
     })
     if (success) {

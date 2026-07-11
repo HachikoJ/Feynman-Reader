@@ -172,7 +172,7 @@ export default function Home() {
               {/* 关于 */}
               <div className="text-center md:text-left">
                 <h4 className="font-medium text-[var(--text-primary)] mb-2">
-                  {lang === 'zh' ? '关于费曼阅读法' : 'About Feynman Reading'}
+                  {lang === 'zh' ? '关于费曼读书助手' : 'About Feynman Reader'}
                 </h4>
                 <p className="text-xs leading-relaxed">
                   {lang === 'zh' 
@@ -198,7 +198,7 @@ export default function Home() {
                 <h4 className="font-medium text-[var(--text-primary)] mb-2">
                   {lang === 'zh' ? '版权信息' : 'Copyright'}
                 </h4>
-                <p className="text-xs">© 2025 费曼阅读法</p>
+                <p className="text-xs">© 2025 费曼读书助手</p>
                 <p className="text-xs mt-1">
                   {lang === 'zh' ? '保留所有权利' : 'All Rights Reserved'}
                 </p>

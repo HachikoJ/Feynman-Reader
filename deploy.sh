@@ -1,8 +1,8 @@
 #!/bin/bash
-# 费曼读书法项目部署脚本（完整版）
+# 费曼读书助手项目部署脚本（完整版）
 
 echo "=========================================="
-echo "费曼读书法项目部署"
+echo "费曼读书助手项目部署"
 echo "=========================================="
 
 PROJECT_DIR="/root/.openclaw/workspace/Feynman-Reader"
@@ -30,13 +30,13 @@ pm2 startup
 # 5. 更新 Nginx 配置
 echo "5. 更新 Nginx 配置..."
 cat > /etc/nginx/conf.d/deline.top.conf << 'EOF'
-# 主域名配置 - 费曼读书法项目
+# 主域名配置 - 费曼读书助手项目
 server {
     listen 80;
     listen [::]:80;
     server_name deline.top www.deline.top;
 
-    # 费曼读书法项目（反向代理）
+    # 费曼读书助手项目（反向代理）
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -81,7 +81,7 @@ echo "✅ 部署完成！"
 echo "=========================================="
 echo ""
 echo "🌐 访问地址："
-echo "  主站（费曼读书法）: http://www.deline.top"
+echo "  主站（费曼读书助手）: http://www.deline.top"
 echo "  培训项目: http://www.deline.top/training"
 echo ""
 echo "📊 管理命令："

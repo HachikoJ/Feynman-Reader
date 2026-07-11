@@ -1,6 +1,6 @@
 {
-  "name": "费曼阅读法",
-  "short_name": "费曼阅读",
+  "name": "费曼读书助手",
+  "short_name": "费曼读书助手",
   "description": "基于费曼学习法的智能阅读工具，通过\"以教代学\"的方式帮助你深度理解每一本书。",
   "start_url": "/",
   "display": "standalone",
