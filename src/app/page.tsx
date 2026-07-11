@@ -106,14 +106,17 @@ export default function Home() {
         <nav className="sticky top-0 z-40 backdrop-blur-lg bg-[var(--bg-primary)]/80 border-b border-[var(--border)]">
           <div className="max-w-6xl mx-auto px-4 py-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Image
-                  src="/icon-192.png"
-                  alt=""
-                  width={48}
-                  height={48}
-                  priority
-                />
+              <div className="flex items-center gap-3">
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden">
+                  <Image
+                    src="/icon-192.png"
+                    alt=""
+                    fill
+                    sizes="48px"
+                    className="scale-[1.75] object-contain"
+                    priority
+                  />
+                </div>
                 <span className="text-xl font-bold text-gradient">{t(lang, 'app.title')}</span>
               </div>
               
