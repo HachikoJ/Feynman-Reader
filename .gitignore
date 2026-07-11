@@ -27,6 +27,8 @@ yarn-error.log*
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+.claude/
+.playwright-cli/
 
 # OS
 .DS_Store
@@ -44,3 +46,13 @@ test-results
 # Misc
 *.log
 nul
+
+# Local exports and conversation artifacts
+*.zip
+FeynmanReader_AI_FinalProject*/
+结课作业-费曼学习法/
+project_conversation.json
+初始对话脚本说明.txt
+test-claude-code.cmd
+fix-cygpath.cmd
+install-cygpath-fix.cmd
