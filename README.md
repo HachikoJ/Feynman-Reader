@@ -5,21 +5,21 @@
 ![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
 ![本地优先](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%BC%98%E5%85%88-22c55e)
 
-[为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [Demo 预览](#demo-预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
+[为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
 
 **读完不算懂，能讲清楚才算。**
 
 AI 费曼读书助手不是再帮你总结一本书，而是让你把书里的内容讲给 AI 听。AI 会先看你的解释，再从 3 个不同角色的角度追问你，直到你真的知道自己哪里没懂、该怎么改。
 
 > [!IMPORTANT]
-> **这是一个本地优先的学习 Demo。** 学习记录和 API Key 默认保存在用户自己的浏览器里；调用 AI 前，需要先阅读并同意隐私政策。当前使用用户自己的 DeepSeek API Key，不是平台代付的无限 AI 服务。
+> **这是一个本地优先的学习产品。** 学习记录和 API Key 默认保存在用户自己的浏览器里；调用 AI 前，需要先阅读并同意隐私政策。当前使用用户自己的 DeepSeek API Key，不是平台代付的无限 AI 服务。
 
 ## GitHub 传播素材
 
 - 一句话简介：把一本书讲给 AI 听，直到 3 个角色都问不倒你。
 - 项目短描述：一个基于费曼学习法的 AI 深度阅读工具，包含六阶段学习、教学模拟、严格评分和 3 角色追问。
 - 建议 Topics：`ai-learning`、`feynman-technique`、`deepseek`、`nextjs`、`learning-tool`、`critical-thinking`、`readwise`
-- 演示素材：真实 Safari 截图、核心流程图和完整录屏均随 DemoDay 提交材料整理。
+- 产品素材：真实 Safari 截图、核心流程图和完整录屏均已整理归档。
 
 ## 为什么做这个
 
@@ -47,20 +47,20 @@ AI 费曼读书助手不是再帮你总结一本书，而是让你把书里的�
 
 只有教学模拟达到练习要求，并且 3 个角色问题全部达到 60 分，这本书才会进入“已读”并计算综合得分。这里想解决的是一个很简单的问题：不能因为前面答得不错，就把后面的漏洞平均掉。
 
-## Demo 预览
+## 产品预览
 
 ### 书架与学习状态
 
 <p>
-  <img src="docs/demoday/submission/screenshots/04-bookshelf-safari.jpeg" alt="Feynman Reader 书架页面，展示已读和在读书籍、学习进度和综合得分" width="100%">
+  <img src="docs/product/submission/screenshots/04-bookshelf-safari.jpeg" alt="Feynman Reader 书架页面，展示已读和在读书籍、学习进度和综合得分" width="100%">
 </p>
 
-书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《乌合之众》，用于演示深度阅读的完整流程。
+书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《乌合之众》，完整呈现深度阅读流程。
 
 ### 六阶段阅读
 
 <p>
-  <img src="docs/demoday/submission/screenshots/07-six-phase-learning-safari.jpeg" alt="Feynman Reader 六阶段学习页面" width="100%">
+  <img src="docs/product/submission/screenshots/07-six-phase-learning-safari.jpeg" alt="Feynman Reader 六阶段学习页面" width="100%">
 </p>
 
 每个阶段的内容可以折叠查看，用户不需要一开始被长文淹没，需要时再展开原理、背景和思考角度。
@@ -68,11 +68,11 @@ AI 费曼读书助手不是再帮你总结一本书，而是让你把书里的�
 ### 教学模拟与角色问答
 
 <p>
-  <img src="docs/demoday/submission/screenshots/08-feynman-practice-safari.jpeg" alt="Feynman Reader 教学模拟与角色问答页面" width="100%">
+  <img src="docs/product/submission/screenshots/08-feynman-practice-safari.jpeg" alt="Feynman Reader 教学模拟与角色问答页面" width="100%">
 </p>
 
 <p>
-  <img src="docs/demoday/submission/screenshots/10-role-qa-record-safari.jpeg" alt="Feynman Reader 角色问答记录，展示三题回答、评分和 AI 点评" width="100%">
+  <img src="docs/product/submission/screenshots/10-role-qa-record-safari.jpeg" alt="Feynman Reader 角色问答记录，展示三题回答、评分和 AI 点评" width="100%">
 </p>
 
 AI 的作用不是给出“你很棒”的空泛鼓励，而是保留原回答、具体得分和改进方向，让用户知道自己下一次应该怎么讲。
@@ -80,7 +80,7 @@ AI 的作用不是给出“你很棒”的空泛鼓励，而是保留原回答�
 ### 核心交互流程
 
 <p>
-  <img src="docs/demoday/core-learning-flow.png" alt="AI 费曼读书助手核心交互流程" width="100%">
+  <img src="docs/product/core-learning-flow.png" alt="AI 费曼读书助手核心交互流程" width="100%">
 </p>
 
 ```text
@@ -148,10 +148,10 @@ npm run dev
 
 ## 项目资料
 
-- [产品方案](docs/demoday/submission/Product_Plan_ZH.md)：需求来源、用户、核心流程、产品边界和复盘。
-- [AI 工作流程](docs/demoday/submission/AI_Workflow_ZH.md)：模型与规则如何分工，以及数据边界。
-- [Demo 说明](docs/demoday/submission/Demo_Guide_ZH.md)：建议演示路径、真实 Safari 截图索引和功能边界。
-- [增长方案](docs/demoday/submission/Growth_Plan_ZH.md)：增长策略、定价、Token 成本控制与 PMF 验证。
+- [产品方案](docs/product/submission/Product_Plan_ZH.md)：需求来源、用户、核心流程、产品边界和复盘。
+- [AI 工作流程](docs/product/submission/AI_Workflow_ZH.md)：模型与规则如何分工，以及数据边界。
+- [产品说明](docs/product/submission/Product_Guide_ZH.md)：建议体验路径、真实 Safari 截图索引和功能边界。
+- [增长方案](docs/product/submission/Growth_Plan_ZH.md)：增长策略、定价、Token 成本控制与 PMF 验证。
 
 ## 还没做，但下一步想做
 
@@ -164,7 +164,7 @@ npm run dev
 
 这个项目不是自动读书机，也不应该替用户完成思考。当前版本不支持语音输入、OCR 拍书、可实际触发的遗忘曲线提醒；学习模式配置也还没有接入主流程。
 
-本地试用与激活仅用于 Demo 展示，不能当作生产级安全方案。若产品正式上线，API 调用、授权、配额和风控都需要迁移到服务端。
+当前本地试用与激活仍采用浏览器端控制，不能当作生产级安全方案。后续将把 API 调用、授权、配额和风控迁移到服务端。
 
 ## 更新记录
 
@@ -173,20 +173,36 @@ npm run dev
 - 完善角色问答：统一为 3 个角色，逐题保留未通过回答和改进建议。
 - 修复学习完成判断：3 题没有全部通过时，不计算综合得分或标记为已读。
 - 优化隐私同意、设置布局、密钥显示、数据管理和 Markdown 渲染体验。
-- 补充真实 Safari 截图、交互流程图和产品演示视频。
-
-## 联系作者
-
-喜欢这个项目、想交流 AI 学习产品、反馈问题或获取激活码，可以通过下面方式联系：
-
-- GitHub：[HachikoJ](https://github.com/HachikoJ)
-- 微信：`hostrow`，添加时请备注 `AI 费曼读书助手`
-- 邮箱：`946106011@qq.com`
-- 隐私政策邮箱：`18682408521@163.com`
+- 补充真实 Safari 截图、交互流程图和产品操作录屏。
 
 ## 开源授权
 
 本项目基于 [MIT License](LICENSE) 开源。你可以自由使用、复制、修改、合并、发布、分发、再授权或销售本项目副本，但须保留原始版权声明和许可声明。
+
+## 联系作者
+
+喜欢这个项目、想交流 AI 事故段子、反馈新风格，或者想请作者喝杯咖啡，可以通过下面方式联系：
+
+- GitHub：[HachikoJ](https://github.com/HachikoJ)
+- 微信：`hostrow`，添加时请备注 `AI事故离职申请`
+- 邮箱：`946106011@qq.com`
+
+<table>
+  <tr>
+    <td align="center">
+      <strong>微信联系</strong><br>
+      <img src="assets/wechat-contact.png" alt="微信联系二维码" width="220">
+    </td>
+    <td align="center">
+      <strong>微信赞赏</strong><br>
+      <img src="assets/donate-wechat.png" alt="微信赞赏码" width="220">
+    </td>
+    <td align="center">
+      <strong>支付宝赞赏</strong><br>
+      <img src="assets/donate-alipay.png" alt="支付宝赞赏码" width="220">
+    </td>
+  </tr>
+</table>
 
 ---
 
