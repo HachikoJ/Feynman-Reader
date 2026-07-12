@@ -1,5 +1,7 @@
 'use client'
 
+import { getSafeLinkHref } from '@/lib/safeUrl'
+
 interface Props {
   content: string
   className?: string
@@ -94,12 +96,13 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
         match = remaining.match(/^(.*?)\[([^\]]+)\]\(([^)]+)\)(.*)$/)
         if (match) {
           if (match[1]) result.push(match[1])
-          result.push(
-            <a key={`a-${keyIndex++}`} href={match[3]} target="_blank" rel="noopener noreferrer" 
-               className="text-[var(--accent)] hover:underline">
+          const safeHref = getSafeLinkHref(match[3])
+          result.push(safeHref ? (
+            <a key={`a-${keyIndex++}`} href={safeHref} target="_blank" rel="noopener noreferrer"
+              className="text-[var(--accent)] hover:underline">
               {match[2]}
             </a>
-          )
+          ) : <span key={`a-${keyIndex++}`}>{match[2]}</span>)
           remaining = match[4]
           continue
         }

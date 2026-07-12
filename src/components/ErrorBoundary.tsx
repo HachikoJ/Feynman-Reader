@@ -1,6 +1,7 @@
 'use client'
 
 import React, { Component, ErrorInfo, ReactNode } from 'react'
+import { AlertTriangle, Home, RefreshCw } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { Language } from '@/lib/i18n'
 
@@ -25,7 +26,6 @@ const errorMessages = {
     whatHappened: '发生了什么：',
     somethingWentWrong: '应用在渲染过程中发生了错误。这可能是由于：',
     reasons: [
-      '浏览器缓存或本地存储数据损坏',
       '网络连接问题',
       '浏览器兼容性问题',
       '代码中的临时错误'
@@ -33,13 +33,11 @@ const errorMessages = {
     whatYouCanDo: '你可以尝试：',
     solutions: [
       '刷新页面重新加载',
-      '清除浏览器缓存和本地存储',
       '检查网络连接',
       '如果问题持续存在，请联系技术支持'
     ],
     details: '错误详情：',
     reload: '重新加载',
-    clearData: '清除数据',
     goHome: '返回首页',
     hideDetails: '隐藏详情',
     showDetails: '显示详情'
@@ -50,7 +48,6 @@ const errorMessages = {
     whatHappened: 'What happened:',
     somethingWentWrong: 'An error occurred while rendering the application. This could be due to:',
     reasons: [
-      'Corrupted browser cache or local storage data',
       'Network connection issues',
       'Browser compatibility problems',
       'Temporary code errors'
@@ -58,13 +55,11 @@ const errorMessages = {
     whatYouCanDo: 'What you can try:',
     solutions: [
       'Refresh the page to reload',
-      'Clear browser cache and local storage',
       'Check your network connection',
       'Contact support if the problem persists'
     ],
     details: 'Error details:',
     reload: 'Reload',
-    clearData: 'Clear Data',
     goHome: 'Go Home',
     hideDetails: 'Hide Details',
     showDetails: 'Show Details'
@@ -112,24 +107,6 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload()
   }
 
-  handleClearData = async (): Promise<void> => {
-    if (confirm(this.props.lang === 'zh'
-      ? '确定要清除所有数据吗？此操作不可恢复。'
-      : 'Are you sure you want to clear all data? This action cannot be undone.')) {
-      try {
-        const { deleteDatabase } = await import('@/lib/indexedDB')
-        await deleteDatabase()
-        const { resetStoreCache } = await import('@/lib/store')
-        resetStoreCache()
-        localStorage.clear()
-        sessionStorage.clear()
-        window.location.reload()
-      } catch (error) {
-        logger.error('Failed to clear application data:', error)
-      }
-    }
-  }
-
   handleGoHome = (): void => {
     window.location.href = '/'
   }
@@ -156,7 +133,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="card p-8 mb-6">
               {/* Icon */}
               <div className="text-center mb-6">
-                <div className="text-6xl mb-4">⚠️</div>
+                <AlertTriangle className="w-14 h-14 mx-auto mb-4 text-amber-500" aria-hidden="true" />
                 <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
                   {messages.title}
                 </h1>
@@ -199,7 +176,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
 
               {/* Error Details Toggle */}
-              {error && (
+              {process.env.NODE_ENV !== 'production' && error && (
                 <div className="mb-6">
                   <button
                     onClick={this.handleToggleDetails}
@@ -225,21 +202,17 @@ export class ErrorBoundary extends Component<Props, State> {
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={this.handleReload}
-                  className="btn-primary flex-1 min-w-[120px]"
+                  className="btn-primary flex-1 min-w-[120px] inline-flex items-center justify-center gap-2"
                 >
-                  🔄 {messages.reload}
-                </button>
-                <button
-                  onClick={this.handleClearData}
-                  className="btn-secondary flex-1 min-w-[120px]"
-                >
-                  🗑️ {messages.clearData}
+                  <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                  {messages.reload}
                 </button>
                 <button
                   onClick={this.handleGoHome}
-                  className="btn-secondary flex-1 min-w-[120px]"
+                  className="btn-secondary flex-1 min-w-[120px] inline-flex items-center justify-center gap-2"
                 >
-                  🏠 {messages.goHome}
+                  <Home className="w-4 h-4" aria-hidden="true" />
+                  {messages.goHome}
                 </button>
               </div>
             </div>
@@ -251,9 +224,9 @@ export class ErrorBoundary extends Component<Props, State> {
                   ? '如果问题持续存在，请访问 '
                   : 'If the problem persists, please visit '}
                 <a href="/privacy" className="text-[var(--accent)] hover:underline">
-                  {lang === 'zh' ? '隐私政策' : 'Privacy Policy'}
+                  {lang === 'zh' ? '隐私政策中的联系方式' : 'the contact information in our Privacy Policy'}
                 </a>
-                {' '}for support information.
+                {lang === 'zh' ? ' 联系支持。' : '.'}
               </p>
             </div>
           </div>

@@ -20,6 +20,22 @@ export default function PrivacyPolicy() {
 
   const currentContent = privacyPolicyContent[lang]
 
+  const handleBack = () => {
+    const referrer = document.referrer
+    if (referrer) {
+      try {
+        if (new URL(referrer).origin === window.location.origin && window.history.length > 1) {
+          window.history.back()
+          return
+        }
+      } catch {
+        // Invalid referrers fall back to the app home page.
+      }
+    }
+
+    window.location.assign('/')
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-12">
       <div className="text-center mb-12">
@@ -37,7 +53,7 @@ export default function PrivacyPolicy() {
       </div>
 
       <div className="mt-12 text-center">
-        <button onClick={() => window.history.back()} className="btn-secondary">
+        <button type="button" onClick={handleBack} className="btn-secondary">
           {lang === 'zh' ? '返回' : 'Back'}
         </button>
       </div>

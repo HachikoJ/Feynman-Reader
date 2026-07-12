@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Book, BookStatus, BookTag, getBooks, addBook, updateBook, deleteBook, getAllTags, getAllCategories, getSettings } from '@/lib/store'
+import { Book, BookStatus, BookTag, getBooks, addBook, updateBook, deleteBook, restoreBook, getAllTags, getAllCategories, getSettings, flushPendingStoreWrites, reloadBookFromPersistence, reloadBooksFromPersistence } from '@/lib/store'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES } from '@/lib/feynman-prompts'
 import { createDeepSeekClient, generateBookTags } from '@/lib/deepseek'
-import { ChartNoAxesCombined, ChevronDown, ChevronRight, Tag } from 'lucide-react'
+import { AlertCircle, ChartNoAxesCombined, ChevronDown, ChevronRight, Tag, X } from 'lucide-react'
 import DocumentUpload from './DocumentUpload'
 import { validateBookName, validateAuthorName, validateContent, sanitizeTextInput, detectMaliciousContent } from '@/lib/validation'
-import { undoRedoManager, createDeleteBookAction, createAddBookAction, createUpdateBookAction, createBatchDeleteBooksAction } from '@/lib/undoRedo'
+import { undoRedoManager, createDeleteBookAction, createBatchDeleteBooksAction } from '@/lib/undoRedo'
+import { getSafeImageSrc } from '@/lib/safeUrl'
+import { MAX_TAG_LENGTH } from '@/lib/dataLimits'
 
 interface Props {
   lang: Language
@@ -52,6 +54,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [generatingTags, setGeneratingTags] = useState(false)
+  const [tagGenerationError, setTagGenerationError] = useState<string | null>(null)
   const [showTagFilter, setShowTagFilter] = useState(false)
   const [showDocumentUpload, setShowDocumentUpload] = useState(false)
   const [deleteConfirmBook, setDeleteConfirmBook] = useState<Book | null>(null)
@@ -76,6 +79,10 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
   const [editingGlobalTag, setEditingGlobalTag] = useState<BookTag | null>(null)
   const [newGlobalTagName, setNewGlobalTagName] = useState('')
   const [newGlobalTagCategory, setNewGlobalTagCategory] = useState('')
+  const [mutatingBooks, setMutatingBooks] = useState(false)
+  const bookMutationInFlightRef = useRef(false)
+  const [savingBook, setSavingBook] = useState(false)
+  const bookSaveInFlightRef = useRef(false)
   const [tagToDelete, setTagToDelete] = useState<BookTag | null>(null)
   
   const descTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -166,12 +173,17 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     const settings = getSettings()
     if (!settings.apiKey) return
 
+    setTagGenerationError(null)
     setGeneratingTags(true)
+    let tagsGenerated = false
     try {
       const client = await createDeepSeekClient(settings.apiKey)
       const tags = await generateBookTags(client, bookName, author, description)
+      tagsGenerated = true
       if (tags.length > 0) {
+        await flushPendingStoreWrites()
         updateBook(bookId, { tags })
+        await flushPendingStoreWrites()
         setBooks(getBooks())
         
         // 如果正在编辑这本书，同时更新编辑状态
@@ -180,13 +192,26 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         }
       }
     } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(bookId).catch(() => undefined)
+      if (persistedBook) {
+        setBooks(getBooks())
+        if (editingBook?.id === bookId) setEditingTags(persistedBook.tags || [])
+      }
       logger.error('生成标签失败:', error)
+      setTagGenerationError(tagsGenerated
+        ? (lang === 'zh'
+            ? 'AI 标签已生成，但未能保存到本地，原标签已恢复。请检查浏览器存储后重试。'
+            : 'AI tags were generated but could not be saved locally. The original tags were restored.')
+        : (lang === 'zh'
+            ? '书籍已保存，但 AI 标签生成失败。你可以稍后重试，或在编辑书籍时手动添加标签。'
+            : 'The book was saved, but AI tag generation failed. Retry later or add tags manually while editing the book.'))
     } finally {
       setGeneratingTags(false)
     }
   }
 
   const handleAddBook = async () => {
+    if (bookSaveInFlightRef.current) return
     // P0 新增：输入验证
     const nameValidation = validateBookName(newBookName)
     if (!nameValidation.valid) {
@@ -217,20 +242,35 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     const cleanAuthor = newBookAuthor ? sanitizeTextInput(newBookAuthor, 100) : undefined
     const cleanDesc = newBookDesc ? sanitizeTextInput(newBookDesc, 500) : undefined
 
-    const book = addBook(cleanName, cleanAuthor, newBookCover || undefined, cleanDesc)
-    setBooks(getBooks())
-    resetForm()
-    setShowAddModal(false)
+    let book: Book | undefined
+    bookSaveInFlightRef.current = true
+    setSavingBook(true)
+    try {
+      await flushPendingStoreWrites()
+      book = addBook(cleanName, cleanAuthor, newBookCover || undefined, cleanDesc)
+      await flushPendingStoreWrites()
+      setBooks(getBooks())
+      resetForm()
+      setShowAddModal(false)
+    } catch (error) {
+      if (book) await reloadBookFromPersistence(book.id).catch(() => undefined)
+      logger.error('Book save failed:', error)
+      alert(lang === 'zh' ? '书籍保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving failed. Your form content was kept; check browser storage and try again.')
+      return
+    } finally {
+      bookSaveInFlightRef.current = false
+      setSavingBook(false)
+    }
 
     // 自动生成标签
     const settings = getSettings()
-    if (settings.apiKey) {
+    if (settings.apiKey && book) {
       handleGenerateTags(book.id, book.name, book.author, book.description)
     }
   }
 
-  const handleUpdateBook = () => {
-    if (!editingBook) return
+  const handleUpdateBook = async () => {
+    if (!editingBook || bookSaveInFlightRef.current) return
 
     // P0 新增：输入验证
     const nameValidation = validateBookName(newBookName)
@@ -265,10 +305,24 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
       cover: newBookCover || undefined,
       tags: editingTags.length > 0 ? editingTags : undefined
     }
-    updateBook(editingBook.id, updates)
-    setBooks(books.map(b => b.id === editingBook.id ? { ...b, ...updates } : b))
-    resetForm()
-    setEditingBook(null)
+    bookSaveInFlightRef.current = true
+    setSavingBook(true)
+    try {
+      await flushPendingStoreWrites()
+      updateBook(editingBook.id, updates)
+      await flushPendingStoreWrites()
+      setBooks(getBooks())
+      resetForm()
+      setEditingBook(null)
+    } catch (error) {
+      const persistedBooks = await reloadBooksFromPersistence().catch(() => getBooks())
+      setBooks(persistedBooks)
+      logger.error('Book update failed:', error)
+      alert(lang === 'zh' ? '修改保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving changes failed. Your form content was kept; check browser storage and try again.')
+    } finally {
+      bookSaveInFlightRef.current = false
+      setSavingBook(false)
+    }
   }
 
   const resetForm = () => {
@@ -328,6 +382,19 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     ))
   }
 
+  const persistBookMutation = async (mutation: () => void) => {
+    try {
+      await flushPendingStoreWrites()
+      mutation()
+      await flushPendingStoreWrites()
+      setBooks(getBooks())
+    } catch (error) {
+      const persistedBooks = await reloadBooksFromPersistence().catch(() => getBooks())
+      setBooks(persistedBooks)
+      throw error
+    }
+  }
+
   // 全局标签管理函数
   const handleEditGlobalTag = (tag: BookTag) => {
     setEditingGlobalTag(tag)
@@ -335,68 +402,81 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     setNewGlobalTagCategory(tag.category)
   }
 
-  const handleUpdateGlobalTag = () => {
-    if (!editingGlobalTag || !newGlobalTagName.trim() || !newGlobalTagCategory.trim()) return
-    
+  const handleUpdateGlobalTag = async () => {
+    if (!editingGlobalTag || bookMutationInFlightRef.current) return
+
+    const cleanName = sanitizeTextInput(newGlobalTagName, MAX_TAG_LENGTH).trim()
+    const cleanCategory = sanitizeTextInput(newGlobalTagCategory, MAX_TAG_LENGTH).trim()
+    if (!cleanName || !cleanCategory) return
+    if (detectMaliciousContent(cleanName) || detectMaliciousContent(cleanCategory)) {
+      setTagGenerationError(lang === 'zh' ? '标签名称或分类包含不安全内容。' : 'The tag name or category contains unsafe content.')
+      return
+    }
+
     const oldTag = editingGlobalTag
     const newTag: BookTag = {
-      name: newGlobalTagName.trim(),
-      category: newGlobalTagCategory.trim()
+      name: cleanName,
+      category: cleanCategory
     }
-    
-    // 更新所有使用该标签的书籍
-    const updatedBooks = books.map(book => {
-      if (!book.tags) return book
-      
-      const hasTag = book.tags.some(t => 
-        t.name === oldTag.name && t.category === oldTag.category
-      )
-      
-      if (hasTag) {
-        const newTags = book.tags.map(t => 
-          (t.name === oldTag.name && t.category === oldTag.category) ? newTag : t
-        )
-        updateBook(book.id, { tags: newTags })
-        return { ...book, tags: newTags }
-      }
-      
-      return book
-    })
-    
-    setBooks(updatedBooks)
-    setEditingGlobalTag(null)
-    setNewGlobalTagName('')
-    setNewGlobalTagCategory('')
+
+    bookMutationInFlightRef.current = true
+    setMutatingBooks(true)
+    setTagGenerationError(null)
+    try {
+      await persistBookMutation(() => {
+        books.forEach(book => {
+          if (!book.tags?.some(tag => tag.name === oldTag.name && tag.category === oldTag.category)) return
+          const deduplicated = new Map<string, BookTag>()
+          book.tags.forEach(tag => {
+            const nextTag = tag.name === oldTag.name && tag.category === oldTag.category ? newTag : tag
+            deduplicated.set(`${nextTag.category}\u0000${nextTag.name}`, nextTag)
+          })
+          updateBook(book.id, { tags: Array.from(deduplicated.values()) })
+        })
+      })
+      setEditingGlobalTag(null)
+      setNewGlobalTagName('')
+      setNewGlobalTagCategory('')
+    } catch (error) {
+      logger.error('Global tag update failed:', error)
+      setTagGenerationError(lang === 'zh'
+        ? '标签修改未能完整保存，请刷新确认书架状态后重试。'
+        : 'The tag change could not be fully saved. Refresh to confirm the bookshelf state before retrying.')
+    } finally {
+      bookMutationInFlightRef.current = false
+      setMutatingBooks(false)
+    }
   }
 
   const handleDeleteGlobalTag = (tag: BookTag) => {
     setTagToDelete(tag)
   }
 
-  const confirmDeleteGlobalTag = () => {
-    if (!tagToDelete) return
-    
-    // 从所有书籍中移除该标签
-    const updatedBooks = books.map(book => {
-      if (!book.tags) return book
-      
-      const hasTag = book.tags.some(t => 
-        t.name === tagToDelete.name && t.category === tagToDelete.category
-      )
-      
-      if (hasTag) {
-        const newTags = book.tags.filter(t => 
-          !(t.name === tagToDelete.name && t.category === tagToDelete.category)
-        )
-        updateBook(book.id, { tags: newTags.length > 0 ? newTags : undefined })
-        return { ...book, tags: newTags.length > 0 ? newTags : undefined }
-      }
-      
-      return book
-    })
-    
-    setBooks(updatedBooks)
-    setTagToDelete(null)
+  const confirmDeleteGlobalTag = async () => {
+    if (!tagToDelete || bookMutationInFlightRef.current) return
+
+    const deletingTag = tagToDelete
+    bookMutationInFlightRef.current = true
+    setMutatingBooks(true)
+    setTagGenerationError(null)
+    try {
+      await persistBookMutation(() => {
+        books.forEach(book => {
+          if (!book.tags?.some(tag => tag.name === deletingTag.name && tag.category === deletingTag.category)) return
+          const newTags = book.tags.filter(tag => !(tag.name === deletingTag.name && tag.category === deletingTag.category))
+          updateBook(book.id, { tags: newTags.length > 0 ? newTags : undefined })
+        })
+      })
+      setTagToDelete(null)
+    } catch (error) {
+      logger.error('Global tag deletion failed:', error)
+      setTagGenerationError(lang === 'zh'
+        ? '标签删除未能完整保存，请刷新确认书架状态后重试。'
+        : 'The tag deletion could not be fully saved. Refresh to confirm the bookshelf state before retrying.')
+    } finally {
+      bookMutationInFlightRef.current = false
+      setMutatingBooks(false)
+    }
   }
 
   // 统计使用某个标签的书籍数量
@@ -410,24 +490,31 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     setDeleteConfirmBook(book)
   }
 
-  const confirmDelete = () => {
-    if (deleteConfirmBook) {
+  const confirmDelete = async () => {
+    if (deleteConfirmBook && !bookMutationInFlightRef.current) {
       // P1 新增：使用撤销/重做管理器
       const action = createDeleteBookAction(
         deleteConfirmBook.id,
         deleteConfirmBook,
-        deleteBook,
-        (book) => {
-          // 重新添加书籍到状态
-          setBooks(prevBooks => [book, ...prevBooks])
-        }
+        (id) => persistBookMutation(() => deleteBook(id)),
+        (book) => persistBookMutation(() => restoreBook(book))
       )
-      undoRedoManager.execute(action)
-
-      // 执行删除
-      deleteBook(deleteConfirmBook.id)
-      setBooks(books.filter(b => b.id !== deleteConfirmBook.id))
-      setDeleteConfirmBook(null)
+      bookMutationInFlightRef.current = true
+      setMutatingBooks(true)
+      let succeeded = false
+      try {
+        succeeded = await undoRedoManager.execute(action)
+      } finally {
+        bookMutationInFlightRef.current = false
+        setMutatingBooks(false)
+      }
+      if (succeeded) {
+        setDeleteConfirmBook(null)
+      } else {
+        setTagGenerationError(lang === 'zh'
+          ? '书籍删除失败，请刷新确认书架状态后重试。'
+          : 'The book could not be deleted. Refresh to confirm the bookshelf state before retrying.')
+      }
     }
   }
 
@@ -471,29 +558,34 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     setShowBatchDeleteConfirm(true)
   }
   
-  const confirmBatchDelete = () => {
+  const confirmBatchDelete = async () => {
+    if (bookMutationInFlightRef.current || selectedBooks.size === 0) return
     // P1 新增：使用撤销/重做管理器
     const booksToDelete = books.filter(b => selectedBooks.has(b.id))
+    if (booksToDelete.length === 0) return
     const action = createBatchDeleteBooksAction(
       booksToDelete.map(b => ({ id: b.id, data: b })),
-      (ids) => {
-        ids.forEach(id => deleteBook(id))
-      },
-      (restoredBooks) => {
-        // 恢复书籍
-        restoredBooks.forEach(book => {
-          addBook(book.name, book.author, book.cover, book.description, book.tags, book.documentContent)
-        })
-        setBooks(getBooks())
-      }
+      (ids) => persistBookMutation(() => ids.forEach(id => deleteBook(id))),
+      (restoredBooks) => persistBookMutation(() => restoredBooks.forEach(book => restoreBook(book)))
     )
-    undoRedoManager.execute(action)
-
-    selectedBooks.forEach(id => deleteBook(id))
-    setBooks(getBooks())
-    setSelectedBooks(new Set())
-    setShowBatchDeleteConfirm(false)
-    setBatchMode(false)
+    bookMutationInFlightRef.current = true
+    setMutatingBooks(true)
+    let succeeded = false
+    try {
+      succeeded = await undoRedoManager.execute(action)
+    } finally {
+      bookMutationInFlightRef.current = false
+      setMutatingBooks(false)
+    }
+    if (succeeded) {
+      setSelectedBooks(new Set())
+      setShowBatchDeleteConfirm(false)
+      setBatchMode(false)
+    } else {
+      setTagGenerationError(lang === 'zh'
+        ? '批量删除失败，请刷新确认书架状态后重试。'
+        : 'Batch deletion failed. Refresh to confirm the bookshelf state before retrying.')
+    }
   }
 
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -505,14 +597,6 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
       setNewBookCover(event.target?.result as string)
     }
     reader.readAsDataURL(file)
-  }
-
-  const getStatusClass = (status: BookStatus) => {
-    switch (status) {
-      case 'unread': return 'status-unread'
-      case 'reading': return 'status-reading'
-      case 'finished': return 'status-finished'
-    }
   }
 
   const getStatusIcon = (status: BookStatus) => {
@@ -542,6 +626,21 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
   return (
     <div className="max-w-6xl mx-auto">
+      {tagGenerationError && (
+        <div role="alert" className="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+          <AlertCircle size={19} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
+          <span className="flex-1">{tagGenerationError}</span>
+          <button
+            type="button"
+            onClick={() => setTagGenerationError(null)}
+            className="shrink-0 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            aria-label={lang === 'zh' ? '关闭提示' : 'Dismiss message'}
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
       {/* Header with Stats */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div className="flex-1 w-full">
@@ -645,7 +744,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
           {/* Charts Toggle */}
           <div className="mb-6">
-            <button 
+            <button
               onClick={() => setShowCharts(!showCharts)}
               className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
             >
@@ -802,7 +901,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
       {allTags.length > 0 && (
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
-            <button 
+            <button
               onClick={() => setShowTagFilter(!showTagFilter)}
               className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
             >
@@ -915,8 +1014,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 className="aspect-[3/4] bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20 relative cursor-pointer"
                 onClick={() => handleSelectBook(book)}
               >
-                {book.cover ? (
-                  <img src={book.cover} alt={book.name} className="w-full h-full object-cover" />
+                {getSafeImageSrc(book.cover) ? (
+                  <img src={getSafeImageSrc(book.cover)!} alt={book.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center p-4">
                     <span className="text-5xl mb-2">{getStatusIcon(book.status)}</span>
@@ -1030,8 +1129,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 className="w-20 h-28 flex-shrink-0 rounded-lg overflow-hidden bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20 cursor-pointer"
                 onClick={() => handleSelectBook(book)}
               >
-                {book.cover ? (
-                  <img src={book.cover} alt={book.name} className="w-full h-full object-cover" />
+                {getSafeImageSrc(book.cover) ? (
+                  <img src={getSafeImageSrc(book.cover)!} alt={book.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <span className="text-3xl">{getStatusIcon(book.status)}</span>
@@ -1154,8 +1253,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                     className="w-24 h-32 rounded-lg overflow-hidden bg-[var(--bg-secondary)] flex items-center justify-center cursor-pointer border-2 border-dashed border-[var(--border)] hover:border-[var(--accent)]"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    {newBookCover ? (
-                      <img src={newBookCover} alt="Cover" className="w-full h-full object-cover" />
+                    {getSafeImageSrc(newBookCover) ? (
+                      <img src={getSafeImageSrc(newBookCover)!} alt="Cover" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-3xl">📷</span>
                     )}
@@ -1324,16 +1423,19 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
             </div>
 
             <div className="flex gap-3 mt-6">
-              <button 
-                onClick={editingBook ? handleUpdateBook : handleAddBook} 
+              <button
+                onClick={editingBook ? handleUpdateBook : handleAddBook}
                 className="btn-primary flex-1"
-                disabled={!newBookName.trim()}
+                disabled={savingBook || !newBookName.trim()}
               >
-                {editingBook ? (lang === 'zh' ? '保存' : 'Save') : t(lang, 'bookshelf.add')}
+                {savingBook
+                  ? (lang === 'zh' ? '保存中...' : 'Saving...')
+                  : editingBook ? (lang === 'zh' ? '保存' : 'Save') : t(lang, 'bookshelf.add')}
               </button>
-              <button 
-                onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }} 
+              <button
+                onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}
                 className="btn-secondary flex-1"
+                disabled={savingBook}
               >
                 {t(lang, 'bookshelf.cancel')}
               </button>
@@ -1353,7 +1455,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
       {/* Delete Confirm Modal */}
       {deleteConfirmBook && (
-        <div className="modal-overlay" onClick={() => setDeleteConfirmBook(null)}>
+        <div className="modal-overlay" onClick={() => { if (!mutatingBooks) setDeleteConfirmBook(null) }}>
           <div className="modal-content max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="text-center">
               <div className="text-5xl mb-4">⚠️</div>
@@ -1365,20 +1467,24 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               </p>
               <p className="font-medium text-lg mb-4">《{deleteConfirmBook.name}》</p>
               <p className="text-sm text-red-400 mb-6">
-                {lang === 'zh' ? '删除后无法恢复，所有阅读记录将丢失' : 'This action cannot be undone'}
+                {lang === 'zh'
+                  ? '可在当前页面撤销；刷新或关闭页面后将无法恢复'
+                  : 'You can undo on this page until it is refreshed or closed'}
               </p>
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={() => setDeleteConfirmBook(null)}
+                  disabled={mutatingBooks}
                   className="btn-secondary flex-1"
                 >
                   {lang === 'zh' ? '取消' : 'Cancel'}
                 </button>
-                <button 
+                <button
                   onClick={confirmDelete}
-                  className="flex-1 py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors"
+                  disabled={mutatingBooks}
+                  className="flex-1 py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {lang === 'zh' ? '确认删除' : 'Delete'}
+                  {mutatingBooks ? (lang === 'zh' ? '删除中...' : 'Deleting...') : (lang === 'zh' ? '确认删除' : 'Delete')}
                 </button>
               </div>
             </div>
@@ -1388,7 +1494,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
       {/* Batch Delete Confirm Modal */}
       {showBatchDeleteConfirm && (
-        <div className="modal-overlay" onClick={() => setShowBatchDeleteConfirm(false)}>
+        <div className="modal-overlay" onClick={() => { if (!mutatingBooks) setShowBatchDeleteConfirm(false) }}>
           <div className="modal-content max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="text-center">
               <div className="text-5xl mb-4">⚠️</div>
@@ -1401,20 +1507,24 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   : `Delete ${selectedBooks.size} selected books?`}
               </p>
               <p className="text-sm text-red-400 mb-6">
-                {lang === 'zh' ? '删除后无法恢复，所有阅读记录将丢失' : 'This action cannot be undone'}
+                {lang === 'zh'
+                  ? '可在当前页面撤销；刷新或关闭页面后将无法恢复'
+                  : 'You can undo on this page until it is refreshed or closed'}
               </p>
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={() => setShowBatchDeleteConfirm(false)}
+                  disabled={mutatingBooks}
                   className="btn-secondary flex-1"
                 >
                   {lang === 'zh' ? '取消' : 'Cancel'}
                 </button>
-                <button 
+                <button
                   onClick={confirmBatchDelete}
-                  className="flex-1 py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors"
+                  disabled={mutatingBooks}
+                  className="flex-1 py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {lang === 'zh' ? '确认删除' : 'Delete'}
+                  {mutatingBooks ? (lang === 'zh' ? '删除中...' : 'Deleting...') : (lang === 'zh' ? '确认删除' : 'Delete')}
                 </button>
               </div>
             </div>
@@ -1520,10 +1630,10 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                                   </button>
                                   <button
                                     onClick={handleUpdateGlobalTag}
-                                    disabled={!newGlobalTagName.trim() || !newGlobalTagCategory.trim()}
+                                    disabled={mutatingBooks || !newGlobalTagName.trim() || !newGlobalTagCategory.trim()}
                                     className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                   >
-                                    ✓ {lang === 'zh' ? '保存' : 'Save'}
+                                    {mutatingBooks ? (lang === 'zh' ? '保存中...' : 'Saving...') : `✓ ${lang === 'zh' ? '保存' : 'Save'}`}
                                   </button>
                                 </div>
                               </div>
@@ -1584,7 +1694,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
       {/* Delete Tag Confirm Modal */}
       {tagToDelete && (
-        <div className="modal-overlay" onClick={() => setTagToDelete(null)}>
+        <div className="modal-overlay" onClick={() => { if (!mutatingBooks) setTagToDelete(null) }}>
           <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
             <div className="text-center">
               <div className="text-5xl mb-4">⚠️</div>
@@ -1613,17 +1723,19 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 {lang === 'zh' ? '确定要删除这个标签吗？' : 'Are you sure you want to delete this tag?'}
               </p>
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={() => setTagToDelete(null)}
+                  disabled={mutatingBooks}
                   className="btn-secondary flex-1"
                 >
                   {lang === 'zh' ? '取消' : 'Cancel'}
                 </button>
-                <button 
+                <button
                   onClick={confirmDeleteGlobalTag}
-                  className="flex-1 py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors font-bold"
+                  disabled={mutatingBooks}
+                  className="flex-1 py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors font-bold disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {lang === 'zh' ? '确认删除' : 'Confirm Delete'}
+                  {mutatingBooks ? (lang === 'zh' ? '删除中...' : 'Deleting...') : (lang === 'zh' ? '确认删除' : 'Confirm Delete')}
                 </button>
               </div>
             </div>

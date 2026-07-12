@@ -2,11 +2,20 @@
 'use client'
 
 import { logger } from './logger'
+import { MAX_DOCUMENT_FILE_SIZE, MAX_DOCUMENT_PAGES, MAX_DOCUMENT_TEXT_LENGTH } from './dataLimits'
 
 export interface ParsedDocument {
   content: string
   fileName: string
   fileType: string
+}
+
+export { MAX_DOCUMENT_FILE_SIZE, MAX_DOCUMENT_PAGES, MAX_DOCUMENT_TEXT_LENGTH } from './dataLimits'
+
+function assertSafeExtractedText(content: string): void {
+  if (content.length > MAX_DOCUMENT_TEXT_LENGTH) {
+    throw new Error('文档提取内容过长，请拆分后上传（最多 100 万字符）')
+  }
 }
 
 // 解析文本文件 (txt, md, json)
@@ -20,15 +29,18 @@ async function parsePDF(file: File): Promise<string> {
     // 动态导入 pdfjs-dist
     const pdfjsLib = await import('pdfjs-dist')
     
-    // 设置 worker - 使用 legacy build 以获得更好的兼容性
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
     
     const arrayBuffer = await file.arrayBuffer()
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false })
     const pdf = await loadingTask.promise
     
     let fullText = ''
     const numPages = pdf.numPages
+
+    if (numPages > MAX_DOCUMENT_PAGES) {
+      throw new Error(`PDF 页数不能超过 ${MAX_DOCUMENT_PAGES} 页`)
+    }
     
     logger.debug(`PDF 共 ${numPages} 页`)
     
@@ -61,27 +73,6 @@ async function parseWord(file: File): Promise<string> {
   }
 }
 
-// 解析 Excel 文件
-async function parseExcel(file: File): Promise<string> {
-  try {
-    const XLSX = await import('xlsx')
-    const arrayBuffer = await file.arrayBuffer()
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-    
-    let fullText = ''
-    workbook.SheetNames.forEach(sheetName => {
-      const sheet = workbook.Sheets[sheetName]
-      const csv = XLSX.utils.sheet_to_csv(sheet)
-      fullText += `[${sheetName}]\n${csv}\n\n`
-    })
-    
-    return fullText.trim()
-  } catch (error) {
-    logger.error('Excel 解析错误:', error)
-    throw new Error('Excel 文档解析失败')
-  }
-}
-
 // 获取文件扩展名
 function getFileExtension(fileName: string): string {
   return fileName.split('.').pop()?.toLowerCase() || ''
@@ -91,8 +82,16 @@ function getFileExtension(fileName: string): string {
 export async function parseDocument(file: File): Promise<ParsedDocument> {
   const ext = getFileExtension(file.name)
   let content = ''
+
+  if (!SUPPORTED_FILE_TYPES.includes(`.${ext}`)) {
+    throw new Error('不支持该文件类型，请上传 PDF、DOCX、TXT、Markdown 或 JSON 文件')
+  }
+
+  if (file.size > MAX_DOCUMENT_FILE_SIZE) {
+    throw new Error('文件大小不能超过 20MB')
+  }
   
-  console.log(`开始解析文件: ${file.name}, 类型: ${ext}, 大小: ${file.size} bytes`)
+  logger.debug(`开始解析文件: ${file.name}, 类型: ${ext}, 大小: ${file.size} bytes`)
   
   try {
     switch (ext) {
@@ -104,18 +103,13 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
         break
       case 'doc':
         throw new Error('不支持旧版 .doc 格式，请转换为 .docx 后重试')
-      case 'xlsx':
-      case 'xls':
-        content = await parseExcel(file)
-        break
       case 'txt':
       case 'md':
       case 'json':
         content = await parseTextFile(file)
         break
       default:
-        // 尝试作为文本解析
-        content = await parseTextFile(file)
+        throw new Error('不支持该文件类型')
     }
     
     logger.debug(`文件解析成功，内容长度: ${content.length} 字符`)
@@ -123,6 +117,8 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
     if (!content || content.trim().length === 0) {
       throw new Error('文件内容为空或无法提取文本')
     }
+
+    assertSafeExtractedText(content)
     
   } catch (error: any) {
     logger.error('文档解析失败:', error)
@@ -140,8 +136,6 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
 export const SUPPORTED_FILE_TYPES = [
   '.pdf',
   '.docx',
-  '.xlsx',
-  '.xls',
   '.txt',
   '.md',
   '.json'
@@ -150,8 +144,6 @@ export const SUPPORTED_FILE_TYPES = [
 export const SUPPORTED_MIME_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-excel',
   'text/plain',
   'text/markdown',
   'application/json'

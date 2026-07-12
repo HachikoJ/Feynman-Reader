@@ -1,16 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Language, t } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
-import { Book, QAPracticeRecord, getQAPracticeRecords, addQAPracticeRecord, updateQAPracticeRecord, deleteQAPracticeRecord, updateBook } from '@/lib/store'
-import { createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
+import { Book, PersonaAnswerAttempt, PersonaQuestion, PracticeRecord, QAPracticeRecord, getQAPracticeRecords, addQAPracticeRecord, updateQAPracticeRecord, deleteQAPracticeRecord, flushPendingStoreWrites, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
+import { AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
 import MarkdownRenderer from './MarkdownRenderer'
 import LoadingQuotes from './LoadingQuotes'
 import PersonaSelector, { PersonaBadge } from './PersonaSelector'
 import ScoreTrendChart from './ScoreTrendChart'
 import ScoringCriteriaDisplay from './ScoringCriteriaDisplay'
 import { calculateScoreTrend, ProgressRecord, PERSONA_TYPES } from '@/lib/practiceEnhancement'
+import { MAX_AI_ANSWER_LENGTH } from '@/lib/dataLimits'
 
 interface Props {
   book: Book
@@ -21,6 +22,25 @@ interface Props {
   showHistory?: boolean
   onShowHistoryChange?: (show: boolean) => void
   historyRef?: React.RefObject<HTMLDivElement>
+  onOpenSettings?: () => void
+}
+
+export function selectActiveQARecord(records: QAPracticeRecord[]): QAPracticeRecord | null {
+  return records
+    .filter(record => !isQAPracticeRecordComplete(record) && record.questions.some(question => !question.passed))
+    .reduce<QAPracticeRecord | null>((latest, record) => {
+      if (!latest) return record
+      return record.updatedAt > latest.updatedAt ? record : latest
+    }, null)
+}
+
+export function getBestPassedTeachingContent(records: PracticeRecord[] = []): string | undefined {
+  return records
+    .filter(record => record.scores.overall >= 60)
+    .reduce<PracticeRecord | null>((best, record) => {
+      if (!best) return record
+      return record.scores.overall > best.scores.overall ? record : best
+    }, null)?.content
 }
 
 export function haveAnswersForUnpassedQuestions(
@@ -34,11 +54,76 @@ export function haveAnswersForUnpassedQuestions(
   })
 }
 
+export function normalizePersonaSelection(selectedIds: string[]): string[] {
+  const validIds = new Set(PERSONA_TYPES.map(persona => persona.id))
+  const normalized = Array.from(new Set(selectedIds.filter(id => validIds.has(id))))
+    .slice(0, PERSONA_QUESTION_COUNT)
+  const fallbackIds = ['elementary', 'professional', 'scientist', ...PERSONA_TYPES.map(persona => persona.id)]
+
+  for (const id of fallbackIds) {
+    if (normalized.length >= PERSONA_QUESTION_COUNT) break
+    if (validIds.has(id) && !normalized.includes(id)) normalized.push(id)
+  }
+
+  return normalized
+}
+
 type PersonaEvaluation = {
   persona: string
   score: number
   review: string
   passed: boolean
+}
+
+const MAX_STORED_ATTEMPTS_PER_QUESTION = 50
+
+export function getQuestionAttempts(question: PersonaQuestion): PersonaAnswerAttempt[] {
+  if (question.attempts?.length) return question.attempts
+  if (
+    !question.userAnswer ||
+    question.answeredAt === undefined ||
+    !question.aiReview ||
+    question.score === undefined ||
+    question.reviewedAt === undefined
+  ) return []
+
+  return [{
+    userAnswer: question.userAnswer,
+    answeredAt: question.answeredAt,
+    aiReview: question.aiReview,
+    score: question.score,
+    passed: question.score >= 60,
+    reviewedAt: question.reviewedAt
+  }]
+}
+
+export function appendQuestionAttempt(
+  question: PersonaQuestion,
+  userAnswer: string,
+  evaluation: Pick<PersonaEvaluation, 'score' | 'review'>,
+  timestamp: number
+): PersonaQuestion {
+  const attempt: PersonaAnswerAttempt = {
+    userAnswer,
+    answeredAt: timestamp,
+    aiReview: evaluation.review,
+    score: evaluation.score,
+    passed: evaluation.score >= 60,
+    reviewedAt: timestamp
+  }
+  const attempts = [...getQuestionAttempts(question), attempt]
+    .slice(-MAX_STORED_ATTEMPTS_PER_QUESTION)
+
+  return {
+    ...question,
+    userAnswer: attempt.userAnswer,
+    answeredAt: attempt.answeredAt,
+    aiReview: attempt.aiReview,
+    score: attempt.score,
+    passed: attempt.passed,
+    reviewedAt: attempt.reviewedAt,
+    attempts
+  }
 }
 
 export function matchEvaluationsToQuestions(
@@ -53,17 +138,21 @@ export function matchEvaluationsToQuestions(
   })
 }
 
-export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef }: Props) {
+export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef, onOpenSettings }: Props) {
   const [currentRecord, setCurrentRecord] = useState<QAPracticeRecord | null>(null)
   const [qaRecords, setQaRecords] = useState<QAPracticeRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [answers, setAnswers] = useState<Record<number, string>>({})
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [internalShowHistory, setInternalShowHistory] = useState(false)
 
   // 新增状态：角色选择、评分标准显示、进步追踪
   const [selectedPersonaIds, setSelectedPersonaIds] = useState<string[]>([])
   const [showCriteria, setShowCriteria] = useState(false)
   const [showProgress, setShowProgress] = useState(false)
+  const requestInFlightRef = useRef(false)
+  const deletingRecordIdsRef = useRef(new Set<string>())
+  const [deletingRecordIds, setDeletingRecordIds] = useState<Set<string>>(new Set())
   
   // 使用外部控制的showHistory，如果没有则使用内部状态
   const showHistory = externalShowHistory !== undefined ? externalShowHistory : internalShowHistory
@@ -72,39 +161,59 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
   useEffect(() => {
     const records = getQAPracticeRecords(book.id)
     setQaRecords(records)
+    const activeRecord = selectActiveQARecord(records)
+    setCurrentRecord(activeRecord)
+    setAnswers(activeRecord
+      ? Object.fromEntries(activeRecord.questions.flatMap((question, index) =>
+          !question.passed && question.userAnswer ? [[index, question.userAnswer]] : []
+        ))
+      : {})
+    setErrorMessage(null)
   }, [book.id])
+
+  const bestTeachingContent = getBestPassedTeachingContent(book.practiceRecords)
+  const hasPassedTeaching = bestTeachingContent !== undefined
+
+  const getRequestErrorMessage = (error: unknown, action: 'generate' | 'evaluate') => {
+    if (error instanceof Error && error.message === AI_DATA_CONSENT_REQUIRED) {
+      return lang === 'zh'
+        ? '请先在设置中同意 AI 数据传输，再使用角色问答。'
+        : 'Please consent to AI data transfer in Settings before using role-based Q&A.'
+    }
+
+    if (action === 'generate') {
+      return lang === 'zh'
+        ? '问题生成失败，请检查网络和 API Key 后重试。'
+        : 'Question generation failed. Check your network and API key, then try again.'
+    }
+
+    return lang === 'zh'
+      ? '答案评估失败，你填写的内容已保留，请检查网络和 API Key 后重试。'
+      : 'Answer evaluation failed. Your answers were kept; check your network and API key, then try again.'
+  }
 
   // 生成新问题
   const handleGenerateQuestions = async () => {
-    if (!apiKey) return
-
-    // 开始问答时，如果还是未读状态，改为在读
-    if (book.status === 'unread') {
-      updateBook(book.id, { status: 'reading' })
-      if (onBookUpdate) {
-        onBookUpdate()
-      }
+    if (requestInFlightRef.current) return
+    if (!apiKey) {
+      setErrorMessage(lang === 'zh' ? '请先在设置中填写 API Key。' : 'Please add an API key in Settings first.')
+      return
+    }
+    if (!bestTeachingContent) {
+      setErrorMessage(lang === 'zh'
+        ? '请先完成并通过教学模拟（60 分及以上），再生成角色问题。'
+        : 'Pass the teaching simulation with 60 or above before generating questions.')
+      return
     }
 
+    requestInFlightRef.current = true
     setLoading(true)
+    setErrorMessage(null)
     try {
       const client = await createDeepSeekClient(apiKey)
 
-      // 获取最高分的教学实践内容
-      let bestTeachingContent: string | undefined
-      if (book.practiceRecords && book.practiceRecords.length > 0) {
-        const bestRecord = book.practiceRecords.reduce((best, current) =>
-          current.scores.overall > best.scores.overall ? current : best
-        )
-        bestTeachingContent = bestRecord.content
-      }
-
       // 使用用户选择的角色，如果没有则使用默认角色
-      let personasToUse = selectedPersonaIds.slice(0, PERSONA_QUESTION_COUNT)
-      if (personasToUse.length === 0) {
-        // 默认使用3个不同类型的角色
-        personasToUse = ['elementary', 'professional', 'scientist']
-      }
+      const personasToUse = normalizePersonaSelection(selectedPersonaIds)
 
       // 获取角色详细信息
       const selectedPersonas = PERSONA_TYPES.filter(p => personasToUse.includes(p.id))
@@ -118,41 +227,54 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         selectedPersonas
       )
 
-      if (questions.length > 0) {
-        const newRecord: QAPracticeRecord = {
-          id: '',
-          bookId: book.id,
-          questions: questions.map(q => ({
-            persona: q.persona as any,
-            personaName: q.personaName,
-            question: q.question
-          })),
-          allPassed: false,
-          createdAt: 0,
-          updatedAt: 0
-        }
+      if (questions.length !== PERSONA_QUESTION_COUNT) {
+        throw new Error('AI returned an invalid question set')
+      }
 
-        const savedRecord = addQAPracticeRecord(book.id, newRecord)
-        setCurrentRecord(savedRecord)
-        setQaRecords(getQAPracticeRecords(book.id))
-        setAnswers({})
+      const newRecord: QAPracticeRecord = {
+        id: '',
+        bookId: book.id,
+        questions: questions.map(q => ({
+          persona: q.persona as any,
+          personaName: q.personaName,
+          question: q.question
+        })),
+        allPassed: false,
+        createdAt: 0,
+        updatedAt: 0
+      }
 
-        if (onBookUpdate) {
-          onBookUpdate()
-        }
+      await flushPendingStoreWrites()
+      const savedRecord = addQAPracticeRecord(book.id, newRecord)
+      await flushPendingStoreWrites()
+      setCurrentRecord(savedRecord)
+      setQaRecords(getQAPracticeRecords(book.id))
+      setAnswers({})
+
+      if (onBookUpdate) {
+        onBookUpdate()
       }
     } catch (error) {
+      await reloadBookFromPersistence(book.id).catch(() => undefined)
       logger.error('生成问题失败:', error)
+      setErrorMessage(getRequestErrorMessage(error, 'generate'))
     } finally {
+      requestInFlightRef.current = false
       setLoading(false)
     }
   }
 
   // 提交答案
   const handleSubmitAnswers = async () => {
-    if (!currentRecord || !apiKey) return
-    
+    if (requestInFlightRef.current) return
+    if (!currentRecord || !apiKey) {
+      setErrorMessage(lang === 'zh' ? '请先在设置中填写 API Key。' : 'Please add an API key in Settings first.')
+      return
+    }
+
+    requestInFlightRef.current = true
     setLoading(true)
+    setErrorMessage(null)
     try {
       const client = await createDeepSeekClient(apiKey)
       
@@ -168,7 +290,16 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
           answer: answers[q.index]
         }))
       
-      if (questionsToEvaluate.length === 0) return
+      if (questionsToEvaluate.length === 0) {
+        setErrorMessage(lang === 'zh' ? '请先填写需要重答的问题。' : 'Please answer the questions that still need work.')
+        return
+      }
+      if (questionsToEvaluate.some(question => question.answer.length > MAX_AI_ANSWER_LENGTH)) {
+        setErrorMessage(lang === 'zh'
+          ? `每题回答不能超过 ${MAX_AI_ANSWER_LENGTH.toLocaleString()} 个字符。`
+          : `Each answer cannot exceed ${MAX_AI_ANSWER_LENGTH.toLocaleString()} characters.`)
+        return
+      }
       
       const evaluations = await evaluatePersonaAnswers(
         client,
@@ -176,64 +307,98 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         questionsToEvaluate.map(({ index: _index, ...question }) => question),
         book.documentContent
       )
+      const matchedEvaluations = matchEvaluationsToQuestions(questionsToEvaluate, evaluations)
+      if (matchedEvaluations.length !== questionsToEvaluate.length) {
+        throw new Error('AI returned an incomplete evaluation set')
+      }
       
       // 更新记录
       const updatedQuestions = [...currentRecord.questions]
       const answersByIndex = new Map(questionsToEvaluate.map(question => [question.index, question.answer]))
-      matchEvaluationsToQuestions(questionsToEvaluate, evaluations).forEach(({ index, evaluation }) => {
-        // 客户端自己计算 passed，不信任 AI 返回的值
-        const passed = evaluation.score >= 60
-
-        updatedQuestions[index] = {
-          ...updatedQuestions[index],
-          userAnswer: answersByIndex.get(index),
-          answeredAt: Date.now(),
-          aiReview: evaluation.review,
-          score: evaluation.score,
-          passed,
-          reviewedAt: Date.now()
-        }
+      matchedEvaluations.forEach(({ index, evaluation }) => {
+        const answer = answersByIndex.get(index)
+        if (!answer) return
+        updatedQuestions[index] = appendQuestionAttempt(updatedQuestions[index], answer, evaluation, Date.now())
       })
       
-      const allPassed = updatedQuestions.every(q => q.passed)
+      const allPassed = isQAPracticeRecordComplete(updatedQuestions)
       
+      await flushPendingStoreWrites()
       updateQAPracticeRecord(book.id, currentRecord.id, {
         questions: updatedQuestions,
         allPassed
       })
+      await flushPendingStoreWrites()
       
       const updatedRecord = getQAPracticeRecords(book.id).find(r => r.id === currentRecord.id)
       if (updatedRecord) {
         setCurrentRecord(updatedRecord)
       }
       setQaRecords(getQAPracticeRecords(book.id))
-      setAnswers({}) // 清空输入
+      setAnswers(Object.fromEntries(updatedQuestions.flatMap((question, index) =>
+        !question.passed && question.userAnswer ? [[index, question.userAnswer]] : []
+      )))
       
       if (onBookUpdate) {
         onBookUpdate()
       }
       
     } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+      if (persistedBook) {
+        const records = getQAPracticeRecords(book.id)
+        const persistedRecord = records.find(record => record.id === currentRecord?.id) || selectActiveQARecord(records)
+        setQaRecords(records)
+        setCurrentRecord(persistedRecord)
+      }
       logger.error('评估失败:', error)
+      setErrorMessage(getRequestErrorMessage(error, 'evaluate'))
     } finally {
+      requestInFlightRef.current = false
       setLoading(false)
     }
   }
 
-  const handleDeleteRecord = (recordId: string) => {
-    deleteQAPracticeRecord(book.id, recordId)
-    setQaRecords(getQAPracticeRecords(book.id))
-    if (currentRecord?.id === recordId) {
-      setCurrentRecord(null)
-    }
-    if (onBookUpdate) {
-      onBookUpdate()
+  const handleDeleteRecord = async (recordId: string) => {
+    if (deletingRecordIdsRef.current.has(recordId)) return
+    deletingRecordIdsRef.current.add(recordId)
+    setDeletingRecordIds(new Set(deletingRecordIdsRef.current))
+    setErrorMessage(null)
+    try {
+      await flushPendingStoreWrites()
+      deleteQAPracticeRecord(book.id, recordId)
+      await flushPendingStoreWrites()
+      const records = getQAPracticeRecords(book.id)
+      setQaRecords(records)
+      if (currentRecord?.id === recordId) {
+        const activeRecord = selectActiveQARecord(records)
+        setCurrentRecord(activeRecord)
+        setAnswers(activeRecord
+          ? Object.fromEntries(activeRecord.questions.flatMap((question, index) =>
+              !question.passed && question.userAnswer ? [[index, question.userAnswer]] : []
+            ))
+          : {})
+      }
+      onBookUpdate?.()
+    } catch (error) {
+      await reloadBookFromPersistence(book.id).catch(() => undefined)
+      const records = getQAPracticeRecords(book.id)
+      const activeRecord = selectActiveQARecord(records)
+      setQaRecords(records)
+      setCurrentRecord(activeRecord)
+      logger.error('Q&A record deletion failed:', error)
+      setErrorMessage(lang === 'zh'
+        ? '问答记录删除失败，原记录已恢复。请稍后重试。'
+        : 'The Q&A record could not be deleted and was restored. Please try again.')
+    } finally {
+      deletingRecordIdsRef.current.delete(recordId)
+      setDeletingRecordIds(new Set(deletingRecordIdsRef.current))
     }
   }
 
   // 将 QA 记录转换为进度记录，用于趋势图
   const getProgressRecords = (): ProgressRecord[] => {
-    return qaRecords.filter(record => record.allPassed).map(record => {
+    return qaRecords.filter(isQAPracticeRecordComplete).map(record => {
       const answeredQuestions = record.questions.filter(q => q.score !== undefined)
       const avgScore = answeredQuestions.length > 0
         ? Math.round(answeredQuestions.reduce((sum, q) => sum + (q.score || 0), 0) / answeredQuestions.length)
@@ -250,14 +415,14 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
           clarity: avgScore,
           overall: avgScore
         },
-        passed: record.allPassed
+        passed: true
       }
     })
   }
 
   const progressRecords = getProgressRecords()
 
-  const hasAnsweredAll = currentRecord?.questions.every(q => q.passed) || false
+  const hasAnsweredAll = currentRecord ? isQAPracticeRecordComplete(currentRecord) : false
   
   // 检查是否所有未通过的问题都有回答（至少有内容）
   const allUnansweredQuestionsHaveAnswers = currentRecord
@@ -311,6 +476,17 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
             : 'AI will analyze your teaching content, find gaps, and ask targeted questions from different perspectives'}
         </p>
 
+        {errorMessage && (
+          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+            <span>{errorMessage}</span>
+            {errorMessage.includes(lang === 'zh' ? '设置' : 'Settings') && onOpenSettings && (
+              <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
+                {lang === 'zh' ? '前往设置' : 'Open Settings'}
+              </button>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <LoadingQuotes lang={lang} quotes={quotes} />
         ) : !currentRecord ? (
@@ -318,7 +494,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
             <div className="text-5xl mb-4">🎭</div>
 
             {/* 角色选择器 */}
-            {book.practiceRecords && book.practiceRecords.length > 0 && (
+            {hasPassedTeaching && (
               <div className="mb-6">
                 <PersonaSelector
                   lang={lang}
@@ -330,7 +506,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
               </div>
             )}
 
-            {book.practiceRecords && book.practiceRecords.length > 0 ? (
+            {hasPassedTeaching ? (
               <>
                 <p className="text-[var(--text-secondary)] mb-4">
                   {lang === 'zh'
@@ -341,6 +517,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                 </p>
                 <button
                   onClick={handleGenerateQuestions}
+                  disabled={loading}
                   className="btn-primary"
                 >
                   {lang === 'zh' ? '生成问题' : 'Generate Questions'}
@@ -350,8 +527,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
               <>
                 <p className="text-yellow-400 mb-4">
                   {lang === 'zh'
-                    ? '⚠️ 请先完成教学模拟，AI 会基于你的教学内容生成针对性的问题'
-                    : '⚠️ Please complete teaching simulation first'}
+                    ? '⚠️ 请先完成并通过教学模拟（60 分及以上），AI 会基于合格的教学内容生成问题'
+                    : '⚠️ Pass the teaching simulation with 60 or above first'}
                 </p>
                 <button
                   disabled
@@ -371,12 +548,13 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                   {lang === 'zh' ? '进度：' : 'Progress: '}
                   {currentRecord.questions.filter(q => q.passed).length} / {currentRecord.questions.length}
                 </span>
-                {currentRecord.allPassed && (
+              {isQAPracticeRecordComplete(currentRecord) && (
                   <span className="text-green-400 text-sm">✓ {lang === 'zh' ? '全部通过' : 'All Passed'}</span>
                 )}
               </div>
-              <button 
+              <button
                 onClick={handleGenerateQuestions}
+                disabled={loading}
                 className="btn-secondary text-sm"
               >
                 {lang === 'zh' ? '重新生成问题' : 'Regenerate'}
@@ -413,12 +591,18 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                     )}
 
                     {!q.passed && (
-                      <textarea
-                        value={answers[idx] || q.userAnswer || ''}
-                        onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
-                        placeholder={lang === 'zh' ? '根据点评重新回答...' : 'Revise your answer using the feedback...'}
-                        className="input-field min-h-[100px] resize-y text-sm mt-3"
-                      />
+                      <>
+                        <textarea
+                          value={answers[idx] || q.userAnswer || ''}
+                          onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
+                          maxLength={MAX_AI_ANSWER_LENGTH}
+                          placeholder={lang === 'zh' ? '根据点评重新回答...' : 'Revise your answer using the feedback...'}
+                          className="input-field min-h-[100px] resize-y text-sm mt-3"
+                        />
+                        <p className="mt-1 text-right text-xs text-[var(--text-secondary)]">
+                          {(answers[idx] || q.userAnswer || '').length.toLocaleString()} / {MAX_AI_ANSWER_LENGTH.toLocaleString()}
+                        </p>
+                      </>
                     )}
 
                     {q.userAnswer && q.aiReview && q.passed && (
@@ -448,7 +632,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                 )}
                 <button
                   onClick={handleSubmitAnswers}
-                  disabled={!canSubmit}
+                  disabled={!canSubmit || loading}
                   className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {lang === 'zh' ? '提交答案' : 'Submit Answers'}
@@ -491,7 +675,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                         {lang === 'zh' ? '通过：' : 'Passed: '}
                         {record.questions.filter(q => q.passed).length} / {record.questions.length}
                       </span>
-                      {record.allPassed && (
+                      {isQAPracticeRecordComplete(record) && (
                         <span className="status-badge status-finished">
                           {lang === 'zh' ? '全部通过' : 'All Passed'}
                         </span>
@@ -501,8 +685,14 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                       <span className="text-xs text-[var(--text-secondary)]">
                         {new Date(record.createdAt).toLocaleString()}
                       </span>
-                      <button onClick={() => handleDeleteRecord(record.id)} className="text-red-400 text-sm">
-                        {lang === 'zh' ? '删除' : 'Delete'}
+                      <button
+                        onClick={() => handleDeleteRecord(record.id)}
+                        disabled={deletingRecordIds.has(record.id)}
+                        className="text-red-400 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {deletingRecordIds.has(record.id)
+                          ? (lang === 'zh' ? '删除中...' : 'Deleting...')
+                          : (lang === 'zh' ? '删除' : 'Delete')}
                       </button>
                     </div>
                   </div>
@@ -518,20 +708,22 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                           )}
                         </div>
                         <p className="text-[var(--text-secondary)] mb-2">{q.question}</p>
-                        {q.userAnswer && (
-                          <>
+                        {getQuestionAttempts(q).map((attempt, attemptIndex) => (
+                          <div key={attemptIndex} className="mt-3 border-t border-[var(--border)] pt-3 first:mt-0 first:border-t-0 first:pt-0">
+                            <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
+                              <span>{lang === 'zh' ? `第 ${attemptIndex + 1} 次回答` : `Attempt ${attemptIndex + 1}`}</span>
+                              <span className={attempt.passed ? 'text-green-400' : 'text-yellow-400'}>
+                                {attempt.score} {lang === 'zh' ? '分' : 'pts'} · {attempt.passed ? (lang === 'zh' ? '通过' : 'Passed') : (lang === 'zh' ? '未通过' : 'Not passed')}
+                              </span>
+                            </div>
                             <p className="text-xs text-[var(--text-secondary)] mb-1">{lang === 'zh' ? '你的回答：' : 'Your answer:'}</p>
-                            <p className="mb-3 whitespace-pre-wrap">{q.userAnswer}</p>
-                          </>
-                        )}
-                        {q.aiReview && (
-                          <>
+                            <p className="mb-3 whitespace-pre-wrap">{attempt.userAnswer}</p>
                             <p className="text-xs text-[var(--text-secondary)] mb-1">
-                              {q.passed ? (lang === 'zh' ? 'AI 点评：' : 'AI Review:') : (lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:')}
+                              {attempt.passed ? (lang === 'zh' ? 'AI 点评：' : 'AI Review:') : (lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:')}
                             </p>
-                            <MarkdownRenderer content={q.aiReview} />
-                          </>
-                        )}
+                            <MarkdownRenderer content={attempt.aiReview} />
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>

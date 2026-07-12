@@ -1,8 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: '费曼读书助手 | Feynman Reader',
@@ -30,6 +27,12 @@ export const viewport: Viewport = {
   ],
 }
 
+const scriptSources = process.env.NODE_ENV === 'development'
+  ? "'self' 'unsafe-inline' 'unsafe-eval'"
+  : "'self' 'unsafe-inline'"
+
+const contentSecurityPolicy = `default-src 'self'; base-uri 'self'; object-src 'none'; script-src ${scriptSources}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.deepseek.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'; upgrade-insecure-requests`
+
 export default function RootLayout({
   children,
 }: {
@@ -38,6 +41,10 @@ export default function RootLayout({
   return (
     <html lang="zh" suppressHydrationWarning>
       <head>
+        <meta
+          httpEquiv="Content-Security-Policy"
+          content={contentSecurityPolicy}
+        />
         {/* P1 新增：PWA 支持 */}
         <link rel="icon" href="/icon-192.png" type="image/png" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
@@ -46,10 +53,10 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="费曼读书助手" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="application-name" content="费曼读书助手" />
-        <meta name="msapplication-TileColor" content="#38bdf8" />
+        <meta name="msapplication-TileColor" content="#0284c7" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className="font-sans">{children}</body>
     </html>
   )
 }

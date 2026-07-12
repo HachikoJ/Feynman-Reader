@@ -48,6 +48,7 @@ test-results
 nul
 
 # Local exports and conversation artifacts
+output/
 *.zip
 FeynmanReader_AI_FinalProject*/
 结课作业-费曼学习法/

@@ -5,6 +5,7 @@
  */
 
 import { Book, NoteRecord, PracticeRecord } from './store'
+import { escapeHTML, textToHTML } from './htmlEscape'
 
 // ============================================================================
 // 通用导出接口
@@ -539,11 +540,11 @@ function generateHTMLExport(books: Book[]): string {
     html += `
   <div class="book">
     <div class="book-header">
-      <span class="book-title">${book.name}</span>
+      <span class="book-title">${escapeHTML(book.name)}</span>
       <span class="badge ${statusClass}">${statusText}</span>
     </div>
     <div class="book-meta">
-      ${book.author ? `<span>作者: ${book.author}</span> | ` : ''}
+      ${book.author ? `<span>作者: ${escapeHTML(book.author)}</span> | ` : ''}
       <span>最佳得分: <span class="score ${scoreClass}">${book.bestScore}/100</span></span>
     </div>
 `
@@ -557,7 +558,7 @@ function generateHTMLExport(books: Book[]): string {
         html += `
       <div class="note">
         <small>${date}</small>
-        <p>${note.content.replace(/\n/g, '<br>')}</p>
+        <p>${textToHTML(note.content)}</p>
       </div>`
       })
       html += `</div>`
@@ -573,8 +574,8 @@ function generateHTMLExport(books: Book[]): string {
         html += `
       <div class="practice">
         <small>${date} - 得分: <span class="score ${practiceScoreClass}">${practice.scores.overall}/100</span></small>
-        <p><strong>教学内容:</strong><br>${practice.content.replace(/\n/g, '<br>')}</p>
-        <p><strong>AI 评估:</strong><br>${practice.aiReview.replace(/\n/g, '<br>')}</p>
+        <p><strong>教学内容:</strong><br>${textToHTML(practice.content)}</p>
+        <p><strong>AI 评估:</strong><br>${textToHTML(practice.aiReview)}</p>
       </div>`
       })
       html += `</div>`

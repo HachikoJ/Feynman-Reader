@@ -3,9 +3,8 @@
  * 支持离线访问和资源缓存
  */
 
-const CACHE_NAME = 'feynman-reading-v1'
-const STATIC_CACHE = 'feynman-static-v1'
-const DYNAMIC_CACHE = 'feynman-dynamic-v1'
+const STATIC_CACHE = 'feynman-static-v2'
+const DYNAMIC_CACHE = 'feynman-dynamic-v2'
 
 // 需要预缓存的静态资源
 const STATIC_ASSETS = [
@@ -53,36 +52,43 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // API 请求：网络优先
+  // API 请求不进入缓存，避免保存可能包含学习内容的响应
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // 克隆响应并缓存
-          const responseClone = response.clone()
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, responseClone)
-          })
-          return response
-        })
-        .catch(() => {
-          // 网络失败时尝试从缓存读取
-          return caches.match(request)
-        })
-    )
+    event.respondWith(fetch(request))
     return
   }
 
+  // 只缓存 GET 请求
+  if (request.method !== 'GET') {
+    return
+  }
+
+  const isAppRoute = ['/', '/privacy', '/privacy/'].includes(url.pathname)
+  const isStaticAsset =
+    url.pathname.startsWith('/_next/static/') ||
+    ['/manifest.json', '/icon-192.png', '/icon-512.png', '/favicon.ico', '/pdf.worker.min.mjs'].includes(url.pathname)
+
+  // 不缓存未知路径，避免任意 URL 把浏览器缓存空间持续撑大。
+  if (!isAppRoute && !isStaticAsset) {
+    event.respondWith(fetch(request))
+    return
+  }
+
+  // 查询参数不参与缓存键，随机参数始终命中同一份公开静态资源。
+  const cacheKey = new Request(`${url.origin}${url.pathname}`, { method: 'GET' })
+
   // 静态资源：缓存优先
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
+    caches.match(cacheKey).then((cachedResponse) => {
       if (cachedResponse) {
         // 后台更新缓存
-        fetch(request).then((response) => {
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, response)
+        fetch(request)
+          .then((response) => {
+            if (response && response.status === 200 && response.type === 'basic') {
+              caches.open(DYNAMIC_CACHE).then((cache) => cache.put(cacheKey, response))
+            }
           })
-        })
+          .catch(() => {})
         return cachedResponse
       }
 
@@ -97,7 +103,7 @@ self.addEventListener('fetch', (event) => {
           // 缓存响应
           const responseClone = response.clone()
           caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(request, responseClone)
+            cache.put(cacheKey, responseClone)
           })
 
           return response

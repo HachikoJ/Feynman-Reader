@@ -8,6 +8,9 @@ interface Props {
   onComplete: () => void
 }
 
+export const ONBOARDING_COMPLETED_KEY = 'feynman-onboarding-completed'
+export const ONBOARDING_VERSION = '3'
+
 // 引导步骤数据
 const onboardingSteps = {
   zh: [
@@ -64,8 +67,8 @@ const onboardingSteps = {
       tips: [
         '可以手动添加书籍',
         '也可以上传文档自动解析',
-        '数据安全存储在本地浏览器',
-        '随时可以导出备份'
+        '学习数据仅保存在当前浏览器',
+        '务必定期在设置中导出备份，平台无法恢复未备份数据'
       ]
     }
   ],
@@ -123,8 +126,8 @@ const onboardingSteps = {
       tips: [
         'Add books manually',
         'Upload documents for auto-parsing',
-        'Data stored securely in your browser',
-        'Export backup anytime'
+        'Learning data is stored only in this browser',
+        'Export backups regularly; the platform cannot recover unbacked-up data'
       ]
     }
   ]
@@ -136,8 +139,8 @@ export default function Onboarding({ lang, onComplete }: Props) {
 
   // 检查是否已经完成过新手引导
   useEffect(() => {
-    const hasCompleted = localStorage.getItem('feynman-onboarding-completed')
-    if (hasCompleted) {
+    const completedVersion = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
+    if (completedVersion === ONBOARDING_VERSION) {
       setShowTour(false)
       onComplete()
     }
@@ -150,14 +153,14 @@ export default function Onboarding({ lang, onComplete }: Props) {
       setCurrentStep(currentStep + 1)
     } else {
       // 完成新手引导
-      localStorage.setItem('feynman-onboarding-completed', 'true')
+      localStorage.setItem(ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION)
       setShowTour(false)
       onComplete()
     }
   }
 
   const handleSkip = () => {
-    localStorage.setItem('feynman-onboarding-completed', 'true')
+    localStorage.setItem(ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION)
     setShowTour(false)
     onComplete()
   }

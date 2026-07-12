@@ -10,8 +10,8 @@ export interface UndoRedoAction {
   type: string
   description: string
   timestamp: number
-  execute: () => void
-  undo: () => void
+  execute: () => void | Promise<void>
+  undo: () => void | Promise<void>
 }
 
 export interface UndoRedoState {
@@ -29,23 +29,25 @@ class UndoRedoManager {
 
   private maxSize = 50 // 最大历史记录数
   private listeners: Set<(state: UndoRedoState) => void> = new Set()
+  private busy = false
 
   /**
    * 执行新操作
    */
-  execute(action: UndoRedoAction) {
-    // 如果有当前操作，先将其推入历史
-    if (this.state.present) {
-      this.state.past.push(this.state.present)
+  async execute(action: UndoRedoAction): Promise<boolean> {
+    if (this.busy) return false
+    this.busy = true
+    try {
+      await action.execute()
+    } catch (e) {
+      logger.error('Action execution failed:', e)
+      return false
+    } finally {
+      this.busy = false
     }
 
-    // 执行操作
-    action.execute()
-
-    // 设置为当前操作
+    if (this.state.present) this.state.past.push(this.state.present)
     this.state.present = { ...action, timestamp: Date.now() }
-
-    // 清空未来（撤销历史）
     this.state.future = []
 
     // 限制历史记录大小
@@ -54,22 +56,25 @@ class UndoRedoManager {
     }
 
     this.notify()
+    return true
   }
 
   /**
    * 撤销
    */
-  undo(): boolean {
-    if (!this.state.present) return false
+  async undo(): Promise<boolean> {
+    if (!this.state.present || this.busy) return false
 
     const present = this.state.present
 
-    // 执行撤销
+    this.busy = true
     try {
-      present.undo()
+      await present.undo()
     } catch (e) {
       logger.error('Undo failed:', e)
       return false
+    } finally {
+      this.busy = false
     }
 
     // 当前操作移入未来
@@ -85,24 +90,23 @@ class UndoRedoManager {
   /**
    * 重做
    */
-  redo(): boolean {
-    if (this.state.future.length === 0) return false
+  async redo(): Promise<boolean> {
+    if (this.state.future.length === 0 || this.busy) return false
 
-    const next = this.state.future.shift()!
+    const next = this.state.future[0]
 
-    // 如果有当前操作，先推入历史
-    if (this.state.present) {
-      this.state.past.push(this.state.present)
-    }
-
-    // 执行重做
+    this.busy = true
     try {
-      next.execute()
+      await next.execute()
     } catch (e) {
       logger.error('Redo failed:', e)
       return false
+    } finally {
+      this.busy = false
     }
 
+    this.state.future.shift()
+    if (this.state.present) this.state.past.push(this.state.present)
     this.state.present = next
 
     this.notify()
@@ -179,8 +183,8 @@ export const undoRedoManager = new UndoRedoManager()
 export const createDeleteBookAction = (
   bookId: string,
   bookData: any,
-  deleteFn: (id: string) => void,
-  addFn: (book: any) => void
+  deleteFn: (id: string) => void | Promise<void>,
+  addFn: (book: any) => void | Promise<void>
 ): UndoRedoAction => ({
   id: `delete-${bookId}-${Date.now()}`,
   type: 'delete_book',
@@ -194,7 +198,7 @@ export const createUpdateBookAction = (
   bookId: string,
   oldData: any,
   newData: any,
-  updateFn: (id: string, data: any) => void
+  updateFn: (id: string, data: any) => void | Promise<void>
 ): UndoRedoAction => ({
   id: `update-${bookId}-${Date.now()}`,
   type: 'update_book',
@@ -226,8 +230,8 @@ export const createAddBookAction = (
 
 export const createBatchDeleteBooksAction = (
   booksData: Array<{ id: string; data: any }>,
-  deleteFn: (ids: string[]) => void,
-  restoreFn: (books: any[]) => void
+  deleteFn: (ids: string[]) => void | Promise<void>,
+  restoreFn: (books: any[]) => void | Promise<void>
 ): UndoRedoAction => ({
   id: `batch-delete-${Date.now()}`,
   type: 'batch_delete_books',

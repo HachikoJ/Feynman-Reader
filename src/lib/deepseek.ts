@@ -18,6 +18,33 @@ export interface PracticeEvaluation {
 
 const SCORE_KEYS = ['accuracy', 'completeness', 'clarity', 'overall'] as const
 
+function parseJsonArray(content: string): unknown[] {
+  const match = content.match(/\[[\s\S]*\]/)
+  if (!match) throw new Error('AI response did not contain a JSON array')
+  const parsed = JSON.parse(match[0])
+  if (!Array.isArray(parsed)) throw new Error('AI response must be a JSON array')
+  return parsed
+}
+
+function boundedText(value: unknown, field: string, maxLength: number): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
+    throw new Error(`AI response contained an invalid ${field}`)
+  }
+  return value.trim()
+}
+
+function parseGeneratedTags(value: unknown): GeneratedTag[] {
+  if (!Array.isArray(value) || value.length > 4) throw new Error('AI response contained invalid tags')
+  return value.map((tag, index) => {
+    if (!tag || typeof tag !== 'object' || Array.isArray(tag)) throw new Error(`Invalid tag ${index}`)
+    const item = tag as Record<string, unknown>
+    return {
+      name: boundedText(item.name, `tag ${index} name`, 50),
+      category: boundedText(item.category, `tag ${index} category`, 50)
+    }
+  })
+}
+
 /**
  * Treat the model response as untrusted input. A malformed score must never
  * become a passing practice record through a client-side fallback.
@@ -120,7 +147,12 @@ ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，�
     max_tokens: 2000
   }))
 
-  return response.choices[0]?.message?.content || '抱歉，生成回答时出现问题。'
+  const content = response.choices[0]?.message?.content?.trim()
+  if (!content) {
+    throw new Error('AI returned an empty response')
+  }
+
+  return content
 }
 
 export async function chatJson(
@@ -220,13 +252,29 @@ ${truncatedContent}
     const responseContent = response.choices[0]?.message?.content || '{}'
     const jsonMatch = responseContent.match(/\{[\s\S]*\}/)
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0])
+      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('AI book information must be an object')
+      }
+      const fallbackName = fileName.replace(/\.[^/.]+$/, '').slice(0, 200) || '未命名书籍'
+      const name = typeof parsed.name === 'string' && parsed.name.trim() && parsed.name.length <= 200
+        ? parsed.name.trim()
+        : fallbackName
+      const author = typeof parsed.author === 'string' && parsed.author.trim() && parsed.author.length <= 100
+        ? parsed.author.trim()
+        : undefined
+      const description = typeof parsed.description === 'string' && parsed.description.trim() && parsed.description.length <= 500
+        ? parsed.description.trim()
+        : undefined
+      const confidence = typeof parsed.confidence === 'number' && Number.isFinite(parsed.confidence)
+        ? Math.max(0, Math.min(100, Math.round(parsed.confidence)))
+        : 0
       return {
-        name: parsed.name || fileName.replace(/\.[^/.]+$/, ''),
-        author: parsed.author || undefined,
-        description: parsed.description || undefined,
-        tags: parsed.tags || [],
-        confidence: parsed.confidence || 50
+        name,
+        author,
+        description,
+        tags: parseGeneratedTags(parsed.tags ?? []),
+        confidence
       }
     }
     
@@ -283,14 +331,10 @@ export async function generateBookTags(
     }))
 
     const content = response.choices[0]?.message?.content || '[]'
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0])
-    }
-    return []
+    return parseGeneratedTags(parseJsonArray(content))
   } catch (error) {
     logger.error('生成标签失败:', error)
-    return []
+    throw error
   }
 }
 
@@ -419,14 +463,28 @@ ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，�
     }))
 
     const content = response.choices[0]?.message?.content || '[]'
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0])
-    }
-    return []
+    const parsed = parseJsonArray(content)
+    if (parsed.length !== selectedPersonas.length) throw new Error('AI returned the wrong number of questions')
+    const byPersona = new Map<string, Record<string, unknown>>()
+    parsed.forEach((value, index) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid question ${index}`)
+      const item = value as Record<string, unknown>
+      const persona = boundedText(item.persona, `question ${index} persona`, 64)
+      if (byPersona.has(persona)) throw new Error('AI returned duplicate personas')
+      byPersona.set(persona, item)
+    })
+    return selectedPersonas.map(persona => {
+      const item = byPersona.get(persona.type)
+      if (!item) throw new Error(`AI omitted persona ${persona.type}`)
+      return {
+        persona: persona.type,
+        personaName: persona.name,
+        question: boundedText(item.question, `${persona.type} question`, 5000)
+      }
+    })
   } catch (error) {
     logger.error('生成问题失败:', error)
-    return []
+    throw error
   }
 }
 
@@ -525,13 +583,28 @@ ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，�
     }))
 
     const content = response.choices[0]?.message?.content || '[]'
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0])
-    }
-    return []
+    const parsed = parseJsonArray(content)
+    if (parsed.length !== questions.length) throw new Error('AI returned the wrong number of evaluations')
+    const expectedPersonas = new Set(questions.map(question => question.persona))
+    const seen = new Set<string>()
+    return parsed.map((value, index) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid evaluation ${index}`)
+      const item = value as Record<string, unknown>
+      const persona = boundedText(item.persona, `evaluation ${index} persona`, 64)
+      if (!expectedPersonas.has(persona) || seen.has(persona)) throw new Error(`Invalid evaluation persona ${persona}`)
+      seen.add(persona)
+      if (typeof item.score !== 'number' || !Number.isInteger(item.score) || item.score < 0 || item.score > 100) {
+        throw new Error(`Invalid evaluation score for ${persona}`)
+      }
+      return {
+        persona,
+        score: item.score,
+        review: boundedText(item.review, `${persona} review`, 10_000),
+        passed: item.score >= 60
+      }
+    })
   } catch (error) {
     logger.error('评分失败:', error)
-    return []
+    throw error
   }
 }

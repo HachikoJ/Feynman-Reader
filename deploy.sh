@@ -1,96 +1,35 @@
 #!/bin/bash
-# 费曼读书助手项目部署脚本（完整版）
-
-echo "=========================================="
-echo "费曼读书助手项目部署"
-echo "=========================================="
+set -euo pipefail
 
 PROJECT_DIR="/root/.openclaw/workspace/Feynman-Reader"
-DEPLOY_PORT=8080
+WEB_ROOT="/var/www/feynman-reader"
+NGINX_CONFIG="/etc/nginx/conf.d/deline.top.conf"
 
-# 1. 安装依赖
-echo "1. 安装项目依赖..."
-cd $PROJECT_DIR
-npm install
+echo "=========================================="
+echo "费曼读书助手静态部署"
+echo "=========================================="
 
-# 2. 构建项目
-echo "2. 构建项目..."
+cd "$PROJECT_DIR"
+
+echo "1. 安装锁定依赖..."
+npm ci
+
+echo "2. 构建静态站点..."
 NODE_ENV=production npm run build
 
-# 3. 启动服务
-echo "3. 启动服务..."
-pm2 delete feynman-reader 2>/dev/null
-pm2 start npm --name "feynman-reader" -- start
+echo "3. 发布静态文件..."
+install -d -m 755 "$WEB_ROOT"
+rsync -a --delete "$PROJECT_DIR/out/" "$WEB_ROOT/"
 
-# 4. 保存 PM2 配置
-echo "4. 保存 PM2 配置..."
-pm2 save
-pm2 startup
+echo "4. 停止旧的 Node 服务（如存在）..."
+pm2 delete feynman-reader 2>/dev/null || true
+pm2 save --force >/dev/null 2>&1 || true
 
-# 5. 更新 Nginx 配置
-echo "5. 更新 Nginx 配置..."
-cat > /etc/nginx/conf.d/deline.top.conf << 'EOF'
-# 主域名配置 - 费曼读书助手项目
-server {
-    listen 80;
-    listen [::]:80;
-    server_name deline.top www.deline.top;
+echo "5. 更新并校验 Nginx 配置..."
+install -m 644 "$PROJECT_DIR/deline.top.conf" "$NGINX_CONFIG"
+/usr/sbin/nginx -t
+systemctl reload nginx
 
-    # 费曼读书助手项目（反向代理）
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 75s;
-    }
-
-    # 培训项目路径（静态文件）
-    location /training {
-        alias /usr/share/nginx/html/training;
-        index index.html;
-        try_files $uri $uri/ /training/index.html;
-    }
-
-    # 禁止访问敏感文件
-    location ~* \.(env|git|svn|htaccess|htpasswd|log|bak|backup|sql|conf|ini)$ {
-        deny all;
-        access_log off;
-        log_not_found off;
-    }
-
-    # 访问日志
-    access_log /var/log/nginx/deline.top.access.log;
-    error_log /var/log/nginx/deline.top.error.log;
-}
-EOF
-
-# 6. 测试并重启 Nginx
-echo "6. 测试并重启 Nginx..."
-/usr/sbin/nginx -t && systemctl reload nginx
-
-echo ""
 echo "=========================================="
-echo "✅ 部署完成！"
+echo "部署完成：https://www.deline.top"
 echo "=========================================="
-echo ""
-echo "🌐 访问地址："
-echo "  主站（费曼读书助手）: http://www.deline.top"
-echo "  培训项目: http://www.deline.top/training"
-echo ""
-echo "📊 管理命令："
-echo "  PM2 状态: pm2 status"
-echo "  PM2 日志: pm2 logs feynman-reader"
-echo "  重启服务: pm2 restart feynman-reader"
-echo "  停止服务: pm2 stop feynman-reader"
-echo ""
-echo "⚠️  重要提示："
-echo "  访问网站时需要配置 DeepSeek API Key"
-echo "  获取地址: https://platform.deepseek.com/api_keys"
-echo ""

@@ -11,6 +11,7 @@
  */
 
 import { logger } from './logger'
+import { normalizeBooks, normalizeSettings } from './backupValidation'
 
 // ============================================================================
 // 类型定义
@@ -46,6 +47,15 @@ export interface PracticeRecord {
 
 export type PersonaType = 'elementary' | 'college' | 'professional' | 'scientist' | 'entrepreneur' | 'teacher' | 'investor' | 'user' | 'competitor' | 'nitpicker'
 
+export interface PersonaAnswerAttempt {
+  userAnswer: string
+  answeredAt: number
+  aiReview: string
+  score: number
+  passed: boolean
+  reviewedAt: number
+}
+
 export interface PersonaQuestion {
   persona: PersonaType
   personaName: string
@@ -56,6 +66,7 @@ export interface PersonaQuestion {
   score?: number
   passed?: boolean
   reviewedAt?: number
+  attempts?: PersonaAnswerAttempt[]
 }
 
 export interface QAPracticeRecord {
@@ -246,7 +257,7 @@ class IndexedDBHelper {
       })
     } catch (error) {
       logger.error(`[IndexedDB] 获取记录失败 [${storeName}]:`, error)
-      return null
+      throw error
     }
   }
 
@@ -263,7 +274,7 @@ class IndexedDBHelper {
       })
     } catch (error) {
       logger.error(`[IndexedDB] 获取所有记录失败 [${storeName}]:`, error)
-      return []
+      throw error
     }
   }
 
@@ -283,8 +294,49 @@ class IndexedDBHelper {
       })
     } catch (error) {
       logger.error(`[IndexedDB] 保存记录失败 [${storeName}]:`, error)
-      return false
+      throw error
     }
+  }
+
+  /** Add a new record and fail when the key already exists. */
+  async add<T>(storeName: string, value: T): Promise<void> {
+    const store = await this.getStore(storeName, 'readwrite')
+    await new Promise<void>((resolve, reject) => {
+      const request = store.add(value)
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  /** Update only when the persisted record still matches the caller's version. */
+  async putIfUnchanged<T extends { id: string; updatedAt: number }>(
+    storeName: string,
+    value: T,
+    expectedUpdatedAt: number
+  ): Promise<void> {
+    const db = await this.init()
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+      let conflictError: Error | null = null
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(conflictError || transaction.error || new Error(`Failed to update ${storeName}`))
+
+      const getRequest = store.get(value.id)
+      getRequest.onerror = () => transaction.abort()
+      getRequest.onsuccess = () => {
+        const existing = getRequest.result as T | undefined
+        if (!existing || existing.updatedAt !== expectedUpdatedAt) {
+          conflictError = new Error(`STALE_LOCAL_DATA:${value.id}`)
+          transaction.abort()
+          return
+        }
+        store.put(value)
+      }
+    })
   }
 
   /**
@@ -303,8 +355,35 @@ class IndexedDBHelper {
       })
     } catch (error) {
       logger.error(`[IndexedDB] 删除记录失败 [${storeName}]:`, error)
-      return false
+      throw error
     }
+  }
+
+  /** Delete only the exact version the caller previously read. */
+  async deleteIfUnchanged(storeName: string, key: string, expectedUpdatedAt: number): Promise<void> {
+    const db = await this.init()
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+      let conflictError: Error | null = null
+
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(conflictError || transaction.error || new Error(`Failed to delete from ${storeName}`))
+
+      const getRequest = store.get(key)
+      getRequest.onerror = () => transaction.abort()
+      getRequest.onsuccess = () => {
+        const existing = getRequest.result as { updatedAt?: number } | undefined
+        if (!existing || existing.updatedAt !== expectedUpdatedAt) {
+          conflictError = new Error(`STALE_LOCAL_DATA:${key}`)
+          transaction.abort()
+          return
+        }
+        store.delete(key)
+      }
+    })
   }
 
   /**
@@ -323,7 +402,7 @@ class IndexedDBHelper {
       })
     } catch (error) {
       logger.error(`[IndexedDB] 清空存储失败 [${storeName}]:`, error)
-      return false
+      throw error
     }
   }
 
@@ -387,7 +466,7 @@ class IndexedDBHelper {
       })
     } catch (error) {
       logger.error(`[IndexedDB] 索引查询失败 [${storeName}.${indexName}]:`, error)
-      return []
+      throw error
     }
   }
 
@@ -413,7 +492,7 @@ class IndexedDBHelper {
       })
     } catch (error) {
       logger.error(`[IndexedDB] 范围查询失败 [${storeName}.${indexName}]:`, error)
-      return []
+      throw error
     }
   }
 
@@ -672,7 +751,12 @@ export async function migrateFromLocalStorage(): Promise<{
     if (settingsData) {
       try {
         const settings = JSON.parse(settingsData)
-        await indexedDB.put(STORE_SETTINGS, { id: 'app', ...settings })
+        const normalized = normalizeSettings({
+          ...settings,
+          quotes: settings?.quotes || settings?.customQuotes || []
+        }, { preserveApiKey: true })
+        if (!normalized.valid) throw new Error(normalized.error)
+        await indexedDB.put(STORE_SETTINGS, { id: 'app', ...normalized.data })
         migratedSettings = true
         logger.info('[Migration] 设置迁移成功')
       } catch (e) {
@@ -685,11 +769,11 @@ export async function migrateFromLocalStorage(): Promise<{
     if (booksData) {
       try {
         const books = JSON.parse(booksData)
-        if (Array.isArray(books)) {
-          const result = await indexedDB.batchPut(STORE_BOOKS, books)
-          migratedBooks = result
-          console.log(`[Migration] 成功迁移 ${migratedBooks} 本书`)
-        }
+        const normalized = normalizeBooks(books)
+        if (!normalized.valid) throw new Error(normalized.error)
+        const result = await indexedDB.batchPut(STORE_BOOKS, normalized.data)
+        migratedBooks = result
+        logger.info(`[Migration] 成功迁移 ${migratedBooks} 本书`)
       } catch (e) {
         errors.push('书籍迁移失败: ' + (e as Error).message)
       }
@@ -718,7 +802,7 @@ export async function migrateFromLocalStorage(): Promise<{
       errors
     }
   } catch (error) {
-    console.error('[Migration] 迁移失败:', error)
+    logger.error('[Migration] 迁移失败:', error)
     errors.push((error as Error).message)
     return {
       success: false,
@@ -772,7 +856,7 @@ export async function rollbackToLocalStorage(): Promise<boolean> {
     logger.info('[Migration] 回滚完成')
     return true
   } catch (error) {
-    console.error('[Migration] 回滚失败:', error)
+    logger.error('[Migration] 回滚失败:', error)
     return false
   }
 }
@@ -813,7 +897,7 @@ export async function initializeDatabase(): Promise<void> {
 
     logger.debug('[IndexedDB] 数据库初始化完成')
   } catch (error) {
-    console.error('[IndexedDB] 数据库初始化失败:', error)
+    logger.error('[IndexedDB] 数据库初始化失败:', error)
     throw error
   }
 }

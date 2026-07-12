@@ -1,0 +1,8 @@
+export const MAX_DOCUMENT_FILE_SIZE = 20 * 1024 * 1024
+export const MAX_DOCUMENT_PAGES = 1000
+export const MAX_DOCUMENT_TEXT_LENGTH = 1_000_000
+export const MAX_BACKUP_FILE_BYTES = 100 * 1024 * 1024
+export const MAX_BOOK_TAGS = 20
+export const MAX_TAG_LENGTH = 50
+export const MAX_AI_ANSWER_LENGTH = 20_000
+export const MAX_NOTE_LENGTH = 200_000

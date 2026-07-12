@@ -4,8 +4,8 @@
   "description": "基于费曼学习法的智能阅读工具，通过\"以教代学\"的方式帮助你深度理解每一本书。",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#38bdf8",
+  "background_color": "#f8fafc",
+  "theme_color": "#0284c7",
   "orientation": "portrait-primary",
   "icons": [
     {
@@ -36,20 +36,6 @@
       "description": "查看我的书架",
       "url": "/?action=bookshelf",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshot-wide.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "/screenshot-narrow.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow"
     }
   ]
 }

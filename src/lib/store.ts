@@ -1,15 +1,21 @@
 import { Language } from './i18n'
 import { logger } from './logger'
+import { BACKUP_DATA_VERSION, normalizeImportData } from './backupValidation'
+import { MAX_BACKUP_FILE_BYTES } from './dataLimits'
+import { createLocalId } from './localId'
+import { clampCompletedPhaseCount } from './learningProgress'
 import {
   initDB,
   getSettings as getIndexedDBSettings,
   saveSettings as saveIndexedDBSettings,
   getBooks as getIndexedDBBooks,
+  getBook as getIndexedDBBook,
   saveBooks as saveIndexedDBBooks,
   saveBook as saveIndexedDBBook,
-  deleteBookById as deleteIndexedDBBook
+  saveExistingBook as saveExistingIndexedDBBook,
+  restoreDeletedBook as restoreDeletedIndexedDBBook,
+  deleteExistingBookById as deleteExistingIndexedDBBook
 } from './db'
-import { indexedDB as indexedDBStorage } from './indexedDB'
 
 export type Theme = 'dark' | 'light' | 'cyber'
 export type BookStatus = 'unread' | 'reading' | 'finished'
@@ -44,6 +50,15 @@ export interface PracticeRecord {
 export type PersonaType = 'elementary' | 'college' | 'professional' | 'scientist' | 'entrepreneur' | 'teacher' | 'investor' | 'user' | 'competitor' | 'nitpicker'
 
 // 角色问答
+export interface PersonaAnswerAttempt {
+  userAnswer: string
+  answeredAt: number
+  aiReview: string
+  score: number
+  passed: boolean
+  reviewedAt: number
+}
+
 export interface PersonaQuestion {
   persona: PersonaType      // 角色类型
   personaName: string       // 角色名称（中文）
@@ -54,6 +69,7 @@ export interface PersonaQuestion {
   score?: number            // 得分 0-100
   passed?: boolean          // 是否通过
   reviewedAt?: number       // 评审时间
+  attempts?: PersonaAnswerAttempt[] // 每次回答与点评，保留未通过记录
 }
 
 // 问答实践记录
@@ -128,11 +144,95 @@ let booksCache: Book[] = []
 let initializationPromise: Promise<void> | null = null
 let settingsWriteQueue = Promise.resolve()
 let booksWriteQueue = Promise.resolve()
+let persistenceErrors: unknown[] = []
+const persistenceErrorListeners = new Set<(error: unknown) => void>()
+
+function reportPersistenceError(error: unknown): void {
+  persistenceErrors.push(error)
+  persistenceErrorListeners.forEach(listener => {
+    try {
+      listener(error)
+    } catch (listenerError) {
+      logger.error('Persistence error listener failed:', listenerError)
+    }
+  })
+}
+
+export function subscribeToPersistenceErrors(listener: (error: unknown) => void): () => void {
+  persistenceErrorListeners.add(listener)
+  return () => persistenceErrorListeners.delete(listener)
+}
 
 function cloneForStorage<T>(value: T): T {
   return typeof structuredClone === 'function'
     ? structuredClone(value)
     : JSON.parse(JSON.stringify(value))
+}
+
+function validScore(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+    ? value
+    : 0
+}
+
+function normalizeBookLearningState(book: Book): Book {
+  const practiceRecords = (book.practiceRecords || []).map(record => {
+    const overall = validScore(record.scores?.overall)
+    return record.passed === (overall >= 60)
+      ? record
+      : { ...record, passed: overall >= 60 }
+  })
+  const qaPracticeRecords = (book.qaPracticeRecords || []).map(record => {
+    const questions = (record.questions || []).map(question => {
+      const attempts = (question.attempts || []).map(attempt => {
+        const score = validScore(attempt.score)
+        return { ...attempt, score, passed: score >= 60 }
+      })
+      const latestAttempt = attempts.at(-1)
+      if (latestAttempt) {
+        return {
+          ...question,
+          userAnswer: latestAttempt.userAnswer,
+          answeredAt: latestAttempt.answeredAt,
+          aiReview: latestAttempt.aiReview,
+          score: latestAttempt.score,
+          passed: latestAttempt.passed,
+          reviewedAt: latestAttempt.reviewedAt,
+          attempts
+        }
+      }
+      if (question.score === undefined) {
+        const { passed: _passed, ...unscoredQuestion } = question
+        return unscoredQuestion
+      }
+      const score = validScore(question.score)
+      return { ...question, score, passed: score >= 60 }
+    })
+    return {
+      ...record,
+      questions,
+      allPassed: isQAPracticeRecordComplete(questions)
+    }
+  })
+  const normalized = {
+    ...book,
+    currentPhase: clampCompletedPhaseCount(book.currentPhase, 6),
+    practiceRecords,
+    qaPracticeRecords
+  }
+  const bestScore = calculateFinalScore(normalized)
+  const hasLearningActivity = normalized.currentPhase > 0 ||
+    (normalized.noteRecords || []).length > 0 ||
+    Object.keys(normalized.responses || {}).length > 0 ||
+    practiceRecords.length > 0 ||
+    qaPracticeRecords.length > 0
+  const status: BookStatus = bestScore > 0
+    ? 'finished'
+    : hasLearningActivity
+      ? 'reading'
+      : 'unread'
+
+  return { ...normalized, bestScore, status }
 }
 
 export async function initializeStore(): Promise<void> {
@@ -159,10 +259,7 @@ export async function initializeStore(): Promise<void> {
       saveSettings(settingsCache)
     }
     const loadedBooks = Array.isArray(books) ? books : []
-    booksCache = loadedBooks.map(book => {
-      const bestScore = calculateFinalScore(book)
-      return book.bestScore === bestScore ? book : { ...book, bestScore }
-    })
+    booksCache = loadedBooks.map(normalizeBookLearningState)
     booksCache.forEach((book, index) => {
       if (book !== loadedBooks[index]) persistBook(book)
     })
@@ -178,12 +275,35 @@ export function getSettings(): AppSettings {
   return settingsCache
 }
 
+export async function reloadSettingsFromPersistence(): Promise<AppSettings> {
+  await settingsWriteQueue
+  const storedSettings = await getIndexedDBSettings()
+  const quotes = storedSettings.quotes || (storedSettings as any).customQuotes || []
+  settingsCache = {
+    ...DEFAULT_SETTINGS,
+    ...storedSettings,
+    theme: storedSettings.theme === 'cyber' ? 'light' : storedSettings.theme,
+    quotes,
+    quotesInitialized: storedSettings.quotesInitialized || false
+  }
+  return settingsCache
+}
+
 export function saveSettings(settings: AppSettings): void {
   settingsCache = settings
   const snapshot = cloneForStorage(settings)
   settingsWriteQueue = settingsWriteQueue
     .then(() => saveIndexedDBSettings(snapshot), () => saveIndexedDBSettings(snapshot))
-    .catch(error => logger.error('Failed to persist settings to IndexedDB:', error))
+    .catch(error => {
+      reportPersistenceError(error)
+      logger.error('Failed to persist settings to IndexedDB:', error)
+    })
+}
+
+export function saveSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): AppSettings {
+  const nextSettings = { ...settingsCache, [key]: value }
+  saveSettings(nextSettings)
+  return nextSettings
 }
 
 export function getBooks(): Book[] {
@@ -191,29 +311,73 @@ export function getBooks(): Book[] {
 }
 
 export function saveBooks(books: Book[]): void {
-  booksCache = [...books]
-  const snapshot = cloneForStorage(books)
+  booksCache = books.map(normalizeBookLearningState)
+  const snapshot = cloneForStorage(booksCache)
   booksWriteQueue = booksWriteQueue
     .then(() => saveIndexedDBBooks(snapshot), () => saveIndexedDBBooks(snapshot))
-    .catch(error => logger.error('Failed to persist books to IndexedDB:', error))
+    .catch(error => {
+      reportPersistenceError(error)
+      logger.error('Failed to persist books to IndexedDB:', error)
+    })
 }
 
 function persistBook(book: Book): void {
   const snapshot = cloneForStorage(book)
   booksWriteQueue = booksWriteQueue
     .then(() => saveIndexedDBBook(snapshot), () => saveIndexedDBBook(snapshot))
-    .catch(error => logger.error('Failed to persist book to IndexedDB:', error))
+    .catch(error => {
+      reportPersistenceError(error)
+      logger.error('Failed to persist book to IndexedDB:', error)
+    })
 }
 
-function persistBookDeletion(id: string): void {
+function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
+  const snapshot = cloneForStorage(book)
   booksWriteQueue = booksWriteQueue
-    .then(() => deleteIndexedDBBook(id), () => deleteIndexedDBBook(id))
-    .catch(error => logger.error('Failed to delete book from IndexedDB:', error))
+    .then(
+      () => saveExistingIndexedDBBook(snapshot, expectedUpdatedAt),
+      () => saveExistingIndexedDBBook(snapshot, expectedUpdatedAt)
+    )
+    .catch(error => {
+      reportPersistenceError(error)
+      logger.error('Failed to update existing book in IndexedDB:', error)
+    })
+}
+
+function persistRestoredBook(book: Book): void {
+  const snapshot = cloneForStorage(book)
+  booksWriteQueue = booksWriteQueue
+    .then(() => restoreDeletedIndexedDBBook(snapshot), () => restoreDeletedIndexedDBBook(snapshot))
+    .catch(error => {
+      reportPersistenceError(error)
+      logger.error('Failed to restore deleted book in IndexedDB:', error)
+    })
+}
+
+function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
+  booksWriteQueue = booksWriteQueue
+    .then(
+      () => deleteExistingIndexedDBBook(id, expectedUpdatedAt),
+      () => deleteExistingIndexedDBBook(id, expectedUpdatedAt)
+    )
+    .catch(error => {
+      reportPersistenceError(error)
+      logger.error('Failed to delete book from IndexedDB:', error)
+    })
+}
+
+export async function flushPendingStoreWrites(): Promise<void> {
+  await Promise.all([settingsWriteQueue, booksWriteQueue])
+  if (persistenceErrors.length === 0) return
+
+  const [error] = persistenceErrors.splice(0, persistenceErrors.length)
+  throw error instanceof Error ? error : new Error('Failed to persist local data')
 }
 
 export function addBook(name: string, author?: string, cover?: string, description?: string, tags?: BookTag[], documentContent?: string): Book {
+  const now = Date.now()
   const newBook: Book = {
-    id: Date.now().toString(),
+    id: createLocalId(),
     name,
     author,
     cover,
@@ -227,8 +391,8 @@ export function addBook(name: string, author?: string, cover?: string, descripti
     practiceRecords: [],
     qaPracticeRecords: [],
     bestScore: 0,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    createdAt: now,
+    updatedAt: now
   }
   booksCache = [newBook, ...booksCache]
   persistBook(newBook)
@@ -262,20 +426,32 @@ export function getAllCategories(): string[] {
 
 export function updateBook(id: string, updates: Partial<Book>): void {
   const existingBook = booksCache.find(book => book.id === id)
-  if (existingBook) {
-    logger.debug('🔄 updateBook:', { id, updates, oldStatus: existingBook.status })
-    const updatedBook = { ...existingBook, ...updates, updatedAt: Date.now() }
-    booksCache = booksCache.map(book => book.id === id ? updatedBook : book)
-    persistBook(updatedBook)
-    logger.debug('🔄 updateBook 完成，新状态:', updatedBook.status)
-  } else {
+  if (!existingBook) {
     logger.error('❌ updateBook: 找不到书籍', id)
+    throw new Error(`BOOK_NOT_FOUND:${id}`)
   }
+
+  logger.debug('🔄 updateBook:', { id, updates, oldStatus: existingBook.status })
+  const updatedBook = normalizeBookLearningState({ ...existingBook, ...updates, updatedAt: Date.now() })
+  booksCache = booksCache.map(book => book.id === id ? updatedBook : book)
+  persistExistingBook(updatedBook, existingBook.updatedAt)
+  logger.debug('🔄 updateBook 完成，新状态:', updatedBook.status)
 }
 
 export function deleteBook(id: string): void {
+  const existingBook = booksCache.find(book => book.id === id)
+  if (!existingBook) throw new Error(`BOOK_NOT_FOUND:${id}`)
   booksCache = booksCache.filter(book => book.id !== id)
-  persistBookDeletion(id)
+  persistBookDeletion(id, existingBook.updatedAt)
+}
+
+export function restoreBook(book: Book): void {
+  const restoredBook = normalizeBookLearningState(cloneForStorage(book))
+  if (booksCache.some(existing => existing.id === restoredBook.id)) {
+    throw new Error(`BOOK_ALREADY_EXISTS:${restoredBook.id}`)
+  }
+  booksCache = [restoredBook, ...booksCache]
+  persistRestoredBook(restoredBook)
 }
 
 /** Reset in-memory state after the browser database has been deleted. */
@@ -285,15 +461,43 @@ export function resetStoreCache(): void {
   initializationPromise = null
   settingsWriteQueue = Promise.resolve()
   booksWriteQueue = Promise.resolve()
+  persistenceErrors = []
 }
 
 export function getBook(id: string): Book | undefined {
   return getBooks().find(b => b.id === id)
 }
 
+export async function reloadBookFromPersistence(id: string): Promise<Book | undefined> {
+  await booksWriteQueue
+  const storedBook = await getIndexedDBBook(id)
+
+  if (!storedBook) {
+    booksCache = booksCache.filter(book => book.id !== id)
+    return undefined
+  }
+
+  const normalizedBook = normalizeBookLearningState(storedBook)
+  booksCache = booksCache.map(book => book.id === id ? normalizedBook : book)
+  if (!booksCache.some(book => book.id === id)) {
+    booksCache = [normalizedBook, ...booksCache]
+  }
+  return normalizedBook
+}
+
+export async function reloadBooksFromPersistence(): Promise<Book[]> {
+  await booksWriteQueue
+  const storedBooks = await getIndexedDBBooks()
+  booksCache = (Array.isArray(storedBooks) ? storedBooks : []).map(normalizeBookLearningState)
+  return getBooks()
+}
+
 function replaceBookInCache(book: Book): void {
-  booksCache = booksCache.map(existing => existing.id === book.id ? book : existing)
-  persistBook(book)
+  const existingBook = booksCache.find(existing => existing.id === book.id)
+  if (!existingBook) throw new Error(`BOOK_NOT_FOUND:${book.id}`)
+  const normalizedBook = normalizeBookLearningState(book)
+  booksCache = booksCache.map(existing => existing.id === book.id ? normalizedBook : existing)
+  persistExistingBook(normalizedBook, existingBook.updatedAt)
 }
 
 
@@ -303,7 +507,8 @@ export function addPracticeRecord(bookId: string, record: Omit<PracticeRecord, '
   
   const newRecord: PracticeRecord = {
     ...record,
-    id: Date.now().toString(),
+    passed: validScore(record.scores.overall) >= 60,
+    id: createLocalId(),
     bookId,
     createdAt: Date.now()
   }
@@ -316,23 +521,6 @@ export function addPracticeRecord(bookId: string, record: Omit<PracticeRecord, '
   updatedBook.bestScore = calculateFinalScore(updatedBook)
   replaceBookInCache(updatedBook)
   
-  logger.debug('📝 addPracticeRecord 保存完成，开始检查状态')
-  
-  // 保存后再检查是否教学和问答都通过了，才能标记为已读
-  const shouldFinish = checkFeynmanComplete(bookId)
-  logger.debug('📝 checkFeynmanComplete 返回:', shouldFinish)
-  
-  if (shouldFinish) {
-    logger.debug('✅ 满足已读条件，更新状态为 finished')
-    updateBook(bookId, { status: 'finished' })
-  } else if (updatedBook.status === 'finished') {
-    logger.debug('⚠️ 不满足已读条件，改回 reading')
-    // 如果之前是已读，但现在不满足条件了（比如重新提交了一个不合格的），改回在读
-    updateBook(bookId, { status: 'reading' })
-  } else {
-    logger.debug('ℹ️ 当前状态:', book.status, '不需要更新')
-  }
-  
   return newRecord
 }
 
@@ -343,7 +531,10 @@ export function getPracticeRecords(bookId: string): PracticeRecord[] {
 
 export function deletePracticeRecord(bookId: string, recordId: string): void {
   const book = getBook(bookId)
-  if (!book || !book.practiceRecords) return
+  if (!book) throw new Error(`BOOK_NOT_FOUND:${bookId}`)
+  if (!book.practiceRecords?.some(record => record.id === recordId)) {
+    throw new Error(`PRACTICE_RECORD_NOT_FOUND:${recordId}`)
+  }
 
   const updatedBook = {
     ...book,
@@ -353,10 +544,6 @@ export function deletePracticeRecord(bookId: string, recordId: string): void {
   updatedBook.bestScore = calculateFinalScore(updatedBook)
   replaceBookInCache(updatedBook)
   
-  // 保存后再检查是否还满足已读条件
-  if (!checkFeynmanComplete(bookId) && updatedBook.status === 'finished') {
-    updateBook(bookId, { status: 'reading' })
-  }
 }
 
 // 问答实践相关函数
@@ -371,8 +558,9 @@ export function addQAPracticeRecord(bookId: string, record: Omit<QAPracticeRecor
   
   const newRecord: QAPracticeRecord = {
     ...record,
-    id: Date.now().toString(),
+    id: createLocalId(),
     bookId,
+    allPassed: isQAPracticeRecordComplete(record.questions),
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
@@ -385,59 +573,36 @@ export function addQAPracticeRecord(bookId: string, record: Omit<QAPracticeRecor
   updatedBook.bestScore = calculateFinalScore(updatedBook)
   replaceBookInCache(updatedBook)
   
-  logger.debug('💬 addQAPracticeRecord 保存完成，开始检查状态')
-  
-  // 保存后再检查是否教学和问答都通过了，才能标记为已读
-  const shouldFinish = checkFeynmanComplete(bookId)
-  logger.debug('💬 checkFeynmanComplete 返回:', shouldFinish)
-  
-  if (shouldFinish) {
-    logger.debug('✅ 满足已读条件，更新状态为 finished')
-    updateBook(bookId, { status: 'finished' })
-  } else if (updatedBook.status === 'finished') {
-    logger.debug('⚠️ 不满足已读条件，改回 reading')
-    updateBook(bookId, { status: 'reading' })
-  } else {
-    logger.debug('ℹ️ 当前状态:', book.status, '不需要更新')
-  }
-  
   return newRecord
 }
 
 export function updateQAPracticeRecord(bookId: string, recordId: string, updates: Partial<QAPracticeRecord>): void {
   const book = getBook(bookId)
-  if (!book || !book.qaPracticeRecords) return
+  if (!book) throw new Error(`BOOK_NOT_FOUND:${bookId}`)
+  if (!book.qaPracticeRecords) throw new Error(`QA_RECORD_NOT_FOUND:${recordId}`)
   
   const index = book.qaPracticeRecords.findIndex(r => r.id === recordId)
-  if (index !== -1) {
-    const qaPracticeRecords = book.qaPracticeRecords.map((record, recordIndex) =>
-      recordIndex === index ? { ...record, ...updates, updatedAt: Date.now() } : record
-    )
-    const updatedBook = { ...book, qaPracticeRecords, updatedAt: Date.now() }
-    updatedBook.bestScore = calculateFinalScore(updatedBook)
-    replaceBookInCache(updatedBook)
-    
-    logger.debug('💬 updateQAPracticeRecord 保存完成，开始检查状态')
-    
-    // 保存后再检查是否教学和问答都通过了
-    const shouldFinish = checkFeynmanComplete(bookId)
-    logger.debug('💬 checkFeynmanComplete 返回:', shouldFinish)
-    
-    if (shouldFinish) {
-      logger.debug('✅ 满足已读条件，更新状态为 finished')
-      updateBook(bookId, { status: 'finished' })
-    } else if (updatedBook.status === 'finished') {
-      logger.debug('⚠️ 不满足已读条件，改回 reading')
-      updateBook(bookId, { status: 'reading' })
-    } else {
-      logger.debug('ℹ️ 当前状态:', book.status, '不需要更新')
+  if (index === -1) throw new Error(`QA_RECORD_NOT_FOUND:${recordId}`)
+
+  const qaPracticeRecords = book.qaPracticeRecords.map((record, recordIndex) => {
+    if (recordIndex !== index) return record
+    const updatedRecord = { ...record, ...updates, updatedAt: Date.now() }
+    return {
+      ...updatedRecord,
+      allPassed: isQAPracticeRecordComplete(updatedRecord.questions)
     }
-  }
+  })
+  const updatedBook = { ...book, qaPracticeRecords, updatedAt: Date.now() }
+  updatedBook.bestScore = calculateFinalScore(updatedBook)
+  replaceBookInCache(updatedBook)
 }
 
 export function deleteQAPracticeRecord(bookId: string, recordId: string): void {
   const book = getBook(bookId)
-  if (!book || !book.qaPracticeRecords) return
+  if (!book) throw new Error(`BOOK_NOT_FOUND:${bookId}`)
+  if (!book.qaPracticeRecords?.some(record => record.id === recordId)) {
+    throw new Error(`QA_RECORD_NOT_FOUND:${recordId}`)
+  }
 
   const updatedBook = {
     ...book,
@@ -447,25 +612,31 @@ export function deleteQAPracticeRecord(bookId: string, recordId: string): void {
   updatedBook.bestScore = calculateFinalScore(updatedBook)
   replaceBookInCache(updatedBook)
   
-  // 保存后再检查是否还满足已读条件
-  if (!checkFeynmanComplete(bookId) && updatedBook.status === 'finished') {
-    updateBook(bookId, { status: 'reading' })
-  }
 }
 
 // 检查是否完成所有费曼实践（教学+问答）
+export function isQAPracticeRecordComplete(recordOrQuestions: QAPracticeRecord | PersonaQuestion[]): boolean {
+  const questions = Array.isArray(recordOrQuestions) ? recordOrQuestions : recordOrQuestions.questions
+  return questions.length === 3 && questions.every(question =>
+    typeof question.score === 'number' &&
+    Number.isFinite(question.score) &&
+    question.score >= 60 &&
+    question.score <= 100
+  )
+}
+
 export function checkFeynmanComplete(bookId: string): boolean {
   const book = getBook(bookId)
   if (!book) return false
   
   // 1. 检查教学实践：取所有记录中的最高分
   const teachingMaxScore = book.practiceRecords && book.practiceRecords.length > 0
-    ? book.practiceRecords.reduce((max, r) => Math.max(max, r.scores.overall), 0)
+    ? book.practiceRecords.reduce((max, r) => Math.max(max, validScore(r.scores?.overall)), 0)
     : 0
   const teachingPassed = teachingMaxScore >= 60
   
   // 2. 只有一组问题全部通过，才允许问答成绩参与完成判定。
-  const completedQARecords = (book.qaPracticeRecords || []).filter(record => record.allPassed && record.questions.length > 0)
+  const completedQARecords = (book.qaPracticeRecords || []).filter(isQAPracticeRecordComplete)
   const qaMaxAvgScore = completedQARecords.reduce((max, record) => {
     const avgScore = record.questions.reduce((sum, question) => sum + (question.score || 0), 0) / record.questions.length
     return Math.max(max, avgScore)
@@ -501,11 +672,11 @@ export function calculateFinalScore(book: Book): number {
 
   // 教学实践最高分
   const teachingMaxScore = book.practiceRecords && book.practiceRecords.length > 0
-    ? book.practiceRecords.reduce((max, r) => Math.max(max, r.scores.overall), 0)
+    ? book.practiceRecords.reduce((max, r) => Math.max(max, validScore(r.scores?.overall)), 0)
     : 0
 
   // 问答未全部通过时不产生综合得分。
-  const completedQARecords = (book.qaPracticeRecords || []).filter(record => record.allPassed && record.questions.length > 0)
+  const completedQARecords = (book.qaPracticeRecords || []).filter(isQAPracticeRecordComplete)
   const qaMaxAvgScore = completedQARecords.reduce((max, record) => {
     const avgScore = record.questions.reduce((sum, question) => sum + (question.score || 0), 0) / record.questions.length
     return Math.max(max, avgScore)
@@ -533,7 +704,7 @@ export function calculateFinalScore(book: Book): number {
 // ============================================================================
 
 // 数据版本号 - 用于数据迁移
-export const DATA_VERSION = 1
+export const DATA_VERSION = BACKUP_DATA_VERSION
 
 // 导出数据的完整结构
 export interface ExportData {
@@ -566,6 +737,9 @@ export function exportAllData(): string {
 export function downloadDataBackup(): void {
   const data = exportAllData()
   const blob = new Blob([data], { type: 'application/json' })
+  if (blob.size > MAX_BACKUP_FILE_BYTES) {
+    throw new Error(`备份文件超过 ${MAX_BACKUP_FILE_BYTES / 1024 / 1024} MB，无法在浏览器中安全导出`)
+  }
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -578,57 +752,19 @@ export function downloadDataBackup(): void {
 
 // 验证导入数据的结构
 export function validateImportData(data: unknown): { valid: boolean; error?: string } {
-  if (!data || typeof data !== 'object') {
-    return { valid: false, error: '数据格式无效' }
-  }
-
-  const importData = data as Partial<ExportData>
-
-  // 检查版本
-  if (typeof importData.version !== 'number') {
-    return { valid: false, error: '缺少数据版本信息' }
-  }
-
-  if (importData.version > DATA_VERSION) {
-    return { valid: false, error: `数据版本过高 (v${importData.version})，请更新应用` }
-  }
-
-  // 检查导出日期
-  if (typeof importData.exportDate !== 'number') {
-    return { valid: false, error: '缺少导出日期信息' }
-  }
-
-  // 检查设置
-  if (!importData.settings || typeof importData.settings !== 'object') {
-    return { valid: false, error: '设置数据无效' }
-  }
-
-  // 检查书籍数据
-  if (!Array.isArray(importData.books)) {
-    return { valid: false, error: '书籍数据无效' }
-  }
-
-  // 验证每本书的结构
-  for (const book of importData.books) {
-    if (!book.id || !book.name) {
-      return { valid: false, error: '书籍数据缺少必要字段' }
-    }
-  }
-
-  return { valid: true }
+  const result = normalizeImportData(data)
+  return result.valid ? { valid: true } : { valid: false, error: result.error }
 }
 
 // 导入数据（仅验证，不应用）
 export function previewImportData(jsonString: string): { valid: boolean; data?: ExportData; error?: string } {
   try {
     const data = JSON.parse(jsonString)
-    const validation = validateImportData(data)
-
-    if (!validation.valid) {
-      return { valid: false, error: validation.error }
+    const result = normalizeImportData(data)
+    if (!result.valid) {
+      return { valid: false, error: result.error }
     }
-
-    return { valid: true, data: data as ExportData }
+    return { valid: true, data: result.data }
   } catch (e) {
     return { valid: false, error: 'JSON 解析失败' }
   }
@@ -640,6 +776,10 @@ export function applyImportData(data: ExportData, options: {
   importBooks?: boolean
   mergeBooks?: boolean  // true = 合并，false = 覆盖
 }): void {
+  const normalized = normalizeImportData(data)
+  if (!normalized.valid) throw new Error(normalized.error)
+  data = normalized.data
+
   const {
     importSettings = true,
     importBooks = true,
@@ -648,7 +788,26 @@ export function applyImportData(data: ExportData, options: {
 
   // 导入设置
   if (importSettings && data.settings) {
-    saveSettings(data.settings)
+    const currentSettings = getSettings()
+    const importedSettings = data.settings
+    saveSettings({
+      ...currentSettings,
+      language: importedSettings.language === 'zh' || importedSettings.language === 'en'
+        ? importedSettings.language
+        : currentSettings.language,
+      theme: importedSettings.theme === 'dark' || importedSettings.theme === 'light'
+        ? importedSettings.theme
+        : currentSettings.theme,
+      hideApiKeyAlert: currentSettings.hideApiKeyAlert,
+      aiDataConsent: currentSettings.aiDataConsent,
+      quotes: Array.isArray(importedSettings.quotes)
+        ? importedSettings.quotes
+        : currentSettings.quotes,
+      quotesInitialized: typeof importedSettings.quotesInitialized === 'boolean'
+        ? importedSettings.quotesInitialized
+        : currentSettings.quotesInitialized,
+      apiKey: currentSettings.apiKey
+    })
   }
 
   // 导入书籍
@@ -703,124 +862,4 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-// ============================================================================
-// API Key 加密存储 (P0 修复)
-// ============================================================================
-
-// 简单的加密/解密函数（使用 Web Crypto API）
-const ENCRYPTION_KEY_NAME = 'feynman-key'
-const ENCRYPTION_SALT = 'feynman-reading-app-salt-v1'
-
-// 生成或获取加密密钥
-async function getCryptoKey(): Promise<CryptoKey | null> {
-  if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) {
-    return null
-  }
-
-  try {
-    await initDB()
-    const storedKey = await indexedDBStorage.get<{ key: string; value: number[] }>(
-      'metadata',
-      ENCRYPTION_KEY_NAME
-    )
-
-    if (storedKey) {
-      // 导入现有密钥
-      const keyData = new Uint8Array(storedKey.value)
-      return await window.crypto.subtle.importKey(
-        'raw',
-        keyData,
-        { name: 'AES-GCM' },
-        false,
-        ['encrypt', 'decrypt']
-      )
-    }
-
-    // 生成新密钥
-    const key = await window.crypto.subtle.generateKey(
-      { name: 'AES-GCM', length: 256 },
-      true,
-      ['encrypt', 'decrypt']
-    )
-
-    // 导出并存储密钥材料
-    const exportedKey = await window.crypto.subtle.exportKey('raw', key)
-    const saved = await indexedDBStorage.put('metadata', {
-      key: ENCRYPTION_KEY_NAME,
-      value: Array.from(new Uint8Array(exportedKey))
-    })
-    if (!saved) throw new Error('Failed to persist encryption key')
-
-    return key
-  } catch (e) {
-    logger.error('Crypto key error:', e)
-    return null
-  }
-}
-
-// 加密 API Key
-export async function encryptApiKey(apiKey: string): Promise<string> {
-  if (!apiKey) return ''
-
-  try {
-    const key = await getCryptoKey()
-    if (!key) return apiKey // 降级：如果不支持加密，返回原始值
-
-    const encoder = new TextEncoder()
-    const data = encoder.encode(apiKey)
-    const iv = window.crypto.getRandomValues(new Uint8Array(12))
-
-    const encrypted = await window.crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      data
-    )
-
-    // 将 IV 和加密数据组合
-    const combined = new Uint8Array(iv.length + encrypted.byteLength)
-    combined.set(iv)
-    combined.set(new Uint8Array(encrypted), iv.length)
-
-    // 转换为 Base64
-    return btoa(String.fromCharCode.apply(null, Array.from(combined)))
-  } catch (e) {
-    logger.error('Encryption error:', e)
-    return apiKey // 降级：返回原始值
-  }
-}
-
-// 解密 API Key
-export async function decryptApiKey(encryptedKey: string): Promise<string> {
-  if (!encryptedKey) return ''
-
-  // 检查是否是未加密的旧格式
-  if (!encryptedKey.includes(':') && encryptedKey.length < 100) {
-    return encryptedKey
-  }
-
-  try {
-    const key = await getCryptoKey()
-    if (!key) return encryptedKey
-
-    // 从 Base64 解码
-    const combined = Uint8Array.from(atob(encryptedKey), c => c.charCodeAt(0))
-
-    // 提取 IV 和加密数据
-    const iv = combined.slice(0, 12)
-    const encrypted = combined.slice(12)
-
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      encrypted
-    )
-
-    const decoder = new TextDecoder()
-    return decoder.decode(decrypted)
-  } catch (e) {
-    logger.error('Decryption error:', e)
-    return encryptedKey // 降级：返回加密值
-  }
 }

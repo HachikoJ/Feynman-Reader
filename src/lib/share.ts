@@ -1,6 +1,7 @@
 import { Language } from './i18n'
 import { Book } from './store'
 import { logger } from './logger'
+import { escapeHTML, textToHTML } from './htmlEscape'
 
 // ============================================================================
 // 协作分享功能 (P2 修复)
@@ -206,10 +207,10 @@ export function generateNoteHTML(book: Book, noteId: string): string {
   return `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px;">
   <div style="background: white; padding: 30px; border-radius: 8px;">
-    <h1 style="margin: 0 0 10px 0; color: #333;">${book.name}</h1>
-    <p style="margin: 0 0 20px 0; color: #666; font-size: 14px;">${book.author || '未知'} · ${date}</p>
+    <h1 style="margin: 0 0 10px 0; color: #333;">${escapeHTML(book.name)}</h1>
+    <p style="margin: 0 0 20px 0; color: #666; font-size: 14px;">${escapeHTML(book.author || '未知')} · ${escapeHTML(date)}</p>
     <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-    <div style="color: #333; line-height: 1.6;">${note.content.replace(/\n/g, '<br>')}</div>
+    <div style="color: #333; line-height: 1.6;">${textToHTML(note.content)}</div>
   </div>
   <p style="text-align: center; color: rgba(255,255,255,0.8); font-size: 12px; margin-top: 15px;">📖 来自费曼读书助手</p>
 </div>
@@ -383,7 +384,7 @@ export async function shareToSocialMedia(
   }
 
   if (shareLink) {
-    window.open(shareLink, '_blank', 'width=600,height=400')
+    window.open(shareLink, '_blank', 'noopener,noreferrer,width=600,height=400')
     return true
   }
 
@@ -438,14 +439,23 @@ export function exportNoteAsMarkdown(book: Book, noteId: string): void {
  * 导出实践记录为 PDF (简化版：导出为 HTML 可打印格式)
  */
 export function exportPracticeAsPDF(book: Book, practiceId: string): void {
-  const practice = book.practiceRecords.find(p => p.id === practiceId)
-  if (!practice) return
+  const html = generatePracticeHTML(book, practiceId)
+  if (!html) return
 
-  const html = `<!DOCTYPE html>
+  const blob = new Blob([html], { type: 'text/html' })
+  const file = new File([blob], `practice-${practiceId}.html`, { type: 'text/html' })
+  downloadFile(file)
+}
+
+export function generatePracticeHTML(book: Book, practiceId: string): string {
+  const practice = book.practiceRecords.find(p => p.id === practiceId)
+  if (!practice) return ''
+
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>${book.name} - 费曼实践报告</title>
+  <title>${escapeHTML(book.name)} - 费曼实践报告</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 20px; }
     h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
@@ -461,7 +471,7 @@ export function exportPracticeAsPDF(book: Book, practiceId: string): void {
   </style>
 </head>
 <body>
-  <h1>${book.name}</h1>
+  <h1>${escapeHTML(book.name)}</h1>
   <div class="meta">
     <p>费曼实践报告</p>
     <p>${new Date(practice.createdAt).toLocaleDateString()}</p>
@@ -469,12 +479,12 @@ export function exportPracticeAsPDF(book: Book, practiceId: string): void {
 
   <div class="section">
     <h2>我的教学内容</h2>
-    <p>${practice.content.replace(/\n/g, '<br>')}</p>
+    <p>${textToHTML(practice.content)}</p>
   </div>
 
   <div class="section">
     <h2>AI 评估</h2>
-    <p>${practice.aiReview.replace(/\n/g, '<br>')}</p>
+    <p>${textToHTML(practice.aiReview)}</p>
   </div>
 
   <div class="section">
@@ -507,8 +517,4 @@ export function exportPracticeAsPDF(book: Book, practiceId: string): void {
   </footer>
 </body>
 </html>`
-
-  const blob = new Blob([html], { type: 'text/html' })
-  const file = new File([blob], `practice-${practiceId}.html`, { type: 'text/html' })
-  downloadFile(file)
 }

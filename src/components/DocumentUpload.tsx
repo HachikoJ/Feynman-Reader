@@ -3,9 +3,11 @@
 import { useState, useRef } from 'react'
 import { Language, t } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
-import { parseDocument, SUPPORTED_FILE_TYPES } from '@/lib/document-parser'
-import { createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
-import { getSettings, addBook, updateBook, BookTag } from '@/lib/store'
+import { MAX_DOCUMENT_FILE_SIZE, parseDocument, SUPPORTED_FILE_TYPES } from '@/lib/document-parser'
+import { AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
+import { getSettings, addBook, flushPendingStoreWrites, reloadBookFromPersistence, BookTag } from '@/lib/store'
+import { MAX_BOOK_TAGS, MAX_TAG_LENGTH } from '@/lib/dataLimits'
+import { detectMaliciousContent, sanitizeTextInput, validateAuthorName, validateBookName, validateContent } from '@/lib/validation'
 
 interface Props {
   lang: Language
@@ -19,7 +21,9 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
   const [step, setStep] = useState<UploadStep>('upload')
   const [error, setError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [analyzedInfo, setAnalyzedInfo] = useState<AnalyzedBookInfo | null>(null)
+  const [analysisWarning, setAnalysisWarning] = useState<string | null>(null)
   const [documentContent, setDocumentContent] = useState<string>('')
   
   // 可编辑的表单字段
@@ -33,6 +37,13 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const descTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileAnalysisInFlightRef = useRef(false)
+  const saveInFlightRef = useRef(false)
+
+  const handleClose = () => {
+    if (fileAnalysisInFlightRef.current || saveInFlightRef.current) return
+    onClose()
+  }
 
   // 自动调整 textarea 高度
   const autoResizeTextarea = (textarea: HTMLTextAreaElement | null) => {
@@ -48,19 +59,17 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
   }
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (fileAnalysisInFlightRef.current) return
     const file = e.target.files?.[0]
     if (!file) return
 
+    fileAnalysisInFlightRef.current = true
     setError(null)
+    setAnalysisWarning(null)
     setStep('analyzing')
     setAnalyzing(true)
 
     try {
-      // 检查文件大小（限制 50MB）
-      if (file.size > 50 * 1024 * 1024) {
-        throw new Error(lang === 'zh' ? '文件大小不能超过 50MB' : 'File size cannot exceed 50MB')
-      }
-
       logger.debug('开始解析文件:', file.name, file.type, file.size)
       
       // 解析文档
@@ -68,21 +77,53 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
       logger.debug('文档解析完成，内容长度:', parsed.content.length)
       setDocumentContent(parsed.content)
 
+      const fallbackInfo: AnalyzedBookInfo = {
+        name: parsed.fileName.replace(/\.[^/.]+$/, '') || (lang === 'zh' ? '未命名书籍' : 'Untitled book'),
+        author: undefined,
+        description: undefined,
+        tags: [],
+        confidence: 0
+      }
+
       // 检查 API Key
       const settings = getSettings()
       if (!settings.apiKey) {
-        setError(lang === 'zh' ? '请先在设置中配置 API Key' : 'Please configure API Key in settings first')
-        setStep('upload')
-        setAnalyzing(false)
+        setAnalyzedInfo(fallbackInfo)
+        setBookName(fallbackInfo.name)
+        setBookAuthor('')
+        setBookDesc('')
+        setBookTags([])
+        setAnalysisWarning(lang === 'zh'
+          ? '未配置 API Key，文档已解析。请手工确认书籍信息后添加。'
+          : 'No API key is configured. The document was parsed; confirm the book details manually.')
+        setStep('confirm')
         return
       }
 
       // AI 分析
       logger.debug('开始 AI 分析...')
-      const client = await createDeepSeekClient(settings.apiKey)
-      const info = await analyzeDocumentForBookInfo(client, parsed.content, parsed.fileName)
-      logger.debug('AI 分析完成:', info)
-      
+      let info = fallbackInfo
+      try {
+        const client = await createDeepSeekClient(settings.apiKey)
+        info = await analyzeDocumentForBookInfo(client, parsed.content, parsed.fileName)
+        logger.debug('AI 分析完成:', info)
+        if (info.confidence === 0) {
+          setAnalysisWarning(lang === 'zh'
+            ? 'AI 未能可靠识别书籍信息，文档已保留，请手工核对后添加。'
+            : 'AI could not reliably identify the book. The document was kept; verify the details manually.')
+        }
+      } catch (analysisError) {
+        logger.error('AI 分析失败，转为手工确认:', analysisError)
+        const consentRequired = analysisError instanceof Error && analysisError.message === AI_DATA_CONSENT_REQUIRED
+        setAnalysisWarning(consentRequired
+          ? (lang === 'zh'
+              ? '尚未同意 AI 数据传输，文档不会发送给 AI。请手工确认信息，或前往设置完成授权。'
+              : 'AI data transfer consent is missing. The document was not sent to AI; confirm manually or enable consent in Settings.')
+          : (lang === 'zh'
+              ? 'AI 分析未完成，文档已保留。请手工确认书籍信息后添加。'
+              : 'AI analysis did not finish. The document was kept; confirm the book details manually.'))
+      }
+
       setAnalyzedInfo(info)
       setBookName(info.name)
       setBookAuthor(info.author || '')
@@ -99,6 +140,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
       setError(err.message || (lang === 'zh' ? '文档解析失败' : 'Failed to parse document'))
       setStep('upload')
     } finally {
+      fileAnalysisInFlightRef.current = false
       setAnalyzing(false)
       // 清空 input 以便重新选择同一文件
       if (fileInputRef.current) {
@@ -109,13 +151,24 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
   const handleAddTag = () => {
     if (!newTagName.trim()) return
+    if (bookTags.length >= MAX_BOOK_TAGS) {
+      setError(lang === 'zh' ? `最多添加 ${MAX_BOOK_TAGS} 个标签` : `You can add up to ${MAX_BOOK_TAGS} tags`)
+      return
+    }
     
     // 如果选择了"其他"，使用自定义分类名
     const finalCategory = newTagCategory === '其他' 
       ? (customCategory.trim() || '其他')
       : newTagCategory
     
-    setBookTags([...bookTags, { name: newTagName.trim(), category: finalCategory }])
+    const cleanName = sanitizeTextInput(newTagName.trim(), MAX_TAG_LENGTH)
+    const cleanCategory = sanitizeTextInput(finalCategory, MAX_TAG_LENGTH)
+    if (detectMaliciousContent(cleanName) || detectMaliciousContent(cleanCategory)) {
+      setError(lang === 'zh' ? '标签包含不安全的内容' : 'The tag contains unsafe content')
+      return
+    }
+    setError(null)
+    setBookTags([...bookTags, { name: cleanName, category: cleanCategory }])
     setNewTagName('')
     setCustomCategory('')
   }
@@ -124,30 +177,64 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
     setBookTags(bookTags.filter((_, i) => i !== index))
   }
 
-  const handleConfirm = () => {
-    if (!bookName.trim()) {
-      setError(lang === 'zh' ? '书名不能为空' : 'Book name is required')
+  const handleConfirm = async () => {
+    if (saveInFlightRef.current) return
+    const nameValidation = validateBookName(bookName)
+    if (!nameValidation.valid) {
+      setError(nameValidation.error || (lang === 'zh' ? '书名无效' : 'Invalid book name'))
+      return
+    }
+    const authorValidation = validateAuthorName(bookAuthor)
+    if (!authorValidation.valid) {
+      setError(authorValidation.error || (lang === 'zh' ? '作者名无效' : 'Invalid author name'))
+      return
+    }
+    const descValidation = validateContent(bookDesc, 500)
+    if (!descValidation.valid) {
+      setError(descValidation.error || (lang === 'zh' ? '简介过长' : 'Description is too long'))
+      return
+    }
+    if (bookTags.length > MAX_BOOK_TAGS || bookTags.some(tag => tag.name.length > MAX_TAG_LENGTH || tag.category.length > MAX_TAG_LENGTH)) {
+      setError(lang === 'zh' ? '标签数量或长度超出限制' : 'Tag count or length exceeds the limit')
+      return
+    }
+    if (detectMaliciousContent(bookName) || detectMaliciousContent(bookAuthor) || detectMaliciousContent(bookDesc)) {
+      setError(lang === 'zh' ? '输入包含不安全的内容' : 'The input contains unsafe content')
       return
     }
 
-    // 添加书籍，包含文档内容
-    const book = addBook(
-      bookName.trim(),
-      bookAuthor.trim() || undefined,
-      undefined,
-      bookDesc.trim() || undefined,
-      bookTags as BookTag[],
-      documentContent // 保存文档内容作为知识库
-    )
-
-    onBookAdded()
-    onClose()
+    saveInFlightRef.current = true
+    setSaving(true)
+    setError(null)
+    let bookId: string | undefined
+    try {
+      await flushPendingStoreWrites()
+      const book = addBook(
+        sanitizeTextInput(bookName.trim(), 200),
+        bookAuthor.trim() ? sanitizeTextInput(bookAuthor.trim(), 100) : undefined,
+        undefined,
+        bookDesc.trim() ? sanitizeTextInput(bookDesc.trim(), 500) : undefined,
+        bookTags as BookTag[],
+        documentContent
+      )
+      bookId = book.id
+      await flushPendingStoreWrites()
+      onBookAdded()
+      onClose()
+    } catch (saveError) {
+      if (bookId) await reloadBookFromPersistence(bookId).catch(() => undefined)
+      logger.error('Document book save failed:', saveError)
+      setError(lang === 'zh' ? '书籍保存失败，文档和填写内容仍保留，请检查浏览器存储后重试。' : 'Saving failed. Your document and form content were kept; check browser storage and try again.')
+    } finally {
+      saveInFlightRef.current = false
+      setSaving(false)
+    }
   }
 
   const categories = ['社科', '心理', '文学', '科技', '经管', '历史', '哲学', '艺术', '生活', '教育', '其他']
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={handleClose}>
       <div className="modal-content max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
           📄 {lang === 'zh' ? '上传文档添加书籍' : 'Upload Document to Add Book'}
@@ -157,8 +244,8 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
           <div className="space-y-4">
             <p className="text-sm text-[var(--text-secondary)]">
               {lang === 'zh' 
-                ? '支持 PDF、Word、Excel、Markdown、TXT、JSON 格式（最大 50MB），AI 将自动分析提取书籍信息'
-                : 'Supports PDF, Word, Excel, Markdown, TXT, JSON (max 50MB). AI will analyze and extract book info'}
+                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB），AI 将自动分析提取书籍信息`
+                : `Supports PDF, DOCX, Markdown, TXT and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). AI will analyze and extract book info`}
             </p>
             
             <div 
@@ -167,7 +254,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
             >
               <div className="text-5xl mb-3">📁</div>
               <p className="text-[var(--text-secondary)]">
-                {lang === 'zh' ? '点击选择文件或拖拽到此处' : 'Click to select or drag file here'}
+                {lang === 'zh' ? '点击选择文件' : 'Click to select a file'}
               </p>
               <p className="text-xs text-[var(--text-secondary)] mt-2">
                 {SUPPORTED_FILE_TYPES.join(', ')}
@@ -182,11 +269,17 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
               className="hidden"
             />
 
-            {error && (
+        {error && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
                 {error}
               </div>
             )}
+          </div>
+        )}
+
+        {analysisWarning && step === 'confirm' && (
+          <div role="status" className="mb-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-300">
+            {analysisWarning}
           </div>
         )}
 
@@ -351,10 +444,10 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
             {/* 操作按钮 */}
             <div className="flex gap-3 pt-2">
-              <button onClick={handleConfirm} className="btn-primary flex-1">
-                ✓ {lang === 'zh' ? '确认添加' : 'Confirm & Add'}
+              <button onClick={handleConfirm} disabled={saving} className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                ✓ {saving ? (lang === 'zh' ? '正在保存...' : 'Saving...') : (lang === 'zh' ? '确认添加' : 'Confirm & Add')}
               </button>
-              <button onClick={onClose} className="btn-secondary flex-1">
+              <button onClick={handleClose} disabled={saving} className="btn-secondary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
                 {lang === 'zh' ? '取消' : 'Cancel'}
               </button>
             </div>
@@ -363,7 +456,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
         {step === 'upload' && (
           <div className="flex justify-end mt-4">
-            <button onClick={onClose} className="btn-secondary">
+            <button onClick={handleClose} disabled={analyzing} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed">
               {lang === 'zh' ? '取消' : 'Cancel'}
             </button>
           </div>

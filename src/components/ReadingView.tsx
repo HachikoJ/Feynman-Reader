@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
-import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, checkFeynmanComplete, getBook } from '@/lib/store'
+import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, checkFeynmanComplete, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
+import { createLocalId } from '@/lib/localId'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
 import { AI_DATA_CONSENT_REQUIRED, chat, chatJson, createDeepSeekClient, parsePracticeEvaluation } from '@/lib/deepseek'
@@ -12,6 +13,14 @@ import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
 import MarkdownRenderer from './MarkdownRenderer'
 import BookRecommendations from './BookRecommendations'
+import {
+  clampCompletedPhaseCount,
+  completePhase,
+  getInitialPhaseIndex,
+  isPhaseCompleted,
+  isPhaseUnlocked
+} from '@/lib/learningProgress'
+import { MAX_AI_ANSWER_LENGTH, MAX_NOTE_LENGTH } from '@/lib/dataLimits'
 
 interface Props {
   book: Book
@@ -27,9 +36,12 @@ type TabType = 'phase' | 'practice' | 'notes' | 'recommendations'
 export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack, onOpenSettings }: Props) {
   const [book, setBook] = useState(initialBook)
   const [activeTab, setActiveTab] = useState<TabType>('phase')
-  // 如果有分析结果，默认显示第一个阶段（索引0），否则显示当前进度
   const [currentPhase, setCurrentPhase] = useState(
-    Object.keys(initialBook.responses || {}).length > 0 ? 0 : initialBook.currentPhase
+    getInitialPhaseIndex(
+      initialBook.currentPhase,
+      LEARNING_PHASES.length,
+      Object.keys(initialBook.responses || {}).length > 0
+    )
   )
   const [responses, setResponses] = useState<Record<string, string>>(initialBook.responses || {})
   const [loading, setLoading] = useState(false)
@@ -38,12 +50,21 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const [aiConsentRequired, setAiConsentRequired] = useState(false)
   const [teachingNote, setTeachingNote] = useState('')
   const [practiceError, setPracticeError] = useState<string | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [savingProgress, setSavingProgress] = useState(false)
   const [noteRecords, setNoteRecords] = useState<NoteRecord[]>(initialBook.noteRecords || [])
   const [newNote, setNewNote] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteError, setNoteError] = useState<string | null>(null)
   const [recommendations, setRecommendations] = useState<string>(initialBook.recommendations || '')
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [showPracticeHistory, setShowPracticeHistory] = useState(false)
   const [qaShowHistory, setQaShowHistory] = useState(false)
+  const analysisInFlightRef = useRef(false)
+  const progressSaveInFlightRef = useRef(false)
+  const practiceSubmissionRef = useRef(false)
+  const practiceDeletionIdsRef = useRef(new Set<string>())
+  const noteMutationInFlightRef = useRef(false)
   
   // 用于滚动定位的ref
   const practiceHistoryRef = useRef<HTMLDivElement>(null)
@@ -79,26 +100,26 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     window.scrollTo({ top: 0, behavior: 'instant' })
   }, [book.id])
 
-  const saveProgress = (updates: Partial<Book>) => {
-    updateBook(book.id, updates)
-    setBook(prev => ({ ...prev, ...updates }))
-  }
-
   const handleAnalyzeAll = async () => {
-    if (!client) return
+    if (analysisInFlightRef.current) return
+    if (!client) {
+      setAnalysisError(aiConsentRequired
+        ? (lang === 'zh' ? '请先在设置中同意 AI 数据传输。' : 'Please consent to AI data transfer in Settings.')
+        : (lang === 'zh' ? 'AI 尚未就绪，请检查 API Key 后重试。' : 'AI is not ready. Check your API key and try again.'))
+      return
+    }
+    analysisInFlightRef.current = true
     setLoading(true)
     setAnalyzingInBackground(true)
-    
-    // 第一次开始学习时，将状态改为"在读"
-    if (book.status === 'unread') {
-      saveProgress({ status: 'reading' })
-    }
+    setAnalysisError(null)
     
     const systemPrompt = generateSystemPrompt(book.name, lang)
     const newResponses: Record<string, string> = { ...responses }
-    
-    // 后台依次分析所有阶段
-    ;(async () => {
+    let hasMarkedAsReading = book.status !== 'unread'
+
+    const failedPhases: string[] = []
+
+    try {
       for (let i = 0; i < LEARNING_PHASES.length; i++) {
         const phase = LEARNING_PHASES[i]
         
@@ -109,44 +130,90 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           const prompt = generatePhasePrompt(book.name, phase.id, lang)
           const response = await chat(client, systemPrompt, prompt, book.documentContent)
           newResponses[phase.id] = response
-          
-          // 实时更新
+
+          await flushPendingStoreWrites()
+          updateBook(book.id, {
+            responses: { ...newResponses },
+            ...(!hasMarkedAsReading ? { status: 'reading' as const } : {})
+          })
+          await flushPendingStoreWrites()
+          const persistedBook = getBook(book.id)
+          if (persistedBook) setBook(persistedBook)
           setResponses({ ...newResponses })
-          saveProgress({ responses: { ...newResponses } })
+          hasMarkedAsReading = true
         } catch (error) {
-          const errorMsg = lang === 'zh' ? '请求失败，请检查 API Key' : 'Request failed'
-          newResponses[phase.id] = errorMsg
+          const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+          if (persistedBook) {
+            setBook(persistedBook)
+            setResponses(persistedBook.responses || {})
+            Object.keys(newResponses).forEach(key => delete newResponses[key])
+            Object.assign(newResponses, persistedBook.responses || {})
+          }
+          logger.error(`Phase analysis failed: ${phase.id}`, error)
+          failedPhases.push(t(lang, `phases.${phase.id}.subtitle`))
         }
       }
-      
-      // 分析完成后，停留在第一个阶段（索引0），等用户手动完成
-      setCurrentPhase(0)
+
+      if (Object.keys(newResponses).length > 0) {
+        setCurrentPhase(0)
+      }
+      if (failedPhases.length > 0) {
+        setAnalysisError(lang === 'zh'
+          ? `${failedPhases.join('、')}分析失败，已成功的阶段已保存，可点击重试继续补齐。`
+          : `${failedPhases.join(', ')} failed. Successful phases were saved; retry to complete the missing phases.`)
+      }
+    } finally {
+      analysisInFlightRef.current = false
       setLoading(false)
       setAnalyzingInBackground(false)
-    })()
+    }
   }
 
   const handlePhaseChange = (idx: number) => {
     setCurrentPhase(idx)
   }
 
-  const handleCompletePhase = () => {
-    // 标记当前查看的阶段为已完成，更新进度
-    if (currentPhase >= book.currentPhase) {
-      const newProgress = Math.min(currentPhase + 1, LEARNING_PHASES.length - 1)
-      saveProgress({ currentPhase: newProgress })
-    }
-    
-    // 如果完成了所有阶段，跳转到实践
-    if (currentPhase === LEARNING_PHASES.length - 1) {
-      setActiveTab('practice')
-    } else {
-      // 否则跳转到下一个阶段
-      setCurrentPhase(currentPhase + 1)
+  const handleCompletePhase = async () => {
+    if (progressSaveInFlightRef.current) return
+    const completedCount = clampCompletedPhaseCount(book.currentPhase, LEARNING_PHASES.length)
+    const newProgress = completePhase(currentPhase, completedCount, LEARNING_PHASES.length)
+
+    progressSaveInFlightRef.current = true
+    setSavingProgress(true)
+    setAnalysisError(null)
+    try {
+      await flushPendingStoreWrites()
+      if (newProgress !== completedCount) updateBook(book.id, { currentPhase: newProgress })
+      await flushPendingStoreWrites()
+      const persistedBook = getBook(book.id)
+      if (persistedBook) setBook(persistedBook)
+
+      if (currentPhase === LEARNING_PHASES.length - 1) {
+        setActiveTab('practice')
+      } else {
+        setCurrentPhase(currentPhase + 1)
+      }
+    } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+      if (persistedBook) setBook(persistedBook)
+      logger.error('Learning progress save failed:', error)
+      setAnalysisError(lang === 'zh'
+        ? '阶段进度保存失败，页面未继续跳转。请检查本地存储后重试。'
+        : 'Phase progress could not be saved. The page did not advance; check local storage and try again.')
+    } finally {
+      progressSaveInFlightRef.current = false
+      setSavingProgress(false)
     }
   }
 
   const handleSubmitPractice = async () => {
+    if (practiceSubmissionRef.current) return
+    if (teachingNote.length > MAX_AI_ANSWER_LENGTH) {
+      setPracticeError(lang === 'zh'
+        ? `教学内容不能超过 ${MAX_AI_ANSWER_LENGTH.toLocaleString()} 个字符。`
+        : `Teaching content cannot exceed ${MAX_AI_ANSWER_LENGTH.toLocaleString()} characters.`)
+      return
+    }
     if (!client || teachingNote.length < 200) {
       if (aiConsentRequired) {
         setPracticeError(lang === 'zh'
@@ -155,13 +222,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       }
       return
     }
+    practiceSubmissionRef.current = true
     setPracticeError(null)
     setLoading(true)
-    
-    // 开始实践时，如果还是未读状态，改为在读
-    if (book.status === 'unread') {
-      saveProgress({ status: 'reading' })
-    }
     
     try {
       const prompt = generateReviewPrompt(book.name, teachingNote, lang)
@@ -190,6 +253,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       }
 
       try {
+        await flushPendingStoreWrites()
         // addPracticeRecord 会自动检查并更新状态
         addPracticeRecord(book.id, {
           content: teachingNote,
@@ -197,6 +261,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           scores: result.scores,
           passed: result.passed
         })
+        await flushPendingStoreWrites()
 
         // 重新获取更新后的 book 数据
         const updatedBook = getBook(book.id)
@@ -206,46 +271,112 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
         setTeachingNote('')
       } catch (error) {
+        const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+        if (persistedBook) setBook(persistedBook)
         logger.error('Practice record save failed:', error)
         setPracticeError(lang === 'zh'
           ? '评分已完成，但保存记录失败。请稍后重试。'
           : 'The evaluation completed, but the record could not be saved. Please try again later.')
       }
     } finally {
+      practiceSubmissionRef.current = false
       setLoading(false)
     }
   }
 
-  const handleDeleteRecord = (recordId: string) => {
-    // deletePracticeRecord 会自动检查并更新状态
-    deletePracticeRecord(book.id, recordId)
-    
-    // 重新获取更新后的 book 数据
-    const updatedBook = getBook(book.id)
-    if (updatedBook) {
-      setBook(updatedBook)
+  const handleDeleteRecord = async (recordId: string) => {
+    if (practiceDeletionIdsRef.current.has(recordId)) return
+    practiceDeletionIdsRef.current.add(recordId)
+    setPracticeError(null)
+    try {
+      await flushPendingStoreWrites()
+      deletePracticeRecord(book.id, recordId)
+      await flushPendingStoreWrites()
+      const updatedBook = getBook(book.id)
+      if (updatedBook) setBook(updatedBook)
+    } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+      if (persistedBook) setBook(persistedBook)
+      logger.error('Practice record deletion failed:', error)
+      setPracticeError(lang === 'zh'
+        ? '练习记录删除失败，原记录已恢复。请稍后重试。'
+        : 'The practice record could not be deleted and was restored. Please try again.')
+    } finally {
+      practiceDeletionIdsRef.current.delete(recordId)
     }
   }
 
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
+    if (noteMutationInFlightRef.current) return
     if (!newNote.trim()) return
+    if (newNote.length > MAX_NOTE_LENGTH) {
+      setNoteError(lang === 'zh'
+        ? `单条笔记不能超过 ${MAX_NOTE_LENGTH.toLocaleString()} 个字符。`
+        : `A note cannot exceed ${MAX_NOTE_LENGTH.toLocaleString()} characters.`)
+      return
+    }
     const newRecord: NoteRecord = {
-      id: Date.now().toString(),
+      id: createLocalId(),
       type: 'note',
       content: newNote.trim(),
       phaseId: LEARNING_PHASES[currentPhase]?.id,
       createdAt: Date.now()
     }
     const updatedRecords = [...noteRecords, newRecord]
-    setNoteRecords(updatedRecords)
-    saveProgress({ noteRecords: updatedRecords })
-    setNewNote('')
+    noteMutationInFlightRef.current = true
+    setNoteSaving(true)
+    setNoteError(null)
+    try {
+      await flushPendingStoreWrites()
+      updateBook(book.id, { noteRecords: updatedRecords })
+      await flushPendingStoreWrites()
+      const persistedBook = getBook(book.id)
+      if (persistedBook) setBook(persistedBook)
+      setNoteRecords(persistedBook?.noteRecords || updatedRecords)
+      setNewNote('')
+    } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+      if (persistedBook) {
+        setBook(persistedBook)
+        setNoteRecords(persistedBook.noteRecords || [])
+      }
+      logger.error('Note save failed:', error)
+      setNoteError(lang === 'zh'
+        ? '笔记保存失败，输入内容已保留，请稍后重试。'
+        : 'The note could not be saved. Your input was kept; please try again.')
+    } finally {
+      noteMutationInFlightRef.current = false
+      setNoteSaving(false)
+    }
   }
 
-  const handleDeleteNote = (noteId: string) => {
+  const handleDeleteNote = async (noteId: string) => {
+    if (noteMutationInFlightRef.current) return
     const updatedRecords = noteRecords.filter(n => n.id !== noteId)
-    setNoteRecords(updatedRecords)
-    saveProgress({ noteRecords: updatedRecords })
+    noteMutationInFlightRef.current = true
+    setNoteSaving(true)
+    setNoteError(null)
+    try {
+      await flushPendingStoreWrites()
+      updateBook(book.id, { noteRecords: updatedRecords })
+      await flushPendingStoreWrites()
+      const persistedBook = getBook(book.id)
+      if (persistedBook) setBook(persistedBook)
+      setNoteRecords(persistedBook?.noteRecords || updatedRecords)
+    } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+      if (persistedBook) {
+        setBook(persistedBook)
+        setNoteRecords(persistedBook.noteRecords || [])
+      }
+      logger.error('Note deletion failed:', error)
+      setNoteError(lang === 'zh'
+        ? '笔记删除失败，原笔记已恢复。请稍后重试。'
+        : 'The note could not be deleted and was restored. Please try again.')
+    } finally {
+      noteMutationInFlightRef.current = false
+      setNoteSaving(false)
+    }
   }
 
   const handleBookUpdate = () => {
@@ -279,9 +410,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const phase = LEARNING_PHASES[currentPhase]
   const phaseResponse = phase ? responses[phase.id] : null
   const practiceRecords = book.practiceRecords || []
-  const teachingPassed = practiceRecords.some(r => r.passed)
+  const completedPhaseCount = clampCompletedPhaseCount(book.currentPhase, LEARNING_PHASES.length)
+  const teachingPassed = practiceRecords.some(r => r.scores.overall >= 60)
   const qaPassed = book.qaPracticeRecords && book.qaPracticeRecords.length > 0
-    ? book.qaPracticeRecords.some(r => r.allPassed)
+    ? book.qaPracticeRecords.some(isQAPracticeRecordComplete)
     : false
   const practiceComplete = teachingPassed && qaPassed
 
@@ -307,8 +439,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-yellow-500/40 bg-yellow-500/10 p-4 text-sm text-yellow-200 rounded-lg">
           <span>
             {lang === 'zh'
-              ? 'AI 功能已暂停，需先确认向 DeepSeek 传输相关学习内容。'
-              : 'AI features are paused until you confirm sending relevant learning content to DeepSeek.'}
+              ? 'AI 功能尚未启用，需先确认向 DeepSeek 传输相关学习内容。'
+              : 'AI features are not enabled until you confirm sending relevant learning content to DeepSeek.'}
           </span>
           <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
             {lang === 'zh' ? '前往设置' : 'Open Settings'}
@@ -356,11 +488,29 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               </p>
               <button
                 onClick={handleAnalyzeAll}
-                disabled={!apiKey}
+                disabled={!client || loading}
                 className="btn-primary text-lg px-8 py-4"
               >
                 {lang === 'zh' ? '🚀 开始 AI 深度分析' : '🚀 Start AI Analysis'}
               </button>
+            </div>
+          )}
+
+          {analysisError && (
+            <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
+              <span>{analysisError}</span>
+              <div className="flex gap-2">
+                {aiConsentRequired && (
+                  <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
+                    {lang === 'zh' ? '前往设置' : 'Open Settings'}
+                  </button>
+                )}
+                {Object.keys(responses).length < LEARNING_PHASES.length && !aiConsentRequired && (
+                  <button onClick={handleAnalyzeAll} disabled={!client || loading} className="btn-secondary text-sm py-2">
+                    {lang === 'zh' ? '重试缺失阶段' : 'Retry Missing Phases'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -398,7 +548,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold">{lang === 'zh' ? '学习进度' : 'Learning Progress'}</h3>
                   <span className="text-sm text-[var(--text-secondary)]">
-                    {Math.min(book.currentPhase + 1, LEARNING_PHASES.length)} / {LEARNING_PHASES.length}
+                    {completedPhaseCount} / {LEARNING_PHASES.length}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -417,13 +567,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                     >
                       <span className="text-2xl mb-1">{p.icon}</span>
                       <span className="text-xs text-center">{t(lang, `phases.${p.id}.subtitle`)}</span>
-                      {responses[p.id] && idx <= book.currentPhase && <span className="text-green-400 text-xs mt-1">✓</span>}
-                      {responses[p.id] && idx > book.currentPhase && <span className="text-yellow-400 text-xs mt-1">○</span>}
+                      {responses[p.id] && isPhaseCompleted(idx, completedPhaseCount) && <span className="text-green-400 text-xs mt-1">✓</span>}
+                      {responses[p.id] && !isPhaseCompleted(idx, completedPhaseCount) && <span className="text-yellow-400 text-xs mt-1">○</span>}
                     </button>
                   ))}
                 </div>
                 <div className="mt-4 progress-bar">
-                  <div className="progress-fill" style={{ width: `${(Math.min(book.currentPhase + 1, LEARNING_PHASES.length) / LEARNING_PHASES.length) * 100}%` }} />
+                  <div className="progress-fill" style={{ width: `${(completedPhaseCount / LEARNING_PHASES.length) * 100}%` }} />
                 </div>
                 
                 {analyzingInBackground && (
@@ -448,23 +598,26 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                   <p className="text-[var(--text-secondary)] mb-6 pl-12">{t(lang, `phases.${phase.id}.desc`)}</p>
 
                   {/* 检查是否可以查看内容 */}
-                  {currentPhase <= book.currentPhase ? (
+                  {isPhaseUnlocked(currentPhase, completedPhaseCount) ? (
                     <>
                       <PhaseResult key={currentPhase} content={responses[phase.id]} lang={lang} />
 
                       {/* 每个阶段都显示完成按钮 */}
-                      {currentPhase < book.currentPhase ? (
+                      {isPhaseCompleted(currentPhase, completedPhaseCount) ? (
                         // 已完成的阶段，显示已完成标记
                         <div className="mt-6 text-center py-3 bg-green-500/10 border border-green-500/30 rounded-xl">
                           <span className="text-green-400">✓ {lang === 'zh' ? '已完成此阶段' : 'Phase Completed'}</span>
                         </div>
                       ) : (
                         // 当前进度的阶段，可以点击完成
-                        <button 
-                          onClick={handleCompletePhase} 
-                          className="mt-6 w-full btn-primary"
+                        <button
+                          onClick={handleCompletePhase}
+                          disabled={savingProgress}
+                          className="mt-6 w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {currentPhase < LEARNING_PHASES.length - 1 
+                          {savingProgress
+                            ? (lang === 'zh' ? '保存中...' : 'Saving...')
+                            : currentPhase < LEARNING_PHASES.length - 1
                             ? (lang === 'zh' ? '✓ 完成此阶段，进入下一步 →' : '✓ Complete & Next →')
                             : (lang === 'zh' ? '✓ 完成学习，去实践 →' : '✓ Complete & Practice →')}
                         </button>
@@ -573,6 +726,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               {book.qaPracticeRecords && book.qaPracticeRecords.length > 0 ? (
                 (() => {
                   const latestRecord = book.qaPracticeRecords[book.qaPracticeRecords.length - 1]
+                  const latestRecordPassed = isQAPracticeRecordComplete(latestRecord)
                   const answeredQuestions = latestRecord.questions.filter(q => q.score !== undefined)
                   const passedQuestions = latestRecord.questions.filter(q => q.passed)
                   const avgScore = answeredQuestions.length > 0
@@ -583,7 +737,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                     <>
                       <div className="flex items-center justify-between">
                         <div>
-                          {latestRecord.allPassed ? (
+                          {latestRecordPassed ? (
                             <div className="text-3xl font-bold text-green-400 mb-1">{avgScore}</div>
                           ) : (
                             <div className="text-3xl font-bold text-yellow-400 mb-1">
@@ -591,17 +745,17 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                             </div>
                           )}
                           <div className="text-xs text-[var(--text-secondary)]">
-                            {latestRecord.allPassed
+                            {latestRecordPassed
                               ? (lang === 'zh' ? '最新平均分' : 'Latest Avg')
                               : (lang === 'zh' ? '已通过问题' : 'Questions passed')}
                           </div>
                         </div>
                         <div className={`px-4 py-2 rounded-xl font-bold ${
-                          latestRecord.allPassed
+                          latestRecordPassed
                             ? 'bg-green-500 text-white'
                             : 'bg-yellow-500 text-white'
                         }`}>
-                          {latestRecord.allPassed
+                          {latestRecordPassed
                             ? (lang === 'zh' ? '✓ 已通过' : '✓ Passed')
                             : (lang === 'zh' ? '未通过' : 'Not Passed')}
                         </div>
@@ -674,6 +828,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                     setTeachingNote(e.target.value)
                     setPracticeError(null)
                   }}
+                  maxLength={MAX_AI_ANSWER_LENGTH}
                   placeholder={t(lang, 'practice.teachPlaceholder')}
                   className="input-field min-h-[250px] resize-y mb-2"
                 />
@@ -686,12 +841,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 
                 <div className="flex items-center justify-between">
                   <span className={`text-sm ${teachingNote.length >= 200 ? 'text-green-400' : 'text-[var(--text-secondary)]'}`}>
-                    {teachingNote.length} / 200 {lang === 'zh' ? '字' : 'chars'}
+                    {teachingNote.length.toLocaleString()} / {MAX_AI_ANSWER_LENGTH.toLocaleString()} {lang === 'zh' ? '字' : 'chars'}
                     {teachingNote.length < 200 && <span className="ml-2 text-yellow-400">({t(lang, 'practice.minChars')})</span>}
                   </span>
                   <button
                     onClick={handleSubmitPractice}
-                    disabled={teachingNote.length < 200 || !apiKey}
+                    disabled={loading || teachingNote.length < 200 || !client}
                     className="btn-primary"
                   >
                     {t(lang, 'practice.getReview')}
@@ -786,6 +941,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             showHistory={qaShowHistory}
             onShowHistoryChange={setQaShowHistory}
             historyRef={qaHistoryRef}
+            onOpenSettings={onOpenSettings}
           />
 
           {/* 相关推荐 - 移到独立 Tab */}
@@ -799,12 +955,22 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             <h2 className="text-xl font-bold mb-4">📝 {t(lang, 'practice.notes')}</h2>
             <textarea
               value={newNote}
-              onChange={e => setNewNote(e.target.value)}
+              onChange={e => {
+                setNewNote(e.target.value)
+                setNoteError(null)
+              }}
+              maxLength={MAX_NOTE_LENGTH}
               placeholder={t(lang, 'practice.notesPlaceholder')}
-              className="input-field min-h-[120px] resize-y mb-4"
+              className="input-field min-h-[120px] resize-y mb-2"
             />
-            <button onClick={handleSaveNote} disabled={!newNote.trim()} className="btn-primary">
-              {lang === 'zh' ? '添加笔记' : 'Add Note'}
+            <div className="mb-4 flex items-center justify-between gap-4 text-xs text-[var(--text-secondary)]">
+              <span className={noteError ? 'text-red-400' : ''}>{noteError || ''}</span>
+              <span className="shrink-0">{newNote.length.toLocaleString()} / {MAX_NOTE_LENGTH.toLocaleString()}</span>
+            </div>
+            <button onClick={handleSaveNote} disabled={!newNote.trim() || noteSaving} className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
+              {noteSaving
+                ? (lang === 'zh' ? '保存中...' : 'Saving...')
+                : (lang === 'zh' ? '添加笔记' : 'Add Note')}
             </button>
           </div>
 
@@ -829,7 +995,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                           {new Date(note.createdAt).toLocaleString()}
                         </span>
                       </div>
-                      <button onClick={() => handleDeleteNote(note.id)} className="text-red-400 text-sm">
+                      <button onClick={() => handleDeleteNote(note.id)} disabled={noteSaving} className="text-red-400 text-sm disabled:opacity-50">
                         {lang === 'zh' ? '删除' : 'Delete'}
                       </button>
                     </div>
@@ -871,9 +1037,22 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               lang={lang}
               quotes={quotes}
               recommendations={recommendations}
-              onRecommendationsChange={(newRecs) => {
+              onRecommendationsChange={async (newRecs) => {
+                await flushPendingStoreWrites()
+                updateBook(book.id, { recommendations: newRecs })
+                try {
+                  await flushPendingStoreWrites()
+                } catch (error) {
+                  const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+                  if (persistedBook) {
+                    setBook(persistedBook)
+                    setRecommendations(persistedBook.recommendations || '')
+                  }
+                  throw error
+                }
+                const persistedBook = getBook(book.id)
+                if (persistedBook) setBook(persistedBook)
                 setRecommendations(newRecs)
-                saveProgress({ recommendations: newRecs })
               }}
               loadingRecommendations={loadingRecommendations}
               onLoadingChange={setLoadingRecommendations}

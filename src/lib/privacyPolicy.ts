@@ -14,7 +14,7 @@ export interface PrivacyPolicyContent {
 export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
   zh: {
     title: '隐私政策',
-    lastUpdated: '最后更新：2025年1月',
+    lastUpdated: '最后更新：2026年7月',
     sections: [
       {
         title: '1. 信息收集',
@@ -31,19 +31,23 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
         content: `本应用使用浏览器的 IndexedDB 功能来存储您的主要数据：
 
 • 主要应用数据存储在您的设备本地
-• 本应用不运营用于转发学习数据的自有服务器
+• 本应用当前不提供学习数据的云端托管或跨设备同步服务
 • 使用 AI 功能时，相关输入会从您的浏览器直接传输给 DeepSeek
 • 您可以通过"数据管理"功能导出备份
-• 清除浏览器数据会导致所有数据丢失`
+• 清理浏览器缓存或网站数据、卸载重装、浏览器更新或重置、切换设备或浏览器用户配置，均可能导致数据永久丢失
+
+本平台当前不提供学习数据的云端存储、同步与恢复服务，因此无法恢复未导出的本地数据。请您主动、定期导出备份；因未及时备份造成的数据丢失需由用户自行承担。`
       },
       {
         title: '3. API Key 使用',
         content: `如果您选择使用 AI 功能：
 
 • API Key 仅用于调用 DeepSeek AI 服务
-• API Key 存储在您的本地浏览器中
+• API Key 存储在当前浏览器的本网站数据中，设置界面默认掩码显示
 • 本应用不收集或转存您的 API Key；调用时浏览器会将其直接发送给 DeepSeek
 • 您可以随时在设置中删除或更换 API Key
+
+浏览器端无法提供类似服务端密钥保险库的安全隔离。能够访问您的设备、浏览器配置、浏览器扩展或本网站运行环境的主体，可能读取该密钥，因此请勿在共享或不受信任的设备上保存。
 
 使用 AI 功能时，可能发送的内容包括书名、作者、简介、文档前 15,000 个字符、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。请勿在这些内容中填写不希望提供给 DeepSeek 的个人敏感信息。
 
@@ -56,13 +60,14 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
         title: '4. 数据安全',
         content: `我们采取以下措施保护您的数据安全：
 
-• 所有输入都经过验证和清理，防止恶意攻击
+• 对书名、作者、导入结构和可点击链接等关键输入做基础校验与协议限制
 • AI 请求由浏览器通过 HTTPS 直接发送至 DeepSeek
 • 定期建议您导出数据备份
 
 但是请注意：
 • 本应用无法防止对您设备的物理访问
 • 共享设备或浏览器可能存在安全风险
+• 基础输入校验只能降低常见风险，不能保证阻止所有恶意输入或第三方扩展行为
 • 请妥善保管您的设备`
       },
       {
@@ -114,7 +119,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
   },
   en: {
     title: 'Privacy Policy',
-    lastUpdated: 'Last Updated: January 2025',
+    lastUpdated: 'Last Updated: July 2026',
     sections: [
       {
         title: '1. Information Collection',
@@ -131,10 +136,12 @@ Unless you actively use AI features, this data stays in your local browser. When
         content: `This app uses your browser's IndexedDB to store its primary data:
 
 • Primary application data is stored locally on your device
-• This app does not operate a server that relays learning data
+• This app currently does not provide cloud hosting or cross-device sync for learning data
 • When you use AI features, relevant input is transmitted directly from your browser to DeepSeek
 • You can export backups via "Data Management"
-• Clearing browser data will result in data loss`
+• Clearing browser cache or site data, reinstalling, updating or resetting the browser, or switching devices or browser profiles may permanently delete your data
+
+The platform currently does not provide cloud storage, sync, or recovery services for learning data and therefore cannot recover local data that was not exported. Export backups proactively and regularly; users are responsible for losses caused by missing backups.`
       },
       {
         title: '3. API Key Usage',

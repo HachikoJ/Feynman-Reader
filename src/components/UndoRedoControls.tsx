@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Language } from '@/lib/i18n'
 import { undoRedoManager, UndoRedoState } from '@/lib/undoRedo'
 
@@ -8,9 +8,22 @@ interface Props {
   lang: Language
 }
 
+export function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (
+    target.isContentEditable ||
+    target.contentEditable === 'true' ||
+    target.getAttribute('contenteditable') === 'true' ||
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT'
+  )
+}
+
 export default function UndoRedoControls({ lang }: Props) {
   const [state, setState] = useState<UndoRedoState>(undoRedoManager.getState())
   const [showHint, setShowHint] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const operationInFlightRef = useRef(false)
 
   useEffect(() => {
     const unsubscribe = undoRedoManager.subscribe((newState) => {
@@ -19,16 +32,40 @@ export default function UndoRedoControls({ lang }: Props) {
     return unsubscribe
   }, [])
 
-  const handleUndo = () => {
-    undoRedoManager.undo()
-    setShowHint(true)
-    setTimeout(() => setShowHint(false), 2000)
+  const handleUndo = async () => {
+    if (operationInFlightRef.current) return
+    operationInFlightRef.current = true
+    setBusy(true)
+    try {
+      const succeeded = await undoRedoManager.undo()
+      if (!succeeded) {
+        window.toast?.error(lang === 'zh' ? '撤销失败，请检查本地存储后重试。' : 'Undo failed. Check local storage and try again.')
+        return
+      }
+      setShowHint(true)
+      setTimeout(() => setShowHint(false), 2000)
+    } finally {
+      operationInFlightRef.current = false
+      setBusy(false)
+    }
   }
 
-  const handleRedo = () => {
-    undoRedoManager.redo()
-    setShowHint(true)
-    setTimeout(() => setShowHint(false), 2000)
+  const handleRedo = async () => {
+    if (operationInFlightRef.current) return
+    operationInFlightRef.current = true
+    setBusy(true)
+    try {
+      const succeeded = await undoRedoManager.redo()
+      if (!succeeded) {
+        window.toast?.error(lang === 'zh' ? '重做失败，请检查本地存储后重试。' : 'Redo failed. Check local storage and try again.')
+        return
+      }
+      setShowHint(true)
+      setTimeout(() => setShowHint(false), 2000)
+    } finally {
+      operationInFlightRef.current = false
+      setBusy(false)
+    }
   }
 
   const canUndo = undoRedoManager.canUndo()
@@ -47,7 +84,7 @@ export default function UndoRedoControls({ lang }: Props) {
         {/* 撤销按钮 */}
         <button
           onClick={handleUndo}
-          disabled={!canUndo}
+          disabled={!canUndo || busy}
           className={`
             flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all font-medium
             ${canUndo
@@ -71,7 +108,7 @@ export default function UndoRedoControls({ lang }: Props) {
         {/* 重做按钮 */}
         <button
           onClick={handleRedo}
-          disabled={!canRedo}
+          disabled={!canRedo || busy}
           className={`
             flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all font-medium
             ${canRedo
@@ -94,7 +131,8 @@ export default function UndoRedoControls({ lang }: Props) {
           <>
             <div className="w-px h-6 bg-[var(--border)]" />
             <button
-              onClick={() => undoRedoManager.clear()}
+              onClick={() => { if (!busy) undoRedoManager.clear() }}
+              disabled={busy}
               className="px-3 py-2.5 rounded-xl text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-400/10 transition-all"
               title={lang === 'zh' ? '清空历史' : 'Clear history'}
             >
@@ -121,16 +159,35 @@ export default function UndoRedoControls({ lang }: Props) {
 // Hook for keyboard shortcuts
 export function useUndoRedoShortcuts() {
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    let shortcutInFlight = false
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (isEditableShortcutTarget(e.target)) return
+
       // Ctrl+Z 撤销
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        undoRedoManager.undo()
+        if (shortcutInFlight) return
+        shortcutInFlight = true
+        try {
+          if (!await undoRedoManager.undo()) {
+            window.toast?.error('撤销失败，请检查本地存储后重试。')
+          }
+        } finally {
+          shortcutInFlight = false
+        }
       }
       // Ctrl+Y 或 Ctrl+Shift+Z 重做
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault()
-        undoRedoManager.redo()
+        if (shortcutInFlight) return
+        shortcutInFlight = true
+        try {
+          if (!await undoRedoManager.redo()) {
+            window.toast?.error('重做失败，请检查本地存储后重试。')
+          }
+        } finally {
+          shortcutInFlight = false
+        }
       }
     }
 

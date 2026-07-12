@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 应用没有服务端接口，静态导出可直接移除线上 Node 渲染与查询参数缓存穿透面。
+  output: 'export',
+  trailingSlash: true,
+
   // 启用严格模式
   reactStrictMode: true,
 
@@ -11,6 +15,7 @@ const nextConfig = {
 
   // 图片优化
   images: {
+    unoptimized: true,
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
@@ -18,10 +23,8 @@ const nextConfig = {
 
   // 编译优化
   compiler: {
-    // 移除 console.log (生产环境)
-    removeConsole: process.env.NODE_ENV === 'production' ? {
-      exclude: ['error', 'warn'],
-    } : false,
+    // 生产构建移除控制台输出，避免把用户内容和内部状态留在浏览器控制台
+    removeConsole: process.env.NODE_ENV === 'production',
   },
 
   // webpack 优化
@@ -49,20 +52,11 @@ const nextConfig = {
           name: 'openai',
           chunks: 'all',
         },
-        // XLSX 单独打包
-        xlsx: {
-          test: /[\\/]node_modules[\\/]xlsx[\\/]/,
-          name: 'xlsx',
-          chunks: 'all',
-        },
       },
     }
 
     return config
   },
-
-  // 输出配置
-  output: 'standalone',
 
   // 压缩
   compress: true,
@@ -70,32 +64,6 @@ const nextConfig = {
   // 生产环境 source map
   productionBrowserSourceMaps: false,
 
-  // 强制 HTTPS（仅生产环境）
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'X-DNS-Prefetch-Control',
-            value: 'on'
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN'
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff'
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin'
-          }
-        ]
-      }
-    ]
-  }
 }
 
 module.exports = nextConfig

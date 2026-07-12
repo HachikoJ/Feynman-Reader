@@ -7,7 +7,10 @@ jest.mock('../store', () => ({
 }))
 
 import {
+  chat,
   DEEPSEEK_MODEL,
+  evaluatePersonaAnswers,
+  generateBookTags,
   generatePersonaQuestions,
   PERSONA_QUESTION_COUNT,
   parsePracticeEvaluation,
@@ -25,6 +28,16 @@ describe('DeepSeek V4 Flash request defaults', () => {
     expect(request.model).toBe('deepseek-v4-flash')
     expect(request.model).toBe(DEEPSEEK_MODEL)
     expect(request.thinking).toEqual({ type: 'disabled' })
+  })
+})
+
+describe('general chat responses', () => {
+  it('rejects an empty response instead of saving fallback text as a completed phase', async () => {
+    const client = {
+      chat: { completions: { create: jest.fn().mockResolvedValue({ choices: [{ message: { content: '   ' } }] }) } }
+    } as unknown as OpenAI
+
+    await expect(chat(client, 'system', 'user')).rejects.toThrow('empty response')
   })
 })
 
@@ -75,12 +88,36 @@ describe('AI data consent', () => {
   })
 })
 
+describe('book tag generation', () => {
+  it('surfaces request failures so the UI can explain why tags were not generated', async () => {
+    const requestError = new Error('request failed')
+    const client = {
+      chat: { completions: { create: jest.fn().mockRejectedValue(requestError) } }
+    } as unknown as OpenAI
+
+    await expect(generateBookTags(client, '测试书籍')).rejects.toBe(requestError)
+  })
+})
+
 describe('persona question generation', () => {
+  it('surfaces question generation request failures', async () => {
+    const requestError = new Error('question request failed')
+    const client = {
+      chat: { completions: { create: jest.fn().mockRejectedValue(requestError) } }
+    } as unknown as OpenAI
+
+    await expect(generatePersonaQuestions(client, '测试书籍')).rejects.toBe(requestError)
+  })
+
   it('limits custom persona combinations to three roles', async () => {
     const create = jest.fn().mockResolvedValue({
       choices: [{
         message: {
-          content: JSON.stringify([{ persona: 'role-1', personaName: '角色 1', question: '问题' }])
+          content: JSON.stringify([
+            { persona: 'role-1', personaName: '伪造名称', question: '问题一' },
+            { persona: 'role-2', personaName: '伪造名称', question: '问题二' },
+            { persona: 'role-3', personaName: '伪造名称', question: '问题三' }
+          ])
         }
       }]
     })
@@ -92,7 +129,7 @@ describe('persona question generation', () => {
       description: { zh: '测试角色', en: 'Test persona' }
     }))
 
-    await generatePersonaQuestions(client, '测试书籍', undefined, undefined, undefined, personas)
+    const questions = await generatePersonaQuestions(client, '测试书籍', undefined, undefined, undefined, personas)
 
     const request = create.mock.calls[0][0] as { messages: Array<{ content: unknown }> }
     const systemPrompt = String(request.messages[0].content)
@@ -102,5 +139,41 @@ describe('persona question generation', () => {
     expect(systemPrompt).toContain('角色 3')
     expect(systemPrompt).not.toContain('角色 4')
     expect(systemPrompt).not.toContain('角色 5')
+    expect(questions).toHaveLength(3)
+    expect(questions[0]).toMatchObject({ persona: 'role-1', personaName: '角色 1' })
+  })
+
+  it('rejects duplicate persona evaluations and derives pass flags locally', async () => {
+    const create = jest.fn().mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify([
+            { persona: 'elementary', score: 70, review: '具体反馈', passed: false },
+            { persona: 'professional', score: 40, review: '需要补充', passed: true }
+          ])
+        }
+      }]
+    })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+    const evaluations = await evaluatePersonaAnswers(client, '测试书籍', [
+      { persona: 'elementary', personaName: '小学生', question: '问题一', answer: '回答一' },
+      { persona: 'professional', personaName: '职场人', question: '问题二', answer: '回答二' }
+    ])
+
+    expect(evaluations).toEqual([
+      { persona: 'elementary', score: 70, review: '具体反馈', passed: true },
+      { persona: 'professional', score: 40, review: '需要补充', passed: false }
+    ])
+  })
+
+  it('surfaces answer evaluation request failures', async () => {
+    const requestError = new Error('evaluation request failed')
+    const client = {
+      chat: { completions: { create: jest.fn().mockRejectedValue(requestError) } }
+    } as unknown as OpenAI
+
+    await expect(evaluatePersonaAnswers(client, '测试书籍', [
+      { persona: 'elementary', personaName: '小学生', question: '问题一', answer: '回答一' }
+    ])).rejects.toBe(requestError)
   })
 })
