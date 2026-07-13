@@ -51,6 +51,8 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
 
 使用 AI 功能时，可能发送的内容包括书名、作者、简介、文档前 15,000 个字符、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。请勿在这些内容中填写不希望提供给 DeepSeek 的个人敏感信息。
 
+**Token 消耗说明**：以系统预设的 deepseek-v4-flash 为例，完成一本书的一次六阶段分析通常约消耗 3万-10万 Tokens。仅填写书籍信息时通常接近较低范围；上传较长文档时消耗会明显增加。该范围不包含角色问答、教学评估、重新生成、相关推荐等额外 AI 调用，仅供使用前估算，实际用量和费用以 DeepSeek 控制台记录为准。
+
 建议：
 • 不要在不安全的设备上保存 API Key
 • 定期更换您的 API Key
@@ -153,6 +155,8 @@ The platform currently does not provide cloud storage, sync, or recovery service
 • You can delete or change your API Key anytime in settings
 
 AI features may send the book title, author, description, the first 15,000 characters of an uploaded document, learning-phase input, teaching-practice content, persona Q&A, and related learning content used to generate recommendations. Do not include personal sensitive information that you do not want to provide to DeepSeek.
+
+**Token usage**: With the preset deepseek-v4-flash model, one complete six-phase analysis typically uses about 30,000-100,000 Tokens. Using book details alone is usually near the lower end, while longer uploaded documents increase usage significantly. This estimate does not include additional AI calls such as persona Q&A, teaching assessment, regeneration, or recommendations. It is provided for planning only; actual usage and cost are shown in your DeepSeek console.
 
 Recommendations:
 • Don't save API Key on public/shared devices

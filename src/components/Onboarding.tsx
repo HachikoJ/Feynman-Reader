@@ -9,7 +9,7 @@ interface Props {
 }
 
 export const ONBOARDING_COMPLETED_KEY = 'feynman-onboarding-completed'
-export const ONBOARDING_VERSION = '3'
+export const ONBOARDING_VERSION = '4'
 
 // 引导步骤数据
 const onboardingSteps = {
@@ -47,6 +47,17 @@ const onboardingSteps = {
         'AI 会根据费曼技巧评估你的笔记质量',
         '实践环节提供多维度评分反馈',
         '帮助你发现知识盲点，深化理解'
+      ]
+    },
+    {
+      title: 'Token 消耗与费用',
+      description: 'AI 功能会消耗你自己的 DeepSeek API 额度，请在开始分析前了解：',
+      icon: '🪙',
+      tips: [
+        '以系统预设的 deepseek-v4-flash 为例，一本书的六阶段分析通常约消耗 3万-10万 Tokens',
+        '仅填写书籍信息时通常接近较低范围；上传较长文档时消耗会明显增加',
+        '角色问答、教学评估、重新生成和相关推荐会产生额外消耗',
+        '该范围仅供参考，实际用量和费用以 DeepSeek 控制台记录为准'
       ]
     },
     {
@@ -106,6 +117,17 @@ const onboardingSteps = {
         'AI evaluates your notes using Feynman technique',
         'Multi-dimensional scoring for practice',
         'Identify knowledge gaps and deepen understanding'
+      ]
+    },
+    {
+      title: 'Token Usage & Cost',
+      description: 'AI features use your own DeepSeek API quota. Before starting an analysis:',
+      icon: '🪙',
+      tips: [
+        'With the preset deepseek-v4-flash model, one complete six-phase analysis typically uses about 30,000-100,000 Tokens',
+        'Book details alone are usually near the lower end; longer uploaded documents increase usage significantly',
+        'Persona Q&A, teaching assessment, regeneration, and recommendations use additional Tokens',
+        'This range is an estimate; actual usage and cost are shown in your DeepSeek console'
       ]
     },
     {

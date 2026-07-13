@@ -7,7 +7,7 @@ import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, 
 import { createLocalId } from '@/lib/localId'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
-import { AI_DATA_CONSENT_REQUIRED, chat, chatJson, createDeepSeekClient, parsePracticeEvaluation } from '@/lib/deepseek'
+import { AI_DATA_CONSENT_REQUIRED, chat, chatJson, createDeepSeekClient, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
 import LoadingQuotes from './LoadingQuotes'
 import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
@@ -48,6 +48,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const [analyzingInBackground, setAnalyzingInBackground] = useState(false)
   const [client, setClient] = useState<OpenAI | null>(null)
   const [aiConsentRequired, setAiConsentRequired] = useState(false)
+  const [apiKeyInvalid, setApiKeyInvalid] = useState(false)
   const [teachingNote, setTeachingNote] = useState('')
   const [practiceError, setPracticeError] = useState<string | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
@@ -74,6 +75,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     let cancelled = false
     setClient(null)
     setAiConsentRequired(false)
+    setApiKeyInvalid(false)
 
     if (apiKey) {
       void createDeepSeekClient(apiKey)
@@ -118,6 +120,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     let hasMarkedAsReading = book.status !== 'unread'
 
     const failedPhases: string[] = []
+    let authenticationFailed = false
 
     try {
       for (let i = 0; i < LEARNING_PHASES.length; i++) {
@@ -149,6 +152,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             Object.keys(newResponses).forEach(key => delete newResponses[key])
             Object.assign(newResponses, persistedBook.responses || {})
           }
+          if (isDeepSeekAuthenticationError(error)) {
+            authenticationFailed = true
+            setApiKeyInvalid(true)
+            logger.warn('DeepSeek rejected the configured API key.')
+            break
+          }
           logger.error(`Phase analysis failed: ${phase.id}`, error)
           failedPhases.push(t(lang, `phases.${phase.id}.subtitle`))
         }
@@ -157,7 +166,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       if (Object.keys(newResponses).length > 0) {
         setCurrentPhase(0)
       }
-      if (failedPhases.length > 0) {
+      if (authenticationFailed) {
+        setAnalysisError(lang === 'zh'
+          ? '当前 DeepSeek API Key 无效或已失效，请前往设置重新填写并保存。'
+          : 'The current DeepSeek API key is invalid or expired. Update it in Settings.')
+      } else if (failedPhases.length > 0) {
         setAnalysisError(lang === 'zh'
           ? `${failedPhases.join('、')}分析失败，已成功的阶段已保存，可点击重试继续补齐。`
           : `${failedPhases.join(', ')} failed. Successful phases were saved; retry to complete the missing phases.`)
@@ -500,12 +513,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
               <span>{analysisError}</span>
               <div className="flex gap-2">
-                {aiConsentRequired && (
+                {(aiConsentRequired || apiKeyInvalid) && (
                   <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
                     {lang === 'zh' ? '前往设置' : 'Open Settings'}
                   </button>
                 )}
-                {Object.keys(responses).length < LEARNING_PHASES.length && !aiConsentRequired && (
+                {Object.keys(responses).length < LEARNING_PHASES.length && !aiConsentRequired && !apiKeyInvalid && (
                   <button onClick={handleAnalyzeAll} disabled={!client || loading} className="btn-secondary text-sm py-2">
                     {lang === 'zh' ? '重试缺失阶段' : 'Retry Missing Phases'}
                   </button>

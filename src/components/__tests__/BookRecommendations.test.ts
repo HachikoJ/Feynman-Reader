@@ -17,6 +17,35 @@ describe('recommendation response validation', () => {
     }).sameAuthor).toHaveLength(1)
   })
 
+  it('normalizes numeric publication years returned by the AI', () => {
+    const parsed = parseRecommendations({
+      sameAuthor: [{ ...book, year: 2021 }],
+      relatedTopics: [],
+      readingPath: []
+    })
+
+    expect(parsed.sameAuthor[0].year).toBe('2021')
+  })
+
+  it('ignores null optional recommendation fields', () => {
+    const parsed = parseRecommendations({
+      sameAuthor: [{ ...book, year: null, category: null }],
+      relatedTopics: [],
+      readingPath: []
+    })
+
+    expect(parsed.sameAuthor[0]).not.toHaveProperty('year')
+    expect(parsed.sameAuthor[0]).not.toHaveProperty('category')
+  })
+
+  it('rejects invalid numeric publication years', () => {
+    expect(() => parseRecommendations({
+      sameAuthor: [{ ...book, year: 2021.5 }],
+      relatedTopics: [],
+      readingPath: []
+    })).toThrow('sameAuthor[0].year')
+  })
+
   it('rejects malformed arrays before rendering', () => {
     expect(() => parseRecommendations({
       sameAuthor: 'not-an-array',
@@ -36,5 +65,10 @@ describe('recommendation response validation', () => {
   it('explains consent failures instead of failing silently', () => {
     expect(getRecommendationErrorMessage(new Error(AI_DATA_CONSENT_REQUIRED), 'zh'))
       .toContain('同意 AI 数据传输')
+  })
+
+  it('explains malformed AI recommendation data without exposing parser details', () => {
+    expect(getRecommendationErrorMessage(new Error('推荐数据字段无效：sameAuthor[0].year'), 'zh'))
+      .toContain('推荐格式不完整')
   })
 })

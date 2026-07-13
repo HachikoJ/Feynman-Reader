@@ -5,6 +5,11 @@ import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { chat, createDeepSeekClient } from '@/lib/deepseek'
+import {
+  generateInteractiveQuestionPrompts,
+  generateInteractiveRegeneratePrompts,
+  RegenerateTone
+} from '@/lib/feynman-prompts'
 import MarkdownRenderer from './MarkdownRenderer'
 import { getThinkingQuestionsForPhase, ThinkingQuestion } from '@/lib/learningModes'
 
@@ -38,7 +43,7 @@ export default function InteractivePhase({
   const [showRegenerateOptions, setShowRegenerateOptions] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateFocus, setRegenerateFocus] = useState('')
-  const [regenerateTone, setRegenerateTone] = useState<'formal' | 'casual' | 'simplified' | 'detailed'>('formal')
+  const [regenerateTone, setRegenerateTone] = useState<RegenerateTone>('formal')
 
   // 问答功能
   const [question, setQuestion] = useState('')
@@ -92,20 +97,12 @@ export default function InteractivePhase({
     setRegenerating(true)
 
     try {
-      const systemPrompt = `你是一位博学的阅读导师，精通费曼学习法。你的任务是帮助用户深度理解《${bookName}》这本书。
-
-${regenerateTone === 'formal' ? '请使用正式、学术的语调。' : ''}
-${regenerateTone === 'casual' ? '请使用轻松、口语化的语调。' : ''}
-${regenerateTone === 'simplified' ? '请用最简单的语言，让10岁孩子也能听懂。' : ''}
-${regenerateTone === 'detailed' ? '请提供非常详细的分析，包括更多例子和解释。' : ''}
-${regenerateFocus ? `请特别关注以下方面：${regenerateFocus}` : ''}
-
-回答要求：
-1. 准确、有深度
-2. 善用类比和具体例子
-3. 使用标准 Markdown 格式`
-
-      const userPrompt = `请对《${bookName}》的"${phaseTitle}"阶段进行分析${regenerateFocus ? `，重点关注：${regenerateFocus}` : ''}。`
+      const { systemPrompt, userPrompt } = generateInteractiveRegeneratePrompts(
+        bookName,
+        phaseTitle,
+        regenerateFocus,
+        regenerateTone
+      )
 
       const response = await chat(client, systemPrompt, userPrompt, documentContent)
       setContent(response)
@@ -127,19 +124,12 @@ ${regenerateFocus ? `请特别关注以下方面：${regenerateFocus}` : ''}
     const userQuestion = question.trim()
 
     try {
-      const systemPrompt = `你是一位博学的阅读导师，精通费曼学习法和《${bookName}》这本书。
-
-用户正在学习这本书的"${phaseTitle}"阶段，并提出了相关问题。
-
-请回答用户的问题，要求：
-1. 回答必须与《${bookName}》这本书相关
-2. 结合"${phaseTitle}"阶段的内容
-3. 准确、有深度，但通俗易懂
-4. 使用 Markdown 格式
-
-如果用户的问题与书籍无关，请礼貌地提醒他们提出与书籍相关的问题。`
-
-      const response = await chat(client, systemPrompt, userQuestion, documentContent)
+      const { systemPrompt, userPrompt } = generateInteractiveQuestionPrompts(
+        bookName,
+        phaseTitle,
+        userQuestion
+      )
+      const response = await chat(client, systemPrompt, userPrompt, documentContent)
 
       setQaHistory(prev => [...prev, {
         q: userQuestion,

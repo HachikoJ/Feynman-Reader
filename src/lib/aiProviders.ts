@@ -4,6 +4,7 @@
  */
 
 import { getSettings } from './store'
+import { secureSystemPrompt } from './promptSecurity'
 
 // AI 提供商类型
 export type AIProviderType = 'deepseek' | 'openai' | 'claude' | 'gemini' | 'custom'
@@ -12,6 +13,18 @@ export type AIProviderType = 'deepseek' | 'openai' | 'claude' | 'gemini' | 'cust
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
+}
+
+function secureProviderMessages(messages: AIMessage[]): AIMessage[] {
+  const taskInstructions = messages
+    .filter(message => message.role === 'system')
+    .map(message => message.content)
+    .join('\n\n') || '完成阅读学习相关任务。'
+
+  return [
+    { role: 'system', content: secureSystemPrompt(taskInstructions) },
+    ...messages.filter(message => message.role !== 'system')
+  ]
 }
 
 // AI 响应
@@ -62,8 +75,9 @@ class DeepSeekProvider implements IAIProvider {
     const apiKey = this.getApiKey()
 
     const client = await createDeepSeekClient(apiKey)
+    const securedMessages = secureProviderMessages(messages)
     const response = await client.chat.completions.create(withDeepSeekDefaults({
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: securedMessages.map(m => ({ role: m.role, content: m.content })),
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2000
     }))
@@ -84,8 +98,9 @@ class DeepSeekProvider implements IAIProvider {
     const apiKey = this.getApiKey()
 
     const client = await createDeepSeekClient(apiKey)
+    const securedMessages = secureProviderMessages(messages)
     const stream = await client.chat.completions.create(withDeepSeekDefaults({
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: securedMessages.map(m => ({ role: m.role, content: m.content })),
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2000,
       stream: true
@@ -120,6 +135,7 @@ class OpenAIProvider implements IAIProvider {
 
   async chat(messages: AIMessage[], options: ChatOptions = {}): Promise<AIResponse> {
     const apiKey = this.getApiKey()
+    const securedMessages = secureProviderMessages(messages)
 
     const response = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
@@ -129,7 +145,7 @@ class OpenAIProvider implements IAIProvider {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        messages: securedMessages.map(m => ({ role: m.role, content: m.content })),
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 2000
       })
@@ -154,6 +170,7 @@ class OpenAIProvider implements IAIProvider {
 
   async *streamChat(messages: AIMessage[], options: ChatOptions = {}): AsyncIterable<string> {
     const apiKey = this.getApiKey()
+    const securedMessages = secureProviderMessages(messages)
 
     const response = await fetch(`${this.baseURL}/chat/completions`, {
       method: 'POST',
@@ -163,7 +180,7 @@ class OpenAIProvider implements IAIProvider {
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        messages: securedMessages.map(m => ({ role: m.role, content: m.content })),
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 2000,
         stream: true
@@ -219,10 +236,11 @@ class ClaudeProvider implements IAIProvider {
 
   async chat(messages: AIMessage[], options: ChatOptions = {}): Promise<AIResponse> {
     const apiKey = this.getApiKey()
+    const securedMessages = secureProviderMessages(messages)
 
     // 提取系统消息
-    const systemMessage = messages.find(m => m.role === 'system')?.content
-    const userMessages = messages.filter(m => m.role !== 'system')
+    const systemMessage = securedMessages.find(m => m.role === 'system')?.content
+    const userMessages = securedMessages.filter(m => m.role !== 'system')
 
     const response = await fetch(`${this.baseURL}/messages`, {
       method: 'POST',
@@ -258,9 +276,10 @@ class ClaudeProvider implements IAIProvider {
 
   async *streamChat(messages: AIMessage[], options: ChatOptions = {}): AsyncIterable<string> {
     const apiKey = this.getApiKey()
+    const securedMessages = secureProviderMessages(messages)
 
-    const systemMessage = messages.find(m => m.role === 'system')?.content
-    const userMessages = messages.filter(m => m.role !== 'system')
+    const systemMessage = securedMessages.find(m => m.role === 'system')?.content
+    const userMessages = securedMessages.filter(m => m.role !== 'system')
 
     const response = await fetch(`${this.baseURL}/messages`, {
       method: 'POST',

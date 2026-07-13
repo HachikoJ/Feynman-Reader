@@ -47,6 +47,7 @@ import MarkdownRenderer from './MarkdownRenderer'
 import { LAST_BACKUP_AT_KEY } from '@/lib/backupReminder'
 import { MAX_BACKUP_FILE_BYTES } from '@/lib/backupValidation'
 import { validateApiKey } from '@/lib/validation'
+import { DEEPSEEK_API_KEY_INVALID, validateDeepSeekApiKey } from '@/lib/deepseek'
 
 // P0 新增：IndexedDB 支持
 import {
@@ -321,6 +322,30 @@ export default function Settings({
     settingsSaveInFlightRef.current = true
     setSaving(true)
     const settingsToSave = { ...settings, apiKey: trimmedApiKey }
+    try {
+      await validateDeepSeekApiKey(trimmedApiKey)
+    } catch (error) {
+      const invalidKey = error instanceof Error && error.message === DEEPSEEK_API_KEY_INVALID
+      const message = settings.language === 'zh'
+        ? (invalidKey
+            ? 'API Key 无效，请检查是否复制正确或已被停用。'
+            : '暂时无法验证 API Key，请检查网络后重试。')
+        : (invalidKey
+            ? 'The API key is invalid. Check that it was copied correctly and is still active.'
+            : 'The API key could not be verified. Check your network and try again.')
+      logger.warn(invalidKey ? 'DeepSeek rejected the API key.' : 'DeepSeek API key verification failed.')
+      setApiKeyConsentError(message)
+      setSaved(false)
+      showToast(message, 'error')
+      requestAnimationFrame(() => {
+        apiKeyInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        apiKeyInputRef.current?.focus()
+      })
+      settingsSaveInFlightRef.current = false
+      setSaving(false)
+      return
+    }
+
     try {
       await flushPendingStoreWrites()
       saveSettings(settingsToSave)
