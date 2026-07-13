@@ -56,7 +56,7 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#0284c7" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
       </head>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans" suppressHydrationWarning>{children}</body>
     </html>
   )
 }

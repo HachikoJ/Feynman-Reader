@@ -360,6 +360,34 @@ export const PERSONAS: PersonaDefinition[] = [
   { type: 'nitpicker', name: '逻辑杠精（批评者）', description: '严谨的逻辑学家，专门找逻辑漏洞、论证不严密、因果关系混乱、自相矛盾之处', isCritic: true }
 ]
 
+function normalizePersonaLabel(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string' || value.length > 64) {
+    throw new Error('AI response contained an invalid persona label')
+  }
+
+  const normalized = value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\s_\-—:：()（）\[\]【】]/g, '')
+
+  return normalized || undefined
+}
+
+function resolvePersona(
+  item: Record<string, unknown>,
+  selectedPersonas: PersonaDefinition[]
+): PersonaDefinition | undefined {
+  const labels = [item.persona, item.personaName]
+    .map(normalizePersonaLabel)
+    .filter((label): label is string => Boolean(label))
+
+  return selectedPersonas.find(persona => {
+    const aliases = [normalizePersonaLabel(persona.type), normalizePersonaLabel(persona.name)]
+    return aliases.some(alias => alias && labels.includes(alias))
+  })
+}
+
 export async function generatePersonaQuestions(
   client: OpenAI,
   bookName: string,
@@ -389,7 +417,7 @@ export async function generatePersonaQuestions(
 你是一个专业的阅读导师和批判性思维专家。你的任务是通过提问来找出读者对《${bookName}》${author ? `（作者：${author}）` : ''}理解中的所有漏洞和盲点。
 
 角色列表：
-${selectedPersonas.map((p, i) => `${i + 1}. ${p.name}（${p.description}）`).join('\n')}
+${selectedPersonas.map((p, i) => `${i + 1}. ID: ${p.type}；名称: ${p.name}（${p.description}）`).join('\n')}
 
 核心目标：
 ${bestTeachingContent ? `
@@ -434,7 +462,8 @@ ${bestTeachingContent.slice(0, 3000)}
 - 批判思考：${bestTeachingContent ? '你接受了作者的观点，但这个论证有什么问题？反例是什么？' : '作者的这个论证有什么问题？反例是什么？'}
 - 深层含义：${bestTeachingContent ? '你理解了表面意思，但为什么作者要这样说？背后的深层逻辑是什么？' : '为什么作者要这样说？背后的深层逻辑是什么？'}
 
-返回 JSON 格式：[{"persona":"角色类型","personaName":"角色名称","question":"问题内容"}]
+返回 JSON 格式：[{"persona":"角色ID","personaName":"角色名称","question":"问题内容"}]
+其中 persona 必须原样使用角色列表中的 ID，不要填写中文名称或自行改写。
 
 只返回 JSON 数组，不要其他内容。`
 
@@ -465,21 +494,38 @@ ${truncatedDoc.length < documentContent.length ? '\n（注：内容已截取，�
     const content = response.choices[0]?.message?.content || '[]'
     const parsed = parseJsonArray(content)
     if (parsed.length !== selectedPersonas.length) throw new Error('AI returned the wrong number of questions')
-    const byPersona = new Map<string, Record<string, unknown>>()
-    parsed.forEach((value, index) => {
+    const parsedQuestions = parsed.map((value, index) => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid question ${index}`)
       const item = value as Record<string, unknown>
-      const persona = boundedText(item.persona, `question ${index} persona`, 64)
-      if (byPersona.has(persona)) throw new Error('AI returned duplicate personas')
-      byPersona.set(persona, item)
+      return {
+        question: boundedText(item.question, `question ${index}`, 5000),
+        persona: resolvePersona(item, selectedPersonas)
+      }
     })
+
+    const resolvedTypes = new Set<string>()
+    parsedQuestions.forEach(({ persona }) => {
+      if (!persona) return
+      if (resolvedTypes.has(persona.type)) throw new Error('AI returned duplicate personas')
+      resolvedTypes.add(persona.type)
+    })
+
+    const remainingPersonas = selectedPersonas.filter(persona => !resolvedTypes.has(persona.type))
+    let remainingIndex = 0
+    const byPersona = new Map<string, string>()
+    parsedQuestions.forEach(item => {
+      const persona = item.persona || remainingPersonas[remainingIndex++]
+      if (!persona || byPersona.has(persona.type)) throw new Error('AI returned invalid personas')
+      byPersona.set(persona.type, item.question)
+    })
+
     return selectedPersonas.map(persona => {
-      const item = byPersona.get(persona.type)
-      if (!item) throw new Error(`AI omitted persona ${persona.type}`)
+      const question = byPersona.get(persona.type)
+      if (!question) throw new Error(`AI omitted persona ${persona.type}`)
       return {
         persona: persona.type,
         personaName: persona.name,
-        question: boundedText(item.question, `${persona.type} question`, 5000)
+        question
       }
     })
   } catch (error) {

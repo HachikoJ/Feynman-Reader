@@ -143,6 +143,83 @@ describe('persona question generation', () => {
     expect(questions[0]).toMatchObject({ persona: 'role-1', personaName: '角色 1' })
   })
 
+  it('maps Chinese persona names and shuffled responses back to the selected IDs', async () => {
+    const create = jest.fn().mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify([
+            { persona: '科学家', question: '科学家问题' },
+            { personaName: '小学生', question: '小学生问题' },
+            { persona: '职场人士', question: '职场问题' }
+          ])
+        }
+      }]
+    })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+    const personas = [
+      { id: 'elementary', name: { zh: '小学生', en: 'Elementary Student' }, icon: 'user', description: { zh: '简单解释', en: 'Simple' } },
+      { id: 'professional', name: { zh: '职场人士', en: 'Professional' }, icon: 'user', description: { zh: '实际应用', en: 'Practical' } },
+      { id: 'scientist', name: { zh: '科学家', en: 'Scientist' }, icon: 'user', description: { zh: '理论严谨', en: 'Rigorous' } }
+    ]
+
+    const questions = await generatePersonaQuestions(client, '测试书籍', undefined, undefined, undefined, personas)
+
+    expect(questions).toEqual([
+      { persona: 'elementary', personaName: '小学生', question: '小学生问题' },
+      { persona: 'professional', personaName: '职场人士', question: '职场问题' },
+      { persona: 'scientist', personaName: '科学家', question: '科学家问题' }
+    ])
+  })
+
+  it('uses response order when the model returns generic persona labels', async () => {
+    const create = jest.fn().mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify([
+            { persona: '角色一', question: '问题一' },
+            { persona: '角色二', question: '问题二' },
+            { persona: '角色三', question: '问题三' }
+          ])
+        }
+      }]
+    })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+    const personas = Array.from({ length: 3 }, (_, index) => ({
+      id: `role-${index + 1}`,
+      name: { zh: `自定义角色 ${index + 1}`, en: `Custom Role ${index + 1}` },
+      icon: 'user',
+      description: { zh: '测试角色', en: 'Test persona' }
+    }))
+
+    const questions = await generatePersonaQuestions(client, '测试书籍', undefined, undefined, undefined, personas)
+
+    expect(questions.map(question => question.persona)).toEqual(['role-1', 'role-2', 'role-3'])
+    expect(questions.map(question => question.question)).toEqual(['问题一', '问题二', '问题三'])
+  })
+
+  it('still rejects duplicate recognized personas', async () => {
+    const create = jest.fn().mockResolvedValue({
+      choices: [{
+        message: {
+          content: JSON.stringify([
+            { persona: 'elementary', question: '问题一' },
+            { persona: '小学生', question: '问题二' },
+            { persona: 'scientist', question: '问题三' }
+          ])
+        }
+      }]
+    })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+    const personas = [
+      { id: 'elementary', name: { zh: '小学生', en: 'Elementary Student' }, icon: 'user', description: { zh: '简单解释', en: 'Simple' } },
+      { id: 'professional', name: { zh: '职场人士', en: 'Professional' }, icon: 'user', description: { zh: '实际应用', en: 'Practical' } },
+      { id: 'scientist', name: { zh: '科学家', en: 'Scientist' }, icon: 'user', description: { zh: '理论严谨', en: 'Rigorous' } }
+    ]
+
+    await expect(generatePersonaQuestions(client, '测试书籍', undefined, undefined, undefined, personas))
+      .rejects.toThrow('duplicate personas')
+  })
+
   it('rejects duplicate persona evaluations and derives pass flags locally', async () => {
     const create = jest.fn().mockResolvedValue({
       choices: [{
