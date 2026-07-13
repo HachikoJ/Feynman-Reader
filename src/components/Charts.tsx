@@ -8,6 +8,7 @@ import {
 } from 'recharts'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES } from '@/lib/feynman-prompts'
+import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 
 interface ProgressRadarProps {
   responses: Record<string, string>
@@ -31,7 +32,7 @@ export function ProgressRadar({ responses, lang }: ProgressRadarProps) {
   return (
     <div className="card">
       <h3 className="font-semibold mb-4 flex items-center gap-2">
-        <span>📊</span>
+        <AppIcon name="chart" tone="blue" size={18} />
         {lang === 'zh' ? '学习维度分析' : 'Learning Dimensions'}
       </h3>
       <ResponsiveContainer width="100%" height={280}>
@@ -83,7 +84,7 @@ export function PhaseProgress({ currentPhase, totalPhases, lang }: PhaseProgress
   return (
     <div className="card text-center">
       <h3 className="font-semibold mb-2 flex items-center justify-center gap-2">
-        <span>🎯</span>
+        <AppIcon name="target" tone="green" size={18} />
         {lang === 'zh' ? '总体进度' : 'Overall Progress'}
       </h3>
       <div className="relative">
@@ -149,7 +150,7 @@ export function KnowledgeGauge({ responses, lang }: KnowledgeGaugeProps) {
   return (
     <div className="card text-center">
       <h3 className="font-semibold mb-2 flex items-center justify-center gap-2">
-        <span>🧠</span>
+        <AppIcon name="brain" tone="violet" size={18} />
         {lang === 'zh' ? '理解深度' : 'Understanding Depth'}
       </h3>
       <div className="relative">
@@ -199,7 +200,7 @@ export function PhaseBarChart({ responses, currentPhase, lang }: PhaseBarChartPr
     const completed = Math.min(phaseResponses.length, totalPrompts)
     
     return {
-      name: phase.icon,
+      name: String(idx + 1),
       fullName: t(lang, `phases.${phase.id}.subtitle`),
       completed,
       total: totalPrompts,
@@ -210,7 +211,7 @@ export function PhaseBarChart({ responses, currentPhase, lang }: PhaseBarChartPr
   return (
     <div className="card">
       <h3 className="font-semibold mb-4 flex items-center gap-2">
-        <span>📈</span>
+        <AppIcon name="trendUp" tone="blue" size={18} />
         {lang === 'zh' ? '阶段完成度' : 'Phase Completion'}
       </h3>
       <ResponsiveContainer width="100%" height={200}>
@@ -263,30 +264,30 @@ export function LearningStats({ responses, currentPhase, lang }: LearningStatsPr
   const customQuestions = Object.keys(responses).filter(k => k.includes('custom')).length
   const completedPhases = currentPhase
 
-  const stats = [
+  const stats: Array<{ icon: AppIconName; tone: AppIconTone; value: number | string; label: string }> = [
     {
-      icon: '📚',
+      icon: 'library',
+      tone: 'green',
       value: completedPhases,
       label: lang === 'zh' ? '已完成阶段' : 'Phases Done',
-      color: '#22c55e'
     },
     {
-      icon: '💡',
+      icon: 'lightbulb',
+      tone: 'blue',
       value: answeredQuestions,
       label: lang === 'zh' ? '探索问题数' : 'Questions Explored',
-      color: '#3b82f6'
     },
     {
-      icon: '❓',
+      icon: 'help',
+      tone: 'violet',
       value: customQuestions,
       label: lang === 'zh' ? '自定义提问' : 'Custom Questions',
-      color: '#8b5cf6'
     },
     {
-      icon: '🎯',
+      icon: 'target',
+      tone: 'amber',
       value: `${Math.round((answeredQuestions / totalQuestions) * 100)}%`,
       label: lang === 'zh' ? '完成率' : 'Completion',
-      color: '#f59e0b'
     }
   ]
 
@@ -294,8 +295,8 @@ export function LearningStats({ responses, currentPhase, lang }: LearningStatsPr
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
       {stats.map((stat, idx) => (
         <div key={idx} className="card text-center py-4">
-          <div className="text-2xl mb-1">{stat.icon}</div>
-          <div className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
+          <AppIcon name={stat.icon} tone={stat.tone} size={24} className="mx-auto mb-1" />
+          <div className="text-2xl font-bold text-[var(--text-primary)]">{stat.value}</div>
           <div className="text-xs text-[var(--text-secondary)]">{stat.label}</div>
         </div>
       ))}

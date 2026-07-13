@@ -87,7 +87,7 @@ export function exportToNotion(books: Book[], options: ExportOptions = { format:
       book.noteRecords.forEach((note) => {
         const date = new Date(note.createdAt).toLocaleDateString()
         markdown += `**${date}**\n\n${note.content}\n\n`
-        if (note.aiReview) {
+        if (note.type === 'teaching' && note.aiReview) {
           markdown += `> 💡 ${note.aiReview}\n\n`
         }
       })

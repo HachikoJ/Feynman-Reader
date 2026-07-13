@@ -14,6 +14,7 @@ import {
   clearReadingGoal,
   type DailyStats
 } from '@/lib/readingProgress'
+import AppIcon from './AppIcon'
 
 interface Props {
   lang: Language
@@ -114,7 +115,7 @@ export default function ReadingProgressPanel({ lang }: Props) {
   const [showGoalModal, setShowGoalModal] = useState(false)
   const [pagesGoal, setPagesGoal] = useState(30)
   const [minutesGoal, setMinutesGoal] = useState(60)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
 
   // Statistics
   const [overview, setOverview] = useState(getReadingOverview())
@@ -142,10 +143,10 @@ export default function ReadingProgressPanel({ lang }: Props) {
 
   const handleCheckIn = () => {
     const result = dailyCheckIn()
-    setToastMessage(result.message)
+    setStatusMessage(result.message)
     setNeedsCheckInToday(false)
     loadData()
-    setTimeout(() => setToastMessage(null), 3000)
+    setTimeout(() => setStatusMessage(null), 3000)
   }
 
   const handleSaveGoal = () => {
@@ -155,18 +156,18 @@ export default function ReadingProgressPanel({ lang }: Props) {
       targetBooksPerMonth: 2,
       startDate: Date.now()
     })
-    setToastMessage(t.goalSetSuccess)
+    setStatusMessage(t.goalSetSuccess)
     setShowGoalModal(false)
     loadData()
-    setTimeout(() => setToastMessage(null), 3000)
+    setTimeout(() => setStatusMessage(null), 3000)
   }
 
   const handleClearGoal = () => {
     clearReadingGoal()
-    setToastMessage(t.goalCleared)
+    setStatusMessage(t.goalCleared)
     setShowGoalModal(false)
     loadData()
-    setTimeout(() => setToastMessage(null), 3000)
+    setTimeout(() => setStatusMessage(null), 3000)
   }
 
   if (!mounted) return null
@@ -184,10 +185,9 @@ export default function ReadingProgressPanel({ lang }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Toast */}
-      {toastMessage && (
-        <div className="fixed top-4 right-4 z-50 bg-[var(--accent)] text-white px-4 py-3 rounded-lg shadow-lg animate-fade-in">
-          {toastMessage}
+      {statusMessage && (
+        <div role="status" className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300 animate-fade-in">
+          {statusMessage}
         </div>
       )}
 
@@ -218,10 +218,14 @@ export default function ReadingProgressPanel({ lang }: Props) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold">{t.streak}</h3>
           {!needsCheckInToday ? (
-            <span className="text-sm text-green-400">✓ {t.checkedIn}</span>
+            <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400">
+              <AppIcon name="success" tone="green" size={16} />
+              {t.checkedIn}
+            </span>
           ) : (
             <button onClick={handleCheckIn} className="btn-primary text-sm py-2 px-4">
-              🔥 {t.checkIn}
+              <AppIcon name="flame" size={16} />
+              {t.checkIn}
             </button>
           )}
         </div>

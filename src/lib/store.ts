@@ -23,9 +23,9 @@ export type BookStatus = 'unread' | 'reading' | 'finished'
 // 笔记记录
 export interface NoteRecord {
   id: string
-  type: 'note' | 'teaching'  // 普通笔记 或 教学模拟
+  type: 'note' | 'teaching'  // 普通笔记或旧版教学模拟记录
   content: string
-  aiReview?: string          // AI 点评（仅教学模拟有）
+  aiReview?: string          // 仅兼容旧版教学模拟记录，普通笔记不会生成
   phaseId?: string           // 关联的阶段
   createdAt: number
 }
@@ -733,21 +733,58 @@ export function exportAllData(): string {
   return JSON.stringify(exportData, null, 2)
 }
 
-// 导出所有数据并触发下载
-export function downloadDataBackup(): void {
+export type BackupDownloadResult = 'saved' | 'download-started'
+
+interface BackupFileHandle {
+  createWritable: () => Promise<{
+    write: (data: Blob) => Promise<void>
+    close: () => Promise<void>
+  }>
+}
+
+interface BackupSavePickerWindow extends Window {
+  showSaveFilePicker?: (options: {
+    suggestedName: string
+    types: Array<{
+      description: string
+      accept: Record<string, string[]>
+    }>
+  }) => Promise<BackupFileHandle>
+}
+
+// 只有系统保存流程完成时才能直接确认备份成功；普通下载需由用户确认文件已落盘。
+export async function downloadDataBackup(): Promise<BackupDownloadResult> {
   const data = exportAllData()
   const blob = new Blob([data], { type: 'application/json' })
   if (blob.size > MAX_BACKUP_FILE_BYTES) {
     throw new Error(`备份文件超过 ${MAX_BACKUP_FILE_BYTES / 1024 / 1024} MB，无法在浏览器中安全导出`)
   }
+  const fileName = `feynman-backup-${new Date().toISOString().split('T')[0]}.json`
+  const picker = (window as BackupSavePickerWindow).showSaveFilePicker
+
+  if (typeof picker === 'function') {
+    const handle = await picker.call(window, {
+      suggestedName: fileName,
+      types: [{
+        description: 'Feynman Reader backup',
+        accept: { 'application/json': ['.json'] }
+      }]
+    })
+    const writable = await handle.createWritable()
+    await writable.write(blob)
+    await writable.close()
+    return 'saved'
+  }
+
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `feynman-backup-${new Date().toISOString().split('T')[0]}.json`
+  link.download = fileName
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  return 'download-started'
 }
 
 // 验证导入数据的结构

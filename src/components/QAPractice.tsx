@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Language, t } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 import { Book, PersonaAnswerAttempt, PersonaQuestion, PracticeRecord, QAPracticeRecord, getQAPracticeRecords, addQAPracticeRecord, updateQAPracticeRecord, deleteQAPracticeRecord, flushPendingStoreWrites, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
-import { AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
 import MarkdownRenderer from './MarkdownRenderer'
 import LoadingQuotes from './LoadingQuotes'
 import PersonaSelector, { PersonaBadge } from './PersonaSelector'
@@ -12,6 +12,7 @@ import ScoreTrendChart from './ScoreTrendChart'
 import ScoringCriteriaDisplay from './ScoringCriteriaDisplay'
 import { calculateScoreTrend, ProgressRecord, PERSONA_TYPES } from '@/lib/practiceEnhancement'
 import { MAX_AI_ANSWER_LENGTH } from '@/lib/dataLimits'
+import AppIcon, { AppIconName } from './AppIcon'
 
 interface Props {
   book: Book
@@ -76,6 +77,7 @@ type PersonaEvaluation = {
 }
 
 const MAX_STORED_ATTEMPTS_PER_QUESTION = 50
+const PERSONA_ICONS: AppIconName[] = ['user', 'graduation', 'briefcase', 'microscope', 'landmark', 'graduation', 'scale', 'user', 'building', 'scan']
 
 export function getQuestionAttempts(question: PersonaQuestion): PersonaAnswerAttempt[] {
   if (question.attempts?.length) return question.attempts
@@ -179,6 +181,18 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       return lang === 'zh'
         ? '请先在设置中同意 AI 数据传输，再使用角色问答。'
         : 'Please consent to AI data transfer in Settings before using role-based Q&A.'
+    }
+
+    if (error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED) {
+      if (action === 'generate') {
+        return lang === 'zh'
+          ? '文档上下文过长，系统自动缩减后仍未完成问题生成。请拆分文档后重试，已有练习记录不会丢失。'
+          : 'The document context is too long even after automatic reduction. Split the document and try again; existing practice records were kept.'
+      }
+
+      return lang === 'zh'
+        ? '文档上下文过长，系统自动缩减后仍未完成评分。你填写的回答已保留，请拆分文档后重试。'
+        : 'The document context is too long even after automatic reduction. Your answers were kept; split the document and try again.'
     }
 
     if (action === 'generate') {
@@ -437,8 +451,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       {progressRecords.length > 0 && (
         <details>
           <summary className="cursor-pointer card flex items-center justify-between p-4 hover:bg-[var(--bg-secondary)] rounded-xl transition-colors">
-            <h3 className="font-semibold">
-              📈 {lang === 'zh' ? '进步追踪' : 'Progress Tracking'}
+            <h3 className="flex items-center gap-2 font-semibold">
+              <AppIcon name="trendUp" tone="green" size={17} />{lang === 'zh' ? '进步追踪' : 'Progress Tracking'}
             </h3>
             <span className="text-sm text-[var(--text-secondary)]">
               {showProgress ? (lang === 'zh' ? '收起' : 'Hide') : (lang === 'zh' ? '展开' : 'Expand')}
@@ -453,8 +467,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       {/* 评分标准 */}
       <details>
         <summary className="cursor-pointer card flex items-center justify-between p-4 hover:bg-[var(--bg-secondary)] rounded-xl transition-colors">
-          <h3 className="font-semibold">
-            📊 {lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
+          <h3 className="flex items-center gap-2 font-semibold">
+            <AppIcon name="chart" tone="blue" size={17} />{lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
           </h3>
           <span className="text-sm text-[var(--text-secondary)]">
             {showCriteria ? (lang === 'zh' ? '收起' : 'Hide') : (lang === 'zh' ? '查看详情' : 'View Details')}
@@ -467,8 +481,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
 
       {/* 问答输入区域 */}
       <div className="card">
-        <h3 className="text-xl font-bold mb-2">
-          {lang === 'zh' ? '💬 角色问答' : '💬 Role-based Q&A'}
+        <h3 className="flex items-center gap-2 text-xl font-bold mb-2">
+          <AppIcon name="message" tone="green" size={22} />{lang === 'zh' ? '角色问答' : 'Role-based Q&A'}
         </h3>
         <p className="text-sm text-[var(--text-secondary)] mb-4">
           {lang === 'zh'
@@ -491,7 +505,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
           <LoadingQuotes lang={lang} quotes={quotes} />
         ) : !currentRecord ? (
           <div className="text-center py-8">
-            <div className="text-5xl mb-4">🎭</div>
+            <AppIcon name="users" tone="violet" size={48} className="mx-auto mb-4" />
 
             {/* 角色选择器 */}
             {hasPassedTeaching && (
@@ -525,10 +539,10 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
               </>
             ) : (
               <>
-                <p className="text-yellow-400 mb-4">
-                  {lang === 'zh'
-                    ? '⚠️ 请先完成并通过教学模拟（60 分及以上），AI 会基于合格的教学内容生成问题'
-                    : '⚠️ Pass the teaching simulation with 60 or above first'}
+                <p className="mb-4 flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400">
+                  <AppIcon name="alert" size={17} />{lang === 'zh'
+                    ? '请先完成并通过教学模拟（60 分及以上），AI 会基于合格的教学内容生成问题'
+                    : 'Pass the teaching simulation with 60 or above first'}
                 </p>
                 <button
                   disabled
@@ -549,7 +563,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                   {currentRecord.questions.filter(q => q.passed).length} / {currentRecord.questions.length}
                 </span>
               {isQAPracticeRecordComplete(currentRecord) && (
-                  <span className="text-green-400 text-sm">✓ {lang === 'zh' ? '全部通过' : 'All Passed'}</span>
+                  <span className="flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={14} />{lang === 'zh' ? '全部通过' : 'All Passed'}</span>
                 )}
               </div>
               <button
@@ -565,11 +579,11 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
             {currentRecord.questions.map((q, idx) => (
               <div key={idx} className="bg-[var(--bg-secondary)] rounded-xl p-4">
                 <div className="flex items-start gap-3 mb-3">
-                  <span className="text-2xl">{['🧒', '🎓', '💼', '🔬', '💰', '👨‍🏫', '💸', '👤', '🏢', '🔍'][idx] || '❓'}</span>
+                  <AppIcon name={PERSONA_ICONS[idx] || 'help'} tone={idx % 3 === 0 ? 'blue' : idx % 3 === 1 ? 'violet' : 'amber'} size={24} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium">{q.personaName}</span>
-                      {q.passed && <span className="text-green-400 text-sm">✓ {lang === 'zh' ? '已通过' : 'Passed'}</span>}
+                      {q.passed && <span className="flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={14} />{lang === 'zh' ? '已通过' : 'Passed'}</span>}
                       {q.score !== undefined && !q.passed && <span className="text-yellow-400 text-sm">{q.score}分</span>}
                     </div>
                     <p className="text-sm mb-3">{q.question}</p>
@@ -623,8 +637,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
               <div className="space-y-3">
                 {!canSubmit && (
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                    <p className="text-blue-300 text-sm">
-                      💡 {lang === 'zh' 
+                    <p className="flex items-start gap-2 text-blue-700 dark:text-blue-300 text-sm">
+                      <AppIcon name="lightbulb" tone="amber" size={16} className="mt-0.5" />{lang === 'zh'
                         ? '请先回答所有未通过的问题，至少写一些思考内容，才能提交给 AI 评估' 
                         : 'Please answer all unanswered questions before submitting'}
                     </p>
@@ -642,7 +656,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
             
             {hasAnsweredAll && (
               <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
-                <div className="text-4xl mb-2">🎉</div>
+                <AppIcon name="sparkles" tone="green" size={38} className="mx-auto mb-2" />
                 <p className="text-green-300 font-semibold">
                   {lang === 'zh' ? '恭喜！所有问题都已通过' : 'Congratulations! All questions passed'}
                 </p>
@@ -659,10 +673,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
             onClick={() => setShowHistory(!showHistory)}
             className="w-full flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
           >
-            <h3 className="font-semibold">📊 {lang === 'zh' ? '问答记录' : 'Q&A History'} ({qaRecords.length})</h3>
-            <span className={`text-sm text-[var(--text-secondary)] transition-transform duration-200 ${showHistory ? 'rotate-180' : ''}`}>
-              ▼
-            </span>
+            <h3 className="flex items-center gap-2 font-semibold"><AppIcon name="chart" tone="blue" size={18} />{lang === 'zh' ? '问答记录' : 'Q&A History'} ({qaRecords.length})</h3>
+            <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showHistory ? 'rotate-180' : ''}`} />
           </button>
           
           {showHistory && (
@@ -701,7 +713,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                       <div key={idx} className={`rounded p-3 text-sm ${q.score !== undefined && !q.passed ? 'border border-yellow-500/30 bg-yellow-500/10' : 'bg-[var(--bg-card)]'}`}>
                         <div className="flex items-center gap-2 mb-2">
                           <span className="font-medium">{q.personaName}</span>
-                          {q.passed && <span className="text-green-400">✓</span>}
+                          {q.passed && <AppIcon name="success" tone="green" size={15} />}
                           {q.score !== undefined && <span className={q.passed ? 'text-green-400' : 'text-yellow-400'}>{q.score}分</span>}
                           {q.score !== undefined && !q.passed && (
                             <span className="text-yellow-300">{lang === 'zh' ? '未通过' : 'Not passed'}</span>

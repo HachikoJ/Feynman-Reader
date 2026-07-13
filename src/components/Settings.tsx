@@ -80,12 +80,14 @@ export default function Settings({
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savingQuickSetting, setSavingQuickSetting] = useState(false)
+  const [quickSettingError, setQuickSettingError] = useState<string | null>(null)
   const [apiKeyConsentError, setApiKeyConsentError] = useState<string | null>(null)
   const [showConsentPolicy, setShowConsentPolicy] = useState(false)
   const [hasReadConsentPolicy, setHasReadConsentPolicy] = useState(false)
   const [newQuoteText, setNewQuoteText] = useState('')
   const [newQuoteAuthor, setNewQuoteAuthor] = useState('')
   const [showQuoteManager, setShowQuoteManager] = useState(false)
+  const [quoteStatus, setQuoteStatus] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [editAuthor, setEditAuthor] = useState('')
@@ -93,6 +95,8 @@ export default function Settings({
   // 数据导出/导入相关状态
   const [showDataManagement, setShowDataManagement] = useState(false)
   const [lastBackupAt, setLastBackupAt] = useState<number | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [awaitingBackupConfirmation, setAwaitingBackupConfirmation] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPreview, setImportPreview] = useState<ExportData | null>(null)
@@ -111,7 +115,10 @@ export default function Settings({
     dataSize: '0 B'
   })
   const [dataStatsError, setDataStatsError] = useState(false)
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [dataOperationStatus, setDataOperationStatus] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const apiKeyInputRef = useRef<HTMLInputElement>(null)
   const aiConsentRef = useRef<HTMLInputElement>(null)
@@ -188,10 +195,13 @@ export default function Settings({
     ) return
     handledApiConfigurationRequestRef.current = focusApiConfigurationRequest
 
+    const apiKeyMissing = settings.apiKey.trim().length === 0
     const apiKeyValidation = validateApiKey(settings.apiKey)
     const missingConsent = settings.apiKey.trim().length > 0 && !settings.aiDataConsent
-    setApiKeyConsentError(!apiKeyValidation.valid
-      ? (settings.language === 'zh' ? 'API Key 格式不正确，请检查后重新保存。' : 'The API key format is invalid. Check it and save again.')
+    setApiKeyConsentError(apiKeyMissing
+      ? (settings.language === 'zh' ? '请先填写 DeepSeek API Key，并在勾选同意后保存。' : 'Add your DeepSeek API key, confirm consent, and save it first.')
+      : !apiKeyValidation.valid
+        ? (settings.language === 'zh' ? 'API Key 格式不正确，请检查后重新保存。' : 'The API key format is invalid. Check it and save again.')
       : missingConsent
         ? (settings.language === 'zh' ? '使用 AI 功能前，请先确认 AI 数据传输同意。' : 'Confirm AI data transfer consent before using AI features.')
         : null)
@@ -238,6 +248,7 @@ export default function Settings({
     if (dataOperationInFlightRef.current) return
     dataOperationInFlightRef.current = true
     setMigrating(true)
+    setDataOperationStatus(null)
     try {
       const result = await migrateFromLocalStorage()
       if (result.success) {
@@ -249,25 +260,25 @@ export default function Settings({
         onSettingsChange(migratedSettings)
         setDataStats(getDataStats())
         await loadDbInfo()
-        showToast(
-          lang === 'zh'
-            ? `迁移成功！已迁移 ${result.migratedBooks} 本书`
-            : `Migration successful! ${result.migratedBooks} books migrated`,
-          'success'
-        )
+        setDataOperationStatus({
+          message: lang === 'zh'
+            ? `迁移成功，已迁移 ${result.migratedBooks} 本书。`
+            : `Migration completed. ${result.migratedBooks} books migrated.`,
+          type: 'success'
+        })
       } else {
-        showToast(
-          lang === 'zh'
-            ? '迁移部分失败: ' + result.errors.join(', ')
+        setDataOperationStatus({
+          message: lang === 'zh'
+            ? '迁移部分失败：' + result.errors.join(', ')
             : 'Migration partially failed: ' + result.errors.join(', '),
-          'error'
-        )
+          type: 'error'
+        })
       }
     } catch (e) {
-      showToast(
-        lang === 'zh' ? '迁移失败: ' + (e as Error).message : 'Migration failed: ' + (e as Error).message,
-        'error'
-      )
+      setDataOperationStatus({
+        message: lang === 'zh' ? '迁移失败：' + (e as Error).message : 'Migration failed: ' + (e as Error).message,
+        type: 'error'
+      })
     } finally {
       dataOperationInFlightRef.current = false
       setMigrating(false)
@@ -283,7 +294,6 @@ export default function Settings({
         : 'Save failed: enter your DeepSeek API key first.'
       setApiKeyConsentError(message)
       setSaved(false)
-      showToast(message, 'error')
       requestAnimationFrame(() => {
         apiKeyInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         apiKeyInputRef.current?.focus()
@@ -298,7 +308,6 @@ export default function Settings({
         : 'The API key format is invalid. Check that it was copied completely.'
       setApiKeyConsentError(message)
       setSaved(false)
-      showToast(message, 'error')
       requestAnimationFrame(() => {
         apiKeyInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         apiKeyInputRef.current?.focus()
@@ -311,7 +320,6 @@ export default function Settings({
         : 'Confirm AI data transfer consent before saving an API key.'
       setApiKeyConsentError(message)
       setSaved(false)
-      showToast(message, 'error')
       requestAnimationFrame(() => {
         aiConsentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         aiConsentRef.current?.focus()
@@ -336,7 +344,6 @@ export default function Settings({
       logger.warn(invalidKey ? 'DeepSeek rejected the API key.' : 'DeepSeek API key verification failed.')
       setApiKeyConsentError(message)
       setSaved(false)
-      showToast(message, 'error')
       requestAnimationFrame(() => {
         apiKeyInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         apiKeyInputRef.current?.focus()
@@ -352,17 +359,19 @@ export default function Settings({
       await flushPendingStoreWrites()
       setSettings(settingsToSave)
       onSettingsChange(settingsToSave)
+      setApiKeyConsentError(null)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-      showToast(settings.language === 'zh' ? '保存成功' : 'Saved', 'success')
     } catch (error) {
       logger.error('Settings save failed:', error)
       const restored = await reloadSettingsFromPersistence().catch(() => getSettings())
       setSettings(restored)
       onSettingsChange(restored)
-      showToast(
-        restored.language === 'zh' ? '保存失败，设置已恢复到上次保存状态' : 'Save failed. Settings were restored to the last saved state.',
-        'error'
+      setSaved(false)
+      setApiKeyConsentError(
+        restored.language === 'zh'
+          ? '保存失败，设置已恢复到上次保存状态。'
+          : 'Save failed. Settings were restored to the last saved state.'
       )
     } finally {
       settingsSaveInFlightRef.current = false
@@ -387,6 +396,7 @@ export default function Settings({
 
     settingsSaveInFlightRef.current = true
     setSavingQuickSetting(true)
+    setQuickSettingError(null)
     setSettings(current => ({ ...current, [key]: value }))
     if (key === 'theme') document.documentElement.setAttribute('data-theme', value as string)
 
@@ -401,9 +411,10 @@ export default function Settings({
       setSettings(current => ({ ...current, [key]: restored[key] }))
       onSettingsChange(restored)
       if (key === 'theme') document.documentElement.setAttribute('data-theme', restored.theme)
-      showToast(
-        settings.language === 'zh' ? '切换保存失败，已恢复原设置' : 'The change could not be saved and was reverted.',
-        'error'
+      setQuickSettingError(
+        settings.language === 'zh'
+          ? '切换保存失败，已恢复原设置。'
+          : 'The change could not be saved and was reverted.'
       )
     } finally {
       settingsSaveInFlightRef.current = false
@@ -417,6 +428,7 @@ export default function Settings({
 
   const addQuote = () => {
     if (!newQuoteText.trim()) return
+    setQuoteStatus(null)
     const newQuote: CustomQuote = {
       text: newQuoteText.trim(),
       author: newQuoteAuthor.trim() || (settings.language === 'zh' ? '自定义' : 'Custom'),
@@ -428,6 +440,7 @@ export default function Settings({
   }
 
   const removeQuote = (index: number) => {
+    setQuoteStatus(null)
     const updated = settings.quotes.filter((_, i) => i !== index)
     updateSetting('quotes', updated)
   }
@@ -441,6 +454,7 @@ export default function Settings({
 
   const saveEdit = () => {
     if (editingIndex === null || !editText.trim()) return
+    setQuoteStatus(null)
     const updated = [...settings.quotes]
     updated[editingIndex] = {
       ...updated[editingIndex],
@@ -462,28 +476,46 @@ export default function Settings({
   const resetToDefault = () => {
     const defaultQuotes = settings.language === 'zh' ? defaultQuotesZh : defaultQuotesEn
     updateSetting('quotes', [...defaultQuotes])
-    showToast('已恢复默认金句', 'success')
+    setQuoteStatus(settings.language === 'zh'
+      ? '已恢复默认金句，关闭弹窗后请点击“保存设置”。'
+      : 'Default quotes restored. Close this dialog and select “Save Settings”.')
   }
 
-  // 显示提示消息
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
+  const recordBackupCompleted = () => {
+    const backupAt = Date.now()
+    try {
+      localStorage.setItem(LAST_BACKUP_AT_KEY, String(backupAt))
+      setLastBackupAt(backupAt)
+      setAwaitingBackupConfirmation(false)
+      onBackupCompleted?.()
+      setDataOperationStatus({
+        message: settings.language === 'zh' ? '备份已成功保存，备份时间已更新。' : 'Backup saved successfully. The backup time was updated.',
+        type: 'success'
+      })
+    } catch (metadataError) {
+      logger.error('Failed to record backup timestamp:', metadataError)
+      setDataOperationStatus({
+        message: settings.language === 'zh'
+          ? '文件已保存，但浏览器未能记录本次备份时间。'
+          : 'The file was saved, but the browser could not record the backup time.',
+        type: 'error'
+      })
+    }
   }
 
   // 数据导出
-  const handleExport = () => {
+  const handleExport = async () => {
+    if (dataOperationInFlightRef.current) return
+    dataOperationInFlightRef.current = true
+    setExporting(true)
+    setAwaitingBackupConfirmation(false)
+    setDataOperationStatus(null)
     try {
-      downloadDataBackup()
-      const backupAt = Date.now()
-      onBackupCompleted?.()
-      try {
-        localStorage.setItem(LAST_BACKUP_AT_KEY, String(backupAt))
-        setLastBackupAt(backupAt)
-        showToast('数据导出成功', 'success')
-      } catch (metadataError) {
-        logger.error('Failed to record backup timestamp:', metadataError)
-        showToast('数据已导出，但浏览器未能记录本次备份时间', 'error')
+      const result = await downloadDataBackup()
+      if (result === 'saved') {
+        recordBackupCompleted()
+      } else {
+        setAwaitingBackupConfirmation(true)
       }
       try {
         setDataStats(getDataStats())
@@ -492,8 +524,21 @@ export default function Settings({
         setDataStatsError(true)
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setDataOperationStatus({
+          message: settings.language === 'zh' ? '已取消导出，备份时间未更新。' : 'Export cancelled. The backup time was not updated.',
+          type: 'info'
+        })
+        return
+      }
       logger.error('Export error:', e)
-      showToast('导出失败', 'error')
+      setDataOperationStatus({
+        message: settings.language === 'zh' ? '导出失败，备份时间未更新，请重试。' : 'Export failed. The backup time was not updated. Try again.',
+        type: 'error'
+      })
+    } finally {
+      dataOperationInFlightRef.current = false
+      setExporting(false)
     }
   }
 
@@ -555,11 +600,11 @@ export default function Settings({
       await flushPendingStoreWrites()
       applyImportData(importPreview, importOptions)
       await flushPendingStoreWrites()
-      showToast('数据导入成功', 'success')
 
       // 重新加载设置
       const reloaded = getSettings()
       setSettings(reloaded)
+      onSettingsChange(reloaded)
 
       // 更新数据统计
       setDataStats(getDataStats())
@@ -569,9 +614,10 @@ export default function Settings({
       setImportPreview(null)
       setImportFile(null)
       setImportError(null)
-
-      // 刷新页面以应用更改
-      setTimeout(() => window.location.reload(), 500)
+      setDataOperationStatus({
+        message: reloaded.language === 'zh' ? '数据导入成功。' : 'Data imported successfully.',
+        type: 'success'
+      })
     } catch (e) {
       logger.error('Import error:', e)
       let rollbackSucceeded = false
@@ -596,12 +642,9 @@ export default function Settings({
         logger.error('Failed to refresh data stats after import rollback:', statsError)
         setDataStatsError(true)
       }
-      showToast(
-        rollbackSucceeded
-          ? '导入失败，已恢复导入前的数据'
-          : '导入失败且自动恢复未完成，请刷新页面并检查现有数据',
-        'error'
-      )
+      setImportError(rollbackSucceeded
+        ? (settings.language === 'zh' ? '导入失败，已恢复导入前的数据。' : 'Import failed. The previous data was restored.')
+        : (settings.language === 'zh' ? '导入失败且自动恢复未完成，请刷新页面并检查现有数据。' : 'Import failed and automatic recovery did not finish. Refresh and check the current data.'))
     } finally {
       dataOperationInFlightRef.current = false
       setImporting(false)
@@ -621,6 +664,7 @@ export default function Settings({
     }
 
     setClearingData(true)
+    setDataOperationStatus(null)
     try {
       try {
         await flushPendingStoreWrites()
@@ -630,15 +674,26 @@ export default function Settings({
           resetStoreCache()
           localStorage.clear()
           sessionStorage.clear()
-          showToast(settings.language === 'zh' ? '数据已清除' : 'Data cleared', 'success')
-          setTimeout(() => window.location.reload(), 500)
+          setDataOperationStatus({
+            message: settings.language === 'zh' ? '数据已清除，页面即将刷新。' : 'Data cleared. The page will refresh shortly.',
+            type: 'success'
+          })
+          setTimeout(() => window.location.reload(), 800)
         } catch (error) {
           logger.error('Failed to clear application data:', error)
-          showToast(settings.language === 'zh' ? '清除数据失败，请关闭其他页面后重试' : 'Failed to clear data. Close other tabs and try again.', 'error')
+          setDataOperationStatus({
+            message: settings.language === 'zh' ? '清除数据失败，请关闭其他页面后重试。' : 'Failed to clear data. Close other tabs and try again.',
+            type: 'error'
+          })
         }
       } catch (pendingWriteError) {
         logger.error('Pending writes failed before clearing data:', pendingWriteError)
-        showToast(settings.language === 'zh' ? '检测到尚未成功保存的数据，已取消清除，请刷新后重试' : 'Some data has not been saved successfully. Clearing was cancelled; refresh and try again.', 'error')
+        setDataOperationStatus({
+          message: settings.language === 'zh'
+            ? '检测到尚未成功保存的数据，已取消清除，请刷新后重试。'
+            : 'Some data has not been saved successfully. Clearing was cancelled; refresh and try again.',
+          type: 'error'
+        })
       }
     } finally {
       dataOperationInFlightRef.current = false
@@ -649,6 +704,8 @@ export default function Settings({
   const closeDataManagement = () => {
     if (dataOperationInFlightRef.current) return
     setShowDataManagement(false)
+    setAwaitingBackupConfirmation(false)
+    setDataOperationStatus(null)
   }
 
   const closeImportModal = () => {
@@ -700,14 +757,6 @@ export default function Settings({
 
   return (
     <div className="max-w-4xl mx-auto">
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-lg ${
-          toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-        }`}>
-          {toast.message}
-        </div>
-      )}
-
       <div className="flex items-center justify-between gap-4 mb-4">
         <h1 className="text-2xl font-bold">{t(lang, 'settings.title')}</h1>
         <div className="flex items-center gap-2">
@@ -739,6 +788,12 @@ export default function Settings({
           </button>
         </div>
       </div>
+
+      {quickSettingError && (
+        <div role="alert" className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-300">
+          {quickSettingError}
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* API Key */}
@@ -783,13 +838,20 @@ export default function Settings({
               {apiKeyConsentError}
             </p>
           )}
+          {saved && (
+            <p role="status" className="mt-3 flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400">
+              <Check size={16} aria-hidden="true" />
+              {lang === 'zh' ? 'API Key 验证并保存成功。' : 'API key verified and saved.'}
+            </p>
+          )}
           <a
             href="https://platform.deepseek.com/api_keys"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-[var(--accent)] hover:underline"
+            className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-[var(--accent)] hover:underline"
           >
-            {t(lang, 'settings.getApiKey')} →
+            {t(lang, 'settings.getApiKey')}
+            <ArrowUpRight size={15} className="shrink-0" aria-hidden="true" />
           </a>
         </div>
 
@@ -822,7 +884,10 @@ export default function Settings({
         {/* Quote Manager */}
         <div className="card p-4">
           <button
-            onClick={() => setShowQuoteManager(true)}
+            onClick={() => {
+              setQuoteStatus(null)
+              setShowQuoteManager(true)
+            }}
             className="w-full flex items-center justify-between"
           >
             <div>
@@ -925,6 +990,12 @@ export default function Settings({
                 </button>
               </div>
 
+              {quoteStatus && (
+                <div role="status" className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+                  {quoteStatus}
+                </div>
+              )}
+
               {settings.quotes.length === 0 ? (
                 <p className="text-sm text-[var(--text-secondary)] text-center py-4">
                   {lang === 'zh' ? '暂无金句，请添加或恢复默认' : 'No quotes, please add or reset'}
@@ -1019,7 +1090,7 @@ export default function Settings({
               </div>
               <button
                 onClick={closeDataManagement}
-                disabled={migrating || importing || clearingData}
+                disabled={migrating || importing || clearingData || exporting}
                 className="btn-secondary px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label={lang === 'zh' ? '关闭数据管理' : 'Close data management'}
               >
@@ -1039,11 +1110,16 @@ export default function Settings({
                       ? '清理浏览器缓存或网站数据、卸载重装、更新或重置浏览器、切换设备或用户配置，都可能删除全部学习数据。平台当前不提供云端备份与恢复服务，无法代为找回本地丢失的数据。'
                       : 'Clearing site data, reinstalling, updating or resetting the browser, or switching devices or profiles may delete all learning data. The platform currently does not provide cloud backup or recovery services and cannot recover locally lost data.'}
                   </p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                    {lang === 'zh'
+                      ? '当已有学习数据且距离上次成功备份满 7 天时，系统会再次提醒。提醒不会自动保存数据，仍需由你手动导出。'
+                      : 'When learning data exists and 7 days have passed since the last successful backup, the system will remind you again. Reminders do not save data automatically.'}
+                  </p>
                   <p className="mt-2 text-xs font-medium">
                     {lastBackupAt
                       ? (lang === 'zh'
-                        ? `上次备份：${new Date(lastBackupAt).toLocaleString('zh-CN')}`
-                        : `Last backup: ${new Date(lastBackupAt).toLocaleString('en-US')}`)
+                        ? `上次成功备份：${new Date(lastBackupAt).toLocaleString('zh-CN')}`
+                        : `Last successful backup: ${new Date(lastBackupAt).toLocaleString('en-US')}`)
                       : (lang === 'zh' ? '当前未记录到任何备份' : 'No backup has been recorded')}
                   </p>
                 </div>
@@ -1099,11 +1175,22 @@ export default function Settings({
             </div>}
 
             <div className="flex gap-2">
-              <button onClick={handleExport} disabled={migrating || importing || clearingData} className="btn-secondary flex flex-1 items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={handleExport} disabled={migrating || importing || clearingData || exporting} className="btn-secondary flex flex-1 items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                 <Download size={16} className="text-emerald-500" aria-hidden="true" />
-                {lang === 'zh' ? '导出数据' : 'Export'}
+                {exporting
+                  ? (lang === 'zh' ? '正在导出...' : 'Exporting...')
+                  : (lang === 'zh' ? '导出数据' : 'Export')}
               </button>
-              <button onClick={() => setShowImportModal(true)} disabled={migrating || importing || clearingData} className="btn-secondary flex flex-1 items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+              <button
+                onClick={() => {
+                  setImportError(null)
+                  setImportPreview(null)
+                  setImportFile(null)
+                  setShowImportModal(true)
+                }}
+                disabled={migrating || importing || clearingData}
+                className="btn-secondary flex flex-1 items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Upload size={16} className="text-sky-500" aria-hidden="true" />
                 {lang === 'zh' ? '导入数据' : 'Import'}
               </button>
@@ -1117,10 +1204,46 @@ export default function Settings({
               </button>
             </div>
 
+            {dataOperationStatus && (
+              <div
+                role={dataOperationStatus.type === 'error' ? 'alert' : 'status'}
+                className={`mt-3 rounded-lg border p-3 text-sm ${
+                  dataOperationStatus.type === 'success'
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : dataOperationStatus.type === 'error'
+                      ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300'
+                      : 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                }`}
+              >
+                {dataOperationStatus.message}
+              </div>
+            )}
+
+            {awaitingBackupConfirmation && (
+              <div role="status" className="mt-3 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm">
+                <p className="font-medium text-sky-700 dark:text-sky-300">
+                  {lang === 'zh' ? '请确认备份文件是否已保存' : 'Confirm that the backup file was saved'}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                  {lang === 'zh'
+                    ? '下载已经发起，但当前浏览器无法确认文件是否真正保存到本地。请先在下载列表中确认 JSON 文件保存成功，再登记本次备份。'
+                    : 'The download started, but this browser cannot confirm that the file was saved locally. Check the JSON file in your downloads before recording this backup.'}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={recordBackupCompleted} className="btn-primary flex-1 text-sm py-2">
+                    {lang === 'zh' ? '确认已保存' : 'Confirm saved'}
+                  </button>
+                  <button type="button" onClick={() => setAwaitingBackupConfirmation(false)} className="btn-secondary text-sm py-2">
+                    {lang === 'zh' ? '未保存' : 'Not saved'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <p className="mt-3 text-xs text-[var(--text-secondary)] text-center">
               {lang === 'zh'
-                ? '请将备份文件保存到可靠位置。API Key 不会被导出。'
-                : 'Keep the backup file in a safe location. Your API key is not exported.'}
+                ? '只有文件成功保存后才会更新备份时间。API Key 不会被导出。'
+                : 'The backup time updates only after the file is saved. Your API key is not exported.'}
             </p>
           </div>
         </div>

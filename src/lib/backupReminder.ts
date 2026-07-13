@@ -1,6 +1,8 @@
 export const DATA_RISK_ACKNOWLEDGED_KEY = 'feynman-data-risk-acknowledged'
 export const DATA_RISK_NOTICE_VERSION = '3'
-export const LAST_BACKUP_AT_KEY = 'feynman-last-backup-at'
+// Earlier versions recorded a timestamp as soon as a download started, so that
+// value cannot be treated as proof that a backup was saved.
+export const LAST_BACKUP_AT_KEY = 'feynman-last-successful-backup-at-v1'
 export const BACKUP_REMINDER_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
 
 export function hasAcknowledgedCurrentDataRisk(value: string | null): boolean {

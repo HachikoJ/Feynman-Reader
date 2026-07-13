@@ -1,6 +1,7 @@
 'use client'
 
 import { getSafeLinkHref } from '@/lib/safeUrl'
+import AppIcon from './AppIcon'
 
 interface Props {
   content: string
@@ -155,7 +156,7 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
         flushList()
         elements.push(
           <h3 key={`h3-${elements.length}`} className="text-lg font-semibold mt-5 mb-2 text-[var(--text-primary)] flex items-center gap-2">
-            <span className="text-[var(--accent)]">◆</span>
+            <AppIcon name="sparkles" tone="accent" size={16} />
             {parseInline(line.slice(4))}
           </h3>
         )
@@ -165,7 +166,7 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
         flushList()
         elements.push(
           <h4 key={`h4-${elements.length}`} className="font-semibold mt-4 mb-1.5 text-[var(--text-primary)] flex items-center gap-2">
-            <span className="text-[var(--accent)]">▸</span>
+            <AppIcon name="chevronRight" tone="accent" size={16} />
             {parseInline(line.slice(5))}
           </h4>
         )

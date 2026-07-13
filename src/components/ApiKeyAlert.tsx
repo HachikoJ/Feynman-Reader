@@ -1,6 +1,7 @@
 'use client'
 
 import { Language, t } from '@/lib/i18n'
+import AppIcon from './AppIcon'
 
 interface Props {
   lang: Language
@@ -13,7 +14,7 @@ export default function ApiKeyAlert({ lang, onGoSettings, onLater, onDontRemind 
   return (
     <div className="modal-overlay">
       <div className="modal-content text-center">
-        <div className="text-5xl mb-4">🔑</div>
+        <AppIcon name="key" tone="amber" size={48} className="mx-auto mb-4" />
         <h2 className="text-xl font-bold mb-2">{t(lang, 'alert.needApiKey')}</h2>
         <p className="text-[var(--text-secondary)] mb-6">
           {t(lang, 'alert.needApiKeyDesc')}

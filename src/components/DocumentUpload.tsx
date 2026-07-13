@@ -4,10 +4,11 @@ import { useState, useRef } from 'react'
 import { Language, t } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 import { MAX_DOCUMENT_FILE_SIZE, parseDocument, SUPPORTED_FILE_TYPES } from '@/lib/document-parser'
-import { AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
 import { getSettings, addBook, flushPendingStoreWrites, reloadBookFromPersistence, BookTag } from '@/lib/store'
 import { MAX_BOOK_TAGS, MAX_TAG_LENGTH } from '@/lib/dataLimits'
 import { detectMaliciousContent, sanitizeTextInput, validateAuthorName, validateBookName, validateContent } from '@/lib/validation'
+import AppIcon from './AppIcon'
 
 interface Props {
   lang: Language
@@ -115,7 +116,12 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
       } catch (analysisError) {
         logger.error('AI 分析失败，转为手工确认:', analysisError)
         const consentRequired = analysisError instanceof Error && analysisError.message === AI_DATA_CONSENT_REQUIRED
-        setAnalysisWarning(consentRequired
+        const contextLimitExceeded = analysisError instanceof Error && analysisError.message === AI_CONTEXT_LIMIT_EXCEEDED
+        setAnalysisWarning(contextLimitExceeded
+          ? (lang === 'zh'
+              ? '文档上下文过长，系统自动缩减后仍未能提取书籍信息。完整原文会继续保留，请手工确认后添加。'
+              : 'The document context was still too long after automatic reduction. The full text will be kept; confirm the book details manually.')
+          : consentRequired
           ? (lang === 'zh'
               ? '尚未同意 AI 数据传输，文档不会发送给 AI。请手工确认信息，或前往设置完成授权。'
               : 'AI data transfer consent is missing. The document was not sent to AI; confirm manually or enable consent in Settings.')
@@ -237,22 +243,23 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
     <div className="modal-overlay" onClick={handleClose}>
       <div className="modal-content max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          📄 {lang === 'zh' ? '上传文档添加书籍' : 'Upload Document to Add Book'}
+          <AppIcon name="file" tone="blue" size={22} />
+          {lang === 'zh' ? '上传文档添加书籍' : 'Upload Document to Add Book'}
         </h2>
 
         {step === 'upload' && (
           <div className="space-y-4">
             <p className="text-sm text-[var(--text-secondary)]">
-              {lang === 'zh' 
-                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB），AI 将自动分析提取书籍信息`
-                : `Supports PDF, DOCX, Markdown, TXT and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). AI will analyze and extract book info`}
+              {lang === 'zh'
+                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB）。AI 会提取书籍信息，解析出的完整原文将保存在当前浏览器中。`
+                : `Supports PDF, DOCX, Markdown, TXT and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). AI extracts book details, while the complete parsed text is kept in this browser.`}
             </p>
             
             <div 
               className="border-2 border-dashed border-[var(--border)] rounded-xl p-8 text-center cursor-pointer hover:border-[var(--accent)] transition-colors"
               onClick={() => fileInputRef.current?.click()}
             >
-              <div className="text-5xl mb-3">📁</div>
+              <AppIcon name="folder" tone="blue" size={48} className="mx-auto mb-3" />
               <p className="text-[var(--text-secondary)]">
                 {lang === 'zh' ? '点击选择文件' : 'Click to select a file'}
               </p>
@@ -285,7 +292,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
         {step === 'analyzing' && (
           <div className="text-center py-12">
-            <div className="text-5xl mb-4 animate-pulse">🔍</div>
+            <AppIcon name="scan" tone="accent" size={48} className="mx-auto mb-4 animate-pulse" />
             <p className="text-[var(--text-secondary)]">
               {lang === 'zh' ? 'AI 正在分析文档内容...' : 'AI is analyzing document...'}
             </p>
@@ -294,6 +301,12 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
         {step === 'confirm' && analyzedInfo && (
           <div className="space-y-4">
+            <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm text-sky-700 dark:text-sky-300">
+              {lang === 'zh'
+                ? `已完整解析 ${documentContent.length.toLocaleString()} 个字符。添加后，原文将用于阶段学习、费曼实践、角色问答和相关推荐。`
+                : `${documentContent.length.toLocaleString()} characters parsed in full. After adding the book, the source will support phase learning, Feynman practice, persona Q&A, and recommendations.`}
+            </div>
+
             {/* 置信度提示 */}
             <div className={`p-3 rounded-lg text-sm ${
               analyzedInfo.confidence >= 70 
@@ -352,8 +365,9 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
             {/* 标签 */}
             <div>
-              <label className="block text-sm font-medium mb-2">
-                🏷️ {lang === 'zh' ? '标签' : 'Tags'}
+              <label className="flex items-center gap-2 text-sm font-medium mb-2">
+                <AppIcon name="tag" tone="violet" size={17} />
+                {lang === 'zh' ? '标签' : 'Tags'}
               </label>
               
               {/* 已有标签 */}
@@ -371,7 +385,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
                         onClick={() => handleRemoveTag(idx)}
                         className="text-red-400 hover:text-red-500 ml-1"
                       >
-                        ×
+                        <AppIcon name="close" size={14} />
                       </button>
                     </div>
                   ))}
@@ -431,7 +445,8 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
                   disabled={!newTagName.trim() || (newTagCategory === '其他' && !customCategory.trim())}
                   className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  + {lang === 'zh' ? '添加标签' : 'Add Tag'}
+                  <AppIcon name="plus" tone="violet" size={16} />
+                  {lang === 'zh' ? '添加标签' : 'Add Tag'}
                 </button>
               </div>
             </div>
@@ -444,8 +459,9 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
             {/* 操作按钮 */}
             <div className="flex gap-3 pt-2">
-              <button onClick={handleConfirm} disabled={saving} className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
-                ✓ {saving ? (lang === 'zh' ? '正在保存...' : 'Saving...') : (lang === 'zh' ? '确认添加' : 'Confirm & Add')}
+              <button onClick={handleConfirm} disabled={saving} className="btn-primary flex flex-1 items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                <AppIcon name="check" size={17} />
+                {saving ? (lang === 'zh' ? '正在保存...' : 'Saving...') : (lang === 'zh' ? '确认添加' : 'Confirm & Add')}
               </button>
               <button onClick={handleClose} disabled={saving} className="btn-secondary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
                 {lang === 'zh' ? '取消' : 'Cancel'}

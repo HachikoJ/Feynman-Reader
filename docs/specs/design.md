@@ -101,7 +101,7 @@ interface Book {
   cover?: string                // 封面（URL或base64）
   description?: string          // 简介
   tags?: BookTag[]              // 标签数组
-  documentContent?: string      // 文档内容（截取前15000字符）
+  documentContent?: string      // 支持范围内完整保存的解析原文
   status: BookStatus            // 阅读状态
   currentPhase: number          // 当前阶段（0-5）
   noteRecords: NoteRecord[]     // 笔记记录数组
@@ -183,9 +183,9 @@ type PersonaType =
 ```typescript
 interface NoteRecord {
   id: string                    // UUID格式的唯一标识
-  type: 'note' | 'teaching'     // 笔记类型
+  type: 'note' | 'teaching'     // 普通笔记或旧版教学模拟记录
   content: string               // 笔记内容
-  aiReview?: string             // AI点评（仅教学模拟）
+  aiReview?: string             // 仅兼容旧版教学模拟记录，普通笔记不进行AI分析
   phaseId?: string              // 关联的阶段ID
   createdAt: number             // 创建时间戳
 }
@@ -462,7 +462,7 @@ class PracticeManager {
     ↓
 解析文档内容
     ↓
-截取前15000字符
+完整保存解析原文，并按当前任务构建全文检索上下文
     ↓
 调用AI提取书籍信息
     ↓
@@ -758,7 +758,7 @@ class DataValidator {
 **验证需求: 3.1.5**
 
 **Property 6: 文档内容持久化**
-*对于任何*包含文档内容的书籍，保存后读取应该返回相同的内容（截取到15000字符）
+*对于任何*包含文档内容的书籍，保存后读取应该返回相同的完整解析内容
 **验证需求: 3.4.3**
 
 ### 7.2 筛选与排序属性
@@ -1136,10 +1136,11 @@ function batchUpdate(updates: Update[]): void {
 ### 10.3 内存管理
 
 ```typescript
-// 1. 文档内容截取
-function truncateContent(content: string, maxLength: number = 15000): string {
-  return content.slice(0, maxLength)
-}
+// 1. 长文档上下文控制
+// 原文完整保存在本地；AI 请求按任务从全文检索相关及分布式片段。
+const context = buildDocumentContext(content, task, 600000)
+// 100 万 Token 总窗口预留约 20 万 Tokens；中文按约 1.3 Token/字符保守估算并向下取整。
+// 若网关明确返回上下文超限，则按初始预算的 75%、50%、25% 逐级缩小；全部失败才抛出稳定业务错误。
 
 // 2. 图片压缩
 async function compressImage(file: File, maxSize: number): Promise<string> {

@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { Language } from '@/lib/i18n'
 import { calculateScoreTrend, getTrendDescription, ProgressRecord } from '@/lib/practiceEnhancement'
+import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 
 interface Props {
   records: ProgressRecord[]
@@ -16,7 +17,7 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
   if (records.length === 0) {
     return (
       <div className={`bg-[var(--bg-secondary)] rounded-xl p-4 text-center ${compact ? '' : 'card'}`}>
-        <div className="text-4xl mb-2">📊</div>
+        <AppIcon name="chart" tone="blue" size={36} className="mx-auto mb-2" />
         <p className="text-[var(--text-secondary)]">
           {lang === 'zh' ? '暂无练习记录' : 'No practice records yet'}
         </p>
@@ -65,11 +66,11 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
   }
 
   // 获取趋势图标
-  const getTrendIcon = () => {
-    if (trend.improvement > 20) return '🚀'
-    if (trend.improvement > 0) return '📈'
-    if (trend.improvement < -10) return '📉'
-    return '➡️'
+  const getTrendIcon = (): { name: AppIconName; tone: AppIconTone } => {
+    if (trend.improvement > 20) return { name: 'rocket', tone: 'green' }
+    if (trend.improvement > 0) return { name: 'trendUp', tone: 'blue' }
+    if (trend.improvement < -10) return { name: 'trendDown', tone: 'red' }
+    return { name: 'arrowRight', tone: 'amber' }
   }
 
   const trendColor = getTrendColor()
@@ -78,11 +79,12 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
     return (
       <div className="bg-[var(--bg-secondary)] rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="font-semibold text-sm">
-            {lang === 'zh' ? '📊 进步追踪' : '📊 Progress'}
+          <h4 className="flex items-center gap-2 font-semibold text-sm">
+            <AppIcon name="chart" tone="blue" size={16} />
+            {lang === 'zh' ? '进步追踪' : 'Progress'}
           </h4>
           <div className="flex items-center gap-1 text-sm">
-            <span>{getTrendIcon()}</span>
+            <AppIcon {...getTrendIcon()} size={16} />
             <span className={trend.improvement > 0 ? 'text-green-400' : trend.improvement < -10 ? 'text-red-400' : ''}>
               {trend.current.toFixed(0)}
             </span>
@@ -120,8 +122,9 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
 
   return (
     <div className="card">
-      <h3 className="text-xl font-bold mb-4">
-        {lang === 'zh' ? '📊 进步追踪' : '📊 Progress Tracking'}
+      <h3 className="flex items-center gap-2 text-xl font-bold mb-4">
+        <AppIcon name="chart" tone="blue" size={22} />
+        {lang === 'zh' ? '进步追踪' : 'Progress Tracking'}
       </h3>
 
       {/* 统计概览 */}
@@ -151,8 +154,8 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
           </div>
         </div>
         <div className="bg-[var(--bg-secondary)] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold">
-            {getTrendIcon()}
+          <div className="flex h-8 items-center justify-center">
+            <AppIcon {...getTrendIcon()} size={24} />
           </div>
           <div className="text-xs text-[var(--text-secondary)]">
             {trend.trend === 'improving' ? (lang === 'zh' ? '上升趋势' : 'Improving') :
@@ -249,16 +252,22 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
         trend.improvement < -10 ? 'border-red-500/30 bg-red-500/5' :
         'border-[var(--border)] bg-[var(--bg-secondary)]'
       }`}>
-        <pre className="text-sm whitespace-pre-wrap font-sans">
-          {getTrendDescription(trend, lang)}
-        </pre>
+        <div className="flex items-start gap-3">
+          <AppIcon {...getTrendIcon()} size={20} />
+          <pre className="text-sm whitespace-pre-wrap font-sans">
+            {getTrendDescription(trend, lang)}
+          </pre>
+        </div>
       </div>
 
       {/* 练习记录列表 */}
       {records.length > 1 && (
         <details className="mt-4">
           <summary className="cursor-pointer text-sm text-[var(--accent)]">
-            {lang === 'zh' ? '📋 查看所有记录' : '📋 View all records'}
+            <span className="inline-flex items-center gap-2">
+              <AppIcon name="clipboard" tone="accent" size={16} />
+              {lang === 'zh' ? '查看所有记录' : 'View all records'}
+            </span>
           </summary>
           <div className="mt-3 space-y-2">
             {records.slice().reverse().map((record, idx) => (
@@ -279,14 +288,14 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
                 <div className="flex items-center gap-4">
                   {record.scores && (
                     <div className="flex gap-3 text-sm">
-                      <span title={lang === 'zh' ? '准确度' : 'Accuracy'}>
-                        🎯 {record.scores.accuracy}
+                      <span className="inline-flex items-center gap-1" title={lang === 'zh' ? '准确度' : 'Accuracy'}>
+                        <AppIcon name="target" tone="blue" size={14} /> {record.scores.accuracy}
                       </span>
-                      <span title={lang === 'zh' ? '完整度' : 'Completeness'}>
-                        📝 {record.scores.completeness}
+                      <span className="inline-flex items-center gap-1" title={lang === 'zh' ? '完整度' : 'Completeness'}>
+                        <AppIcon name="note" tone="green" size={14} /> {record.scores.completeness}
                       </span>
-                      <span title={lang === 'zh' ? '清晰度' : 'Clarity'}>
-                        💬 {record.scores.clarity}
+                      <span className="inline-flex items-center gap-1" title={lang === 'zh' ? '清晰度' : 'Clarity'}>
+                        <AppIcon name="message" tone="violet" size={14} /> {record.scores.clarity}
                       </span>
                     </div>
                   )}

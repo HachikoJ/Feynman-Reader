@@ -12,6 +12,7 @@ import { validateBookName, validateAuthorName, validateContent, sanitizeTextInpu
 import { undoRedoManager, createDeleteBookAction, createBatchDeleteBooksAction } from '@/lib/undoRedo'
 import { getSafeImageSrc } from '@/lib/safeUrl'
 import { MAX_TAG_LENGTH } from '@/lib/dataLimits'
+import AppIcon from './AppIcon'
 
 interface Props {
   lang: Language
@@ -599,11 +600,11 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     reader.readAsDataURL(file)
   }
 
-  const getStatusIcon = (status: BookStatus) => {
+  const getStatusIcon = (status: BookStatus, size = 20, onBadge = false) => {
     switch (status) {
-      case 'unread': return '📚'
-      case 'reading': return '📖'
-      case 'finished': return '✅'
+      case 'unread': return <AppIcon name="library" tone={onBadge ? 'inherit' : 'muted'} size={size} />
+      case 'reading': return <AppIcon name="bookOpen" tone={onBadge ? 'inherit' : 'amber'} size={size} />
+      case 'finished': return <AppIcon name="success" tone={onBadge ? 'inherit' : 'green'} size={size} />
     }
   }
 
@@ -659,15 +660,16 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onFocus={() => setShowSearchHistory(searchHistory.length > 0 && !searchQuery)}
-                placeholder={lang === 'zh' ? '🔍 搜索书名、作者、标签...' : '🔍 Search books, authors, tags...'}
+                placeholder={lang === 'zh' ? '搜索书名、作者、标签...' : 'Search books, authors, tags...'}
                 className="input-field w-full pl-10 pr-10"
               />
+              <AppIcon name="search" tone="muted" size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
               {searchQuery && (
                 <button
                   onClick={clearSearch}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                 >
-                  ✕
+                  <AppIcon name="close" size={16} />
                 </button>
               )}
 
@@ -687,7 +689,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                         }}
                         className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-[var(--bg-secondary)] text-sm flex items-center gap-2"
                       >
-                        <span className="text-[var(--text-secondary)]">🕐</span>
+                        <AppIcon name="refresh" tone="muted" size={15} />
                         {term}
                       </button>
                     ))}
@@ -703,15 +705,16 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               onClick={toggleBatchMode}
               className={batchMode ? "btn-primary" : "btn-secondary"}
             >
-              {batchMode ? '✓ ' : '☑️ '}
+              <AppIcon name={batchMode ? 'check' : 'clipboard'} size={17} />
               {lang === 'zh' ? (batchMode ? '退出批量' : '批量管理') : (batchMode ? 'Exit Batch' : 'Batch')}
             </button>
           )}
-          <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary">
-            📄 {lang === 'zh' ? '上传文档' : 'Upload Doc'}
+          <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary flex items-center gap-2">
+            <AppIcon name="upload" tone="blue" size={17} />{lang === 'zh' ? '上传文档' : 'Upload Doc'}
           </button>
           <button onClick={() => setShowAddModal(true)} className="btn-primary">
-            + {t(lang, 'bookshelf.addBook')}
+            <AppIcon name="plus" size={17} />
+            {t(lang, 'bookshelf.addBook')}
           </button>
         </div>
       </div>
@@ -721,22 +724,22 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <div className="card p-4 text-center">
-              <div className="text-3xl mb-1">📚</div>
+              <AppIcon name="library" tone="accent" size={28} className="mx-auto mb-1" />
               <div className="text-2xl font-bold text-[var(--accent)]">{stats.total}</div>
               <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '总计' : 'Total'}</div>
             </div>
             <div className="card p-4 text-center">
-              <div className="text-3xl mb-1">📖</div>
+              <AppIcon name="bookOpen" tone="amber" size={28} className="mx-auto mb-1" />
               <div className="text-2xl font-bold text-yellow-400">{stats.reading}</div>
               <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '在读' : 'Reading'}</div>
             </div>
             <div className="card p-4 text-center">
-              <div className="text-3xl mb-1">✅</div>
+              <AppIcon name="success" tone="green" size={28} className="mx-auto mb-1" />
               <div className="text-2xl font-bold text-green-400">{stats.finished}</div>
               <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '已读' : 'Finished'}</div>
             </div>
             <div className="card p-4 text-center">
-              <div className="text-3xl mb-1">🎯</div>
+              <AppIcon name="target" tone="violet" size={28} className="mx-auto mb-1" />
               <div className="text-2xl font-bold text-[var(--accent)]">{Math.round(stats.avgScore) || '-'}</div>
               <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '平均分' : 'Avg Score'}</div>
             </div>
@@ -757,7 +760,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 animate-fade-in">
                 {/* 阅读状态分布 */}
                 <div className="card p-4">
-                  <h4 className="font-semibold mb-3 text-sm">{lang === 'zh' ? '📊 阅读状态分布' : '📊 Reading Status'}</h4>
+                  <h4 className="flex items-center gap-2 font-semibold mb-3 text-sm"><AppIcon name="chart" tone="blue" size={16} />{lang === 'zh' ? '阅读状态分布' : 'Reading Status'}</h4>
                   <div className="space-y-3">
                     <div>
                       <div className="flex justify-between text-xs mb-1">
@@ -785,7 +788,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
                 {/* 得分分布 */}
                 <div className="card p-4">
-                  <h4 className="font-semibold mb-3 text-sm">{lang === 'zh' ? '🎯 得分分布' : '🎯 Score Distribution'}</h4>
+                  <h4 className="flex items-center gap-2 font-semibold mb-3 text-sm"><AppIcon name="target" tone="violet" size={16} />{lang === 'zh' ? '得分分布' : 'Score Distribution'}</h4>
                   {(() => {
                     const scoredBooks = books.filter(b => b.bestScore > 0)
                     const excellent = scoredBooks.filter(b => b.bestScore >= 80).length
@@ -797,21 +800,21 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                       <div className="space-y-3">
                         <div>
                           <div className="flex justify-between text-xs mb-1">
-                            <span>⭐ {lang === 'zh' ? '优秀 (≥80)' : 'Excellent (≥80)'}</span>
+                            <span className="flex items-center gap-1"><AppIcon name="sparkles" tone="green" size={14} />{lang === 'zh' ? '优秀 (≥80)' : 'Excellent (≥80)'}</span>
                             <span>{excellent}</span>
                           </div>
                           <MiniProgressBar value={excellent} max={total} color="#22c55e" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs mb-1">
-                            <span>✓ {lang === 'zh' ? '合格 (60-79)' : 'Passed (60-79)'}</span>
+                            <span className="flex items-center gap-1"><AppIcon name="check" tone="blue" size={14} />{lang === 'zh' ? '合格 (60-79)' : 'Passed (60-79)'}</span>
                             <span>{good}</span>
                           </div>
                           <MiniProgressBar value={good} max={total} color="#3b82f6" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs mb-1">
-                            <span>📝 {lang === 'zh' ? '待提升 (<60)' : 'Needs Work (<60)'}</span>
+                            <span className="flex items-center gap-1"><AppIcon name="note" tone="amber" size={14} />{lang === 'zh' ? '待提升 (<60)' : 'Needs Work (<60)'}</span>
                             <span>{needsWork}</span>
                           </div>
                           <MiniProgressBar value={needsWork} max={total} color="#f97316" />
@@ -889,7 +892,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   onClick={handleBatchDelete}
                   className="btn-secondary text-sm py-2 text-red-400 border-red-400/30 hover:border-red-400"
                 >
-                  🗑️ {lang === 'zh' ? '批量删除' : 'Delete'}
+                  <AppIcon name="trash" size={15} />{lang === 'zh' ? '批量删除' : 'Delete'}
                 </button>
               </div>
             )}
@@ -919,7 +922,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               onClick={() => setShowTagManagement(true)}
               className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] flex items-center gap-1"
             >
-              ⚙️ {lang === 'zh' ? '管理标签' : 'Manage Tags'}
+              <AppIcon name="settings" tone="muted" size={16} />
+              {lang === 'zh' ? '管理标签' : 'Manage Tags'}
             </button>
           </div>
           
@@ -957,7 +961,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               
               {/* 具体标签筛选 */}
               <div>
-                <div className="text-xs text-[var(--text-secondary)] mb-2">🏷️ {lang === 'zh' ? '标签' : 'Tags'}</div>
+                <div className="mb-2 flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"><AppIcon name="tag" tone="violet" size={14} />{lang === 'zh' ? '标签' : 'Tags'}</div>
                 <div className="flex flex-wrap gap-2">
                   {(selectedCategory 
                     ? allTags.filter(tag => tag.category === selectedCategory)
@@ -985,10 +989,11 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
       {/* Book List */}
       {filteredBooks.length === 0 ? (
         <div className="card text-center py-16">
-          <div className="text-6xl mb-4">📚</div>
+          <AppIcon name="library" tone="blue" size={56} className="mx-auto mb-4" />
           <p className="text-[var(--text-secondary)] text-lg">{t(lang, 'bookshelf.empty')}</p>
           <button onClick={() => setShowAddModal(true)} className="btn-primary mt-4">
-            + {t(lang, 'bookshelf.addBook')}
+            <AppIcon name="plus" size={17} />
+            {t(lang, 'bookshelf.addBook')}
           </button>
         </div>
       ) : viewMode === 'grid' ? (
@@ -1018,32 +1023,22 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   <img src={getSafeImageSrc(book.cover)!} alt={book.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center p-4">
-                    <span className="text-5xl mb-2">{getStatusIcon(book.status)}</span>
+                    <span className="mb-2">{getStatusIcon(book.status, 30)}</span>
                     <span className="text-sm text-center text-[var(--text-secondary)] line-clamp-2">{book.name}</span>
                   </div>
                 )}
                 
                 {/* Status Badge - 左上角，带阴影和边框 */}
-                <div className={`absolute ${batchMode ? 'top-2 left-9' : 'top-2 left-2'} px-2 py-1 rounded-lg text-xs font-bold shadow-lg border-2 ${
+                <div className={`absolute ${batchMode ? 'top-2 left-9' : 'top-2 left-2'} inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold shadow-lg border-2 ${
                   book.status === 'unread' 
                     ? 'bg-gray-500 text-white border-gray-600' 
                     : book.status === 'reading'
                       ? 'bg-yellow-500 text-white border-yellow-600'
                       : 'bg-green-500 text-white border-green-600'
                 }`}>
-                  {getStatusIcon(book.status)} {t(lang, `bookshelf.status.${book.status}`)}
+                  {getStatusIcon(book.status, 14, true)}
+                  {t(lang, `bookshelf.status.${book.status}`)}
                 </div>
-
-                {/* Score Badge - 左上角状态下方，带阴影 */}
-                {book.bestScore > 0 && (
-                  <div className={`absolute ${batchMode ? 'top-12 left-9' : 'top-12 left-2'} w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-lg border-2 ${
-                    book.bestScore >= 60 
-                      ? 'bg-green-500 text-white border-green-600' 
-                      : 'bg-yellow-500 text-white border-yellow-600'
-                  }`}>
-                    {book.bestScore}
-                  </div>
-                )}
 
                 {/* Hover Actions - 右上角小图标 */}
                 {!batchMode && (
@@ -1053,21 +1048,21 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                       className="w-8 h-8 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-sm hover:scale-110 transition-transform"
                       title={lang === 'zh' ? '阅读' : 'Read'}
                     >
-                      📖
+                      <AppIcon name="bookOpen" size={16} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); openEditModal(book) }}
                       className="w-8 h-8 rounded-full bg-white/90 text-gray-700 flex items-center justify-center text-sm hover:scale-110 transition-transform"
                       title={lang === 'zh' ? '编辑' : 'Edit'}
                     >
-                      ✏️
+                      <AppIcon name="edit" size={16} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteBook(book) }}
                       className="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center text-sm hover:scale-110 transition-transform"
                       title={lang === 'zh' ? '删除' : 'Delete'}
                     >
-                      🗑️
+                      <AppIcon name="trash" size={16} />
                     </button>
                   </div>
                 )}
@@ -1075,7 +1070,19 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
               {/* Info */}
               <div className="p-3">
-                <h3 className="font-semibold text-sm truncate">{book.name}</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{book.name}</h3>
+                  {book.bestScore > 0 && (
+                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold ${
+                      book.bestScore >= 60
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    }`}>
+                      <AppIcon name="target" size={13} />
+                      {book.bestScore}{lang === 'zh' ? '分' : ''}
+                    </span>
+                  )}
+                </div>
                 {book.author && <p className="text-xs text-[var(--text-secondary)] truncate">{book.author}</p>}
                 {book.description && <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">{book.description}</p>}
                 
@@ -1133,7 +1140,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   <img src={getSafeImageSrc(book.cover)!} alt={book.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <span className="text-3xl">{getStatusIcon(book.status)}</span>
+                    {getStatusIcon(book.status, 30)}
                   </div>
                 )}
               </div>
@@ -1145,14 +1152,15 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                     <h3 className="font-semibold text-lg">{book.name}</h3>
                     {book.author && <p className="text-sm text-[var(--text-secondary)]">{book.author}</p>}
                   </div>
-                  <span className={`px-3 py-1 rounded-lg text-xs font-bold shadow-md border-2 flex-shrink-0 ${
+                  <span className={`inline-flex flex-shrink-0 items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold shadow-md border-2 ${
                     book.status === 'unread' 
                       ? 'bg-gray-500 text-white border-gray-600' 
                       : book.status === 'reading'
                         ? 'bg-yellow-500 text-white border-yellow-600'
                         : 'bg-green-500 text-white border-green-600'
                   }`}>
-                    {getStatusIcon(book.status)} {t(lang, `bookshelf.status.${book.status}`)}
+                    {getStatusIcon(book.status, 14, true)}
+                    {t(lang, `bookshelf.status.${book.status}`)}
                   </span>
                 </div>
                 
@@ -1178,7 +1186,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                         disabled={generatingTags}
                         title={t(lang, 'bookshelf.tags.regenerate')}
                       >
-                        🔄
+                        <AppIcon name="refresh" size={15} />
                       </button>
                     </>
                   ) : (
@@ -1187,7 +1195,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                       className="text-xs text-[var(--accent)] hover:underline"
                       disabled={generatingTags}
                     >
-                      {generatingTags ? t(lang, 'bookshelf.tags.generating') : `🏷️ ${lang === 'zh' ? '生成标签' : 'Generate Tags'}`}
+                      <AppIcon name="tag" size={14} />{generatingTags ? t(lang, 'bookshelf.tags.generating') : (lang === 'zh' ? '生成标签' : 'Generate Tags')}
                     </button>
                   )}
                 </div>
@@ -1204,8 +1212,13 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   </div>
                   
                   {book.bestScore > 0 && (
-                    <div className={`text-lg font-bold ${book.bestScore >= 60 ? 'text-green-400' : 'text-yellow-400'}`}>
-                      {book.bestScore}分
+                    <div className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold ${
+                      book.bestScore >= 60
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    }`}>
+                      <AppIcon name="target" size={14} />
+                      {book.bestScore}{lang === 'zh' ? '分' : ''}
                     </div>
                   )}
                 </div>
@@ -1214,16 +1227,17 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   {!batchMode && (
                     <>
                       <button onClick={() => handleSelectBook(book)} className="btn-primary text-sm py-1.5">
-                        📖 {book.status === 'unread' ? t(lang, 'bookshelf.startReading') : t(lang, 'bookshelf.continueReading')}
+                        <AppIcon name="bookOpen" size={15} />{book.status === 'unread' ? t(lang, 'bookshelf.startReading') : t(lang, 'bookshelf.continueReading')}
                       </button>
                       <button onClick={() => openEditModal(book)} className="btn-secondary text-sm py-1.5">
-                        ✏️ {lang === 'zh' ? '编辑' : 'Edit'}
+                        <AppIcon name="edit" tone="amber" size={14} />
+                        {lang === 'zh' ? '编辑' : 'Edit'}
                       </button>
                       <button 
                         onClick={() => handleDeleteBook(book)}
                         className="btn-secondary text-sm py-1.5 text-red-400 border-red-400/30 hover:border-red-400"
                       >
-                        🗑️ {lang === 'zh' ? '删除' : 'Del'}
+                        <AppIcon name="trash" size={14} />{lang === 'zh' ? '删除' : 'Del'}
                       </button>
                     </>
                   )}
@@ -1256,7 +1270,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                     {getSafeImageSrc(newBookCover) ? (
                       <img src={getSafeImageSrc(newBookCover)!} alt="Cover" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-3xl">📷</span>
+                      <AppIcon name="camera" tone="blue" size={28} />
                     )}
                   </div>
                   <input
@@ -1328,7 +1342,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               {/* Tags Management */}
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  🏷️ {lang === 'zh' ? '标签' : 'Tags'}
+                  <AppIcon name="tag" tone="violet" size={18} />{lang === 'zh' ? '标签' : 'Tags'}
                 </label>
                 
                 {/* Existing Tags */}
@@ -1346,7 +1360,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                           onClick={() => handleRemoveTag(tag)}
                           className="text-red-400 hover:text-red-500 ml-1"
                         >
-                          ×
+                          <AppIcon name="close" size={13} />
                         </button>
                       </div>
                     ))}
@@ -1406,7 +1420,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                     disabled={!newTagName.trim() || (newTagCategory === '其他' && !customCategory.trim())}
                     className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    + {lang === 'zh' ? '添加标签' : 'Add Tag'}
+                    <AppIcon name="plus" tone="violet" size={16} />
+                    {lang === 'zh' ? '添加标签' : 'Add Tag'}
                   </button>
                 </div>
                 
@@ -1416,7 +1431,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                     className="text-xs text-[var(--accent)] hover:underline mt-3 block"
                     disabled={generatingTags}
                   >
-                    {generatingTags ? t(lang, 'bookshelf.tags.generating') : `🤖 ${lang === 'zh' ? 'AI 生成标签' : 'AI Generate Tags'}`}
+                    <AppIcon name="sparkles" size={14} />{generatingTags ? t(lang, 'bookshelf.tags.generating') : (lang === 'zh' ? 'AI 生成标签' : 'AI Generate Tags')}
                   </button>
                 )}
               </div>
@@ -1458,7 +1473,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         <div className="modal-overlay" onClick={() => { if (!mutatingBooks) setDeleteConfirmBook(null) }}>
           <div className="modal-content max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="text-center">
-              <div className="text-5xl mb-4">⚠️</div>
+              <AppIcon name="alert" tone="red" size={46} className="mx-auto mb-4" />
               <h2 className="text-xl font-bold mb-2">
                 {lang === 'zh' ? '确认删除' : 'Confirm Delete'}
               </h2>
@@ -1497,7 +1512,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         <div className="modal-overlay" onClick={() => { if (!mutatingBooks) setShowBatchDeleteConfirm(false) }}>
           <div className="modal-content max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="text-center">
-              <div className="text-5xl mb-4">⚠️</div>
+              <AppIcon name="alert" tone="red" size={46} className="mx-auto mb-4" />
               <h2 className="text-xl font-bold mb-2">
                 {lang === 'zh' ? '批量删除确认' : 'Batch Delete Confirm'}
               </h2>
@@ -1538,20 +1553,20 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           <div className="modal-content max-w-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold">
-                🏷️ {lang === 'zh' ? '标签管理' : 'Tag Management'}
+                <AppIcon name="tag" tone="violet" size={22} />{lang === 'zh' ? '标签管理' : 'Tag Management'}
               </h2>
               <button 
                 onClick={() => setShowTagManagement(false)}
                 className="text-2xl text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
-                ×
+                <AppIcon name="close" size={20} />
               </button>
             </div>
 
             {/* Warning */}
             <div className="bg-yellow-500/10 border-2 border-yellow-500/30 rounded-xl p-4 mb-6">
               <div className="flex items-start gap-3">
-                <span className="text-2xl">⚠️</span>
+                <AppIcon name="alert" tone="amber" size={22} />
                 <div>
                   <h3 className="font-bold text-yellow-600 dark:text-yellow-400 mb-1">
                     {lang === 'zh' ? '重要提示' : 'Important Notice'}
@@ -1572,7 +1587,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 return (
                   <div key={category} className="card p-4">
                     <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-                      <span className="text-[var(--accent)]">📁</span>
+                      <AppIcon name="folder" tone="accent" size={18} />
                       {category}
                       <span className="text-xs text-[var(--text-secondary)] font-normal">
                         ({categoryTags.length} {lang === 'zh' ? '个标签' : 'tags'})
@@ -1633,7 +1648,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                                     disabled={mutatingBooks || !newGlobalTagName.trim() || !newGlobalTagCategory.trim()}
                                     className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                   >
-                                    {mutatingBooks ? (lang === 'zh' ? '保存中...' : 'Saving...') : `✓ ${lang === 'zh' ? '保存' : 'Save'}`}
+                                    {mutatingBooks ? (lang === 'zh' ? '保存中...' : 'Saving...') : (lang === 'zh' ? '保存' : 'Save')}
                                   </button>
                                 </div>
                               </div>
@@ -1648,15 +1663,16 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                                 <div className="flex gap-2">
                                   <button
                                     onClick={() => handleEditGlobalTag(tag)}
-                                    className="text-sm text-[var(--accent)] hover:underline"
+                                    className="inline-flex items-center gap-1 text-sm text-[var(--accent)] hover:underline"
                                   >
-                                    ✏️ {lang === 'zh' ? '编辑' : 'Edit'}
+                                    <AppIcon name="edit" tone="amber" size={14} />
+                                    {lang === 'zh' ? '编辑' : 'Edit'}
                                   </button>
                                   <button
                                     onClick={() => handleDeleteGlobalTag(tag)}
                                     className="text-sm text-red-400 hover:underline"
                                   >
-                                    🗑️ {lang === 'zh' ? '删除' : 'Delete'}
+                                    <AppIcon name="trash" size={14} />{lang === 'zh' ? '删除' : 'Delete'}
                                   </button>
                                 </div>
                               </div>
@@ -1672,7 +1688,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
             {allTags.length === 0 && (
               <div className="text-center py-12 text-[var(--text-secondary)]">
-                <div className="text-5xl mb-3">🏷️</div>
+                <AppIcon name="tag" tone="violet" size={46} className="mx-auto mb-3" />
                 <p>{lang === 'zh' ? '暂无标签' : 'No tags yet'}</p>
                 <p className="text-sm mt-2">
                   {lang === 'zh' ? '在书籍编辑页面添加标签，或使用 AI 生成标签' : 'Add tags in book edit page or use AI to generate tags'}
@@ -1697,7 +1713,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         <div className="modal-overlay" onClick={() => { if (!mutatingBooks) setTagToDelete(null) }}>
           <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
             <div className="text-center">
-              <div className="text-5xl mb-4">⚠️</div>
+              <AppIcon name="alert" tone="red" size={46} className="mx-auto mb-4" />
               <h2 className="text-xl font-bold mb-2 text-red-500">
                 {lang === 'zh' ? '确认删除标签' : 'Confirm Delete Tag'}
               </h2>
@@ -1711,7 +1727,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               </div>
               <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4">
                 <p className="text-sm text-red-600 dark:text-red-400 font-medium mb-2">
-                  ⚠️ {lang === 'zh' ? '此操作将影响以下内容：' : 'This action will affect:'}
+                  <AppIcon name="alert" size={16} />{lang === 'zh' ? '此操作将影响以下内容：' : 'This action will affect:'}
                 </p>
                 <ul className="text-sm text-[var(--text-secondary)] text-left space-y-1">
                   <li>• {countBooksWithTag(tagToDelete)} {lang === 'zh' ? '本书将失去此标签' : 'books will lose this tag'}</li>

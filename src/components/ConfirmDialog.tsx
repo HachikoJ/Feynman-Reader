@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { Language } from '@/lib/i18n'
+import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 
 export interface ConfirmDialogOptions {
   title: string
@@ -55,17 +56,23 @@ export default function ConfirmDialog({ options, onClose, lang }: Props) {
   }
 
   // 图标和颜色映射
-  const typeConfig = {
+  const typeConfig: Record<NonNullable<ConfirmDialogOptions['type']>, { icon: AppIconName; tone: AppIconTone; bgClass: string; btnClass: string }> = {
     danger: {
-      icon: '⚠️',
+      icon: 'alert',
+      tone: 'red',
+      bgClass: 'bg-red-500/10',
       btnClass: 'bg-red-500 hover:bg-red-600 text-white'
     },
     warning: {
-      icon: '⚠️',
+      icon: 'alert',
+      tone: 'amber',
+      bgClass: 'bg-amber-500/10',
       btnClass: 'bg-yellow-500 hover:bg-yellow-600 text-white'
     },
     info: {
-      icon: 'ℹ️',
+      icon: 'info',
+      tone: 'blue',
+      bgClass: 'bg-blue-500/10',
       btnClass: 'bg-[var(--accent)] hover:opacity-90 text-white'
     }
   }
@@ -84,7 +91,9 @@ export default function ConfirmDialog({ options, onClose, lang }: Props) {
       <div className="relative bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in">
         {/* 图标 */}
         <div className="text-center mb-4">
-          <div className="text-6xl">{config.icon}</div>
+          <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${config.bgClass}`}>
+            <AppIcon name={config.icon} tone={config.tone} size={34} />
+          </div>
         </div>
 
         {/* 标题 */}

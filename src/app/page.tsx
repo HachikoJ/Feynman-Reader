@@ -24,7 +24,7 @@ import BackToTop from '@/components/BackToTop'
 import AuthGuard from '@/components/AuthGuard'
 import Onboarding, { ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION } from '@/components/Onboarding'
 import DataLossWarning from '@/components/DataLossWarning'
-import Toast from '@/components/Toast'
+import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import UndoRedoControls, { useUndoRedoShortcuts } from '@/components/UndoRedoControls'
 import {
@@ -39,6 +39,14 @@ import { getActiveStartupPrompt } from '@/lib/startupPrompt'
 import { validateApiKey } from '@/lib/validation'
 
 type View = 'bookshelf' | 'reading' | 'settings'
+
+function GitHubMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true">
+      <path d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-2.24c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.57-.29-5.27-1.28-5.27-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.05 0 0 .97-.31 3.16 1.18A10.98 10.98 0 0 1 12 6.11c.98 0 1.96.13 2.88.39 2.19-1.49 3.15-1.18 3.15-1.18.63 1.58.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.71 5.39-5.29 5.68.42.36.79 1.07.79 2.16v3.25c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .7Z" />
+    </svg>
+  )
+}
 
 export default function Home() {
   const [view, setView] = useState<View>('bookshelf')
@@ -63,7 +71,7 @@ export default function Home() {
   const [focusApiConfigurationRequest, setFocusApiConfigurationRequest] = useState(0)
 
   // P1 新增：启用撤销/重做快捷键
-  useUndoRedoShortcuts()
+  useUndoRedoShortcuts(settings.language)
 
   useEffect(() => {
     let cancelled = false
@@ -102,7 +110,7 @@ export default function Home() {
       const acknowledged = hasAcknowledgedCurrentDataRisk(localStorage.getItem(DATA_RISK_ACKNOWLEDGED_KEY))
       const lastBackupValue = localStorage.getItem(LAST_BACKUP_AT_KEY)
       const lastBackupAt = lastBackupValue ? Number(lastBackupValue) : null
-      const needsBackup = acknowledged && books.length > 0 && (!lastBackupAt || Date.now() - lastBackupAt >= BACKUP_REMINDER_INTERVAL_MS)
+      const needsBackup = books.length > 0 && (!lastBackupAt || Date.now() - lastBackupAt >= BACKUP_REMINDER_INTERVAL_MS)
       setBackupDue(needsBackup)
       setShowDataLossWarning(shouldShowBackupWarning({
         acknowledged,
@@ -156,6 +164,12 @@ export default function Home() {
       setSettings(restored)
       setStorageWriteError(true)
     }
+  }
+
+  const handleOpenApiSettings = () => {
+    setShowApiKeyAlert(false)
+    setFocusApiConfigurationRequest(request => request + 1)
+    setView('settings')
   }
 
   const handleOpenOnboarding = () => {
@@ -243,7 +257,17 @@ export default function Home() {
         <nav className="sticky top-0 z-40 backdrop-blur-lg bg-[var(--bg-primary)]/80 border-b border-[var(--border)]">
           <div className="max-w-6xl mx-auto px-4 py-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setView('bookshelf')
+                  setSelectedBook(null)
+                  setBookshelfKey(prev => prev + 1)
+                }}
+                className="flex items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]"
+                aria-label={lang === 'zh' ? '返回书架首页' : 'Return to bookshelf home'}
+                title={lang === 'zh' ? '返回书架首页' : 'Bookshelf home'}
+              >
                 <div className="relative h-12 w-12 shrink-0 overflow-hidden">
                   <Image
                     src="/icon-192.png"
@@ -254,10 +278,10 @@ export default function Home() {
                     priority
                   />
                 </div>
-                <span className="text-xl font-bold text-gradient">{t(lang, 'app.title')}</span>
-              </div>
+                <span className="hidden text-xl font-bold text-gradient sm:inline">{t(lang, 'app.title')}</span>
+              </button>
               
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => { 
                     setView('bookshelf')
@@ -266,18 +290,20 @@ export default function Home() {
                   }}
                   className={`nav-item ${view === 'bookshelf' ? 'active' : ''}`}
                 >
-                  📚 {t(lang, 'nav.bookshelf')}
+                  <AppIcon name="library" tone={view === 'bookshelf' ? 'inherit' : 'blue'} size={18} />
+                  {t(lang, 'nav.bookshelf')}
                 </button>
                 <button
                   onClick={() => setView('settings')}
                   className={`nav-item ${view === 'settings' ? 'active' : ''}`}
                 >
-                  ⚙️ {t(lang, 'nav.settings')}
+                  <AppIcon name="settings" tone={view === 'settings' ? 'inherit' : 'amber'} size={18} />
+                  {t(lang, 'nav.settings')}
                 </button>
                 <button
                   type="button"
                   onClick={handleOpenOnboarding}
-                  className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-2.5 text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border border-[var(--accent)]/35 bg-[var(--accent)]/10 text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15 lg:w-auto lg:px-3"
                   aria-label={lang === 'zh' ? '打开使用引导' : 'Open user guide'}
                   title={lang === 'zh' ? '使用引导' : 'User guide'}
                 >
@@ -286,6 +312,16 @@ export default function Home() {
                     {lang === 'zh' ? '使用引导' : 'Guide'}
                   </span>
                 </button>
+                <a
+                  href="https://github.com/HachikoJ/Feynman-Reader"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border)] text-[var(--text-primary)] transition-colors hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)]"
+                  aria-label={lang === 'zh' ? '访问 GitHub 开源项目' : 'Open the GitHub repository'}
+                  title={lang === 'zh' ? 'GitHub 开源项目' : 'GitHub repository'}
+                >
+                  <GitHubMark />
+                </a>
               </div>
             </div>
           </div>
@@ -308,7 +344,7 @@ export default function Home() {
                 setView('bookshelf')
                 setBookshelfKey(prev => prev + 1) // 强制刷新书架以显示最新数据
               }}
-              onOpenSettings={() => setView('settings')}
+              onOpenSettings={handleOpenApiSettings}
             />
           )}
           
@@ -383,7 +419,7 @@ export default function Home() {
         {activeStartupPrompt === 'api-key' && (
           <ApiKeyAlert
             lang={lang}
-            onGoSettings={() => { setShowApiKeyAlert(false); setView('settings') }}
+            onGoSettings={handleOpenApiSettings}
             onLater={() => setShowApiKeyAlert(false)}
             onDontRemind={handleDontRemind}
           />
@@ -408,9 +444,6 @@ export default function Home() {
 
         {/* Back to Top Button */}
         <BackToTop />
-
-        {/* Toast Notifications */}
-        <Toast lang={lang} position="top-right" />
 
         {/* P1 新增：撤销/重做控制 */}
         <UndoRedoControls lang={lang} />

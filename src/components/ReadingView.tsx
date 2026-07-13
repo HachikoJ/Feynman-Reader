@@ -7,7 +7,7 @@ import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, 
 import { createLocalId } from '@/lib/localId'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
-import { AI_DATA_CONSENT_REQUIRED, chat, chatJson, createDeepSeekClient, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, chat, chatJson, createDeepSeekClient, generateBookMetadata, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
 import LoadingQuotes from './LoadingQuotes'
 import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
@@ -21,6 +21,8 @@ import {
   isPhaseUnlocked
 } from '@/lib/learningProgress'
 import { MAX_AI_ANSWER_LENGTH, MAX_NOTE_LENGTH } from '@/lib/dataLimits'
+import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
+import { buildMissingBookMetadataUpdates, needsBookMetadataEnrichment } from '@/lib/bookMetadata'
 
 interface Props {
   book: Book
@@ -32,6 +34,24 @@ interface Props {
 }
 
 type TabType = 'phase' | 'practice' | 'notes' | 'recommendations'
+
+const phaseIconNames: Record<string, AppIconName> = {
+  background: 'scan',
+  overview: 'library',
+  deepDive: 'target',
+  critical: 'scale',
+  reception: 'users',
+  synthesis: 'route'
+}
+
+const phaseIconTones: Record<string, AppIconTone> = {
+  background: 'cyan',
+  overview: 'blue',
+  deepDive: 'green',
+  critical: 'amber',
+  reception: 'violet',
+  synthesis: 'blue'
+}
 
 export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack, onOpenSettings }: Props) {
   const [book, setBook] = useState(initialBook)
@@ -61,11 +81,15 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [showPracticeHistory, setShowPracticeHistory] = useState(false)
   const [qaShowHistory, setQaShowHistory] = useState(false)
+  const [metadataEnrichmentStatus, setMetadataEnrichmentStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const analysisInFlightRef = useRef(false)
   const progressSaveInFlightRef = useRef(false)
   const practiceSubmissionRef = useRef(false)
   const practiceDeletionIdsRef = useRef(new Set<string>())
   const noteMutationInFlightRef = useRef(false)
+  const metadataEnrichmentAttemptsRef = useRef(new Set<string>())
+  const currentBookIdRef = useRef(book.id)
+  const missingApiKey = apiKey.trim().length === 0
   
   // 用于滚动定位的ref
   const practiceHistoryRef = useRef<HTMLDivElement>(null)
@@ -97,6 +121,46 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     }
   }, [apiKey])
 
+  useEffect(() => {
+    currentBookIdRef.current = book.id
+  }, [book.id])
+
+  useEffect(() => {
+    if (!client || analyzingInBackground || !needsBookMetadataEnrichment(book) || metadataEnrichmentAttemptsRef.current.has(book.id)) return
+
+    const targetBookId = book.id
+    metadataEnrichmentAttemptsRef.current.add(targetBookId)
+    setMetadataEnrichmentStatus('loading')
+
+    void (async () => {
+      try {
+        const candidate = await generateBookMetadata(
+          client,
+          book.name,
+          book.author,
+          book.description,
+          book.documentContent
+        )
+        const latestBook = getBook(targetBookId) || book
+        const updates = buildMissingBookMetadataUpdates(latestBook, candidate)
+
+        if (Object.keys(updates).length > 0) {
+          await flushPendingStoreWrites()
+          updateBook(targetBookId, updates)
+          await flushPendingStoreWrites()
+          const persistedBook = getBook(targetBookId)
+          if (currentBookIdRef.current === targetBookId && persistedBook) setBook(persistedBook)
+        }
+
+        if (currentBookIdRef.current === targetBookId) setMetadataEnrichmentStatus('idle')
+      } catch (error) {
+        if (isDeepSeekAuthenticationError(error)) setApiKeyInvalid(true)
+        logger.warn('Automatic book metadata enrichment was not completed.')
+        if (currentBookIdRef.current === targetBookId) setMetadataEnrichmentStatus('error')
+      }
+    })()
+  }, [client, analyzingInBackground, book])
+
   // 确保打开书籍时页面滚动到顶部
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' })
@@ -104,6 +168,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const handleAnalyzeAll = async () => {
     if (analysisInFlightRef.current) return
+    if (missingApiKey) {
+      setAnalysisError(lang === 'zh'
+        ? '使用 AI 深度分析前，请先前往设置填写并保存 DeepSeek API Key。'
+        : 'Add and save your DeepSeek API key in Settings before using AI analysis.')
+      return
+    }
     if (!client) {
       setAnalysisError(aiConsentRequired
         ? (lang === 'zh' ? '请先在设置中同意 AI 数据传输。' : 'Please consent to AI data transfer in Settings.')
@@ -121,6 +191,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
     const failedPhases: string[] = []
     let authenticationFailed = false
+    let contextLimitExceeded = false
 
     try {
       for (let i = 0; i < LEARNING_PHASES.length; i++) {
@@ -158,6 +229,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             logger.warn('DeepSeek rejected the configured API key.')
             break
           }
+          if (error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED) {
+            contextLimitExceeded = true
+            logger.warn('Phase analysis stopped because the reduced document context was still too long.')
+            break
+          }
           logger.error(`Phase analysis failed: ${phase.id}`, error)
           failedPhases.push(t(lang, `phases.${phase.id}.subtitle`))
         }
@@ -170,6 +246,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         setAnalysisError(lang === 'zh'
           ? '当前 DeepSeek API Key 无效或已失效，请前往设置重新填写并保存。'
           : 'The current DeepSeek API key is invalid or expired. Update it in Settings.')
+      } else if (contextLimitExceeded) {
+        setAnalysisError(lang === 'zh'
+          ? '文档上下文仍然过长，系统已自动缩减后重试但未成功。请拆分文档后重新上传，已完成的阶段不会丢失。'
+          : 'The document context is still too long after automatic reduction. Split and upload the document again; completed phases were kept.')
       } else if (failedPhases.length > 0) {
         setAnalysisError(lang === 'zh'
           ? `${failedPhases.join('、')}分析失败，已成功的阶段已保存，可点击重试继续补齐。`
@@ -248,9 +328,14 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         response = await chatJson(client, systemPrompt, prompt, book.documentContent)
       } catch (error) {
         logger.error('Practice evaluation request failed:', error)
-        setPracticeError(lang === 'zh'
-          ? '评分请求失败，请检查网络和 API Key 后重试。'
-          : 'The evaluation request failed. Check your network and API key, then try again.')
+        const contextLimitExceeded = error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED
+        setPracticeError(contextLimitExceeded
+          ? (lang === 'zh'
+              ? '文档上下文过长，系统自动缩减后仍未完成评分。你填写的教学内容已保留，请拆分文档后重试。'
+              : 'The document context is too long even after automatic reduction. Your teaching content was kept; split the document and try again.')
+          : (lang === 'zh'
+              ? '评分请求失败，请检查网络和 API Key 后重试。'
+              : 'The evaluation request failed. Check your network and API key, then try again.'))
         return
       }
 
@@ -437,37 +522,36 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         <div>
           <p className="text-[var(--text-secondary)] text-sm">{t(lang, 'reading.currentBook')}</p>
           <h1 className="text-2xl font-bold">《{book.name}》</h1>
+          {metadataEnrichmentStatus === 'loading' && (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+              <AppIcon name="refresh" tone="blue" size={13} className="animate-spin" />
+              {lang === 'zh' ? '正在自动补全作者、简介和标签' : 'Completing author, summary, and tags'}
+            </p>
+          )}
+          {metadataEnrichmentStatus === 'error' && (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <AppIcon name="alert" tone="amber" size={13} />
+              {lang === 'zh' ? '书籍信息自动补全未完成，可稍后重新进入或在书架编辑' : 'Book details were not completed; reopen the book later or edit them on the bookshelf'}
+            </p>
+          )}
           {practiceComplete && book.bestScore > 0 && (
             <p className="text-sm mt-1">
               <span className="text-[var(--text-secondary)]">{t(lang, 'practice.bestScore')}: </span>
               <span className={practiceComplete ? 'text-green-400' : 'text-yellow-400'}>{book.bestScore}分</span>
-              {practiceComplete && <span className="ml-2 text-green-400">✓ {t(lang, 'practice.passed')}</span>}
+              {practiceComplete && <span className="ml-2 inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={15} /> {t(lang, 'practice.passed')}</span>}
             </p>
           )}
         </div>
-        <button onClick={onBack} className="btn-secondary text-sm py-2">← {t(lang, 'reading.changeBook')}</button>
+        <button onClick={onBack} className="btn-secondary flex items-center gap-2 text-sm py-2"><AppIcon name="arrowLeft" size={17} />{t(lang, 'reading.changeBook')}</button>
       </div>
-
-      {aiConsentRequired && (
-        <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-yellow-500/40 bg-yellow-500/10 p-4 text-sm text-yellow-200 rounded-lg">
-          <span>
-            {lang === 'zh'
-              ? 'AI 功能尚未启用，需先确认向 DeepSeek 传输相关学习内容。'
-              : 'AI features are not enabled until you confirm sending relevant learning content to DeepSeek.'}
-          </span>
-          <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
-            {lang === 'zh' ? '前往设置' : 'Open Settings'}
-          </button>
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 p-1 bg-[var(--bg-secondary)] rounded-xl">
         {[
-          { key: 'phase' as TabType, label: lang === 'zh' ? '阶段学习' : 'Learning', icon: '📚' },
-          { key: 'practice' as TabType, label: lang === 'zh' ? '费曼实践' : 'Practice', icon: '✍️' },
-          { key: 'notes' as TabType, label: lang === 'zh' ? '我的笔记' : 'Notes', icon: '📝' },
-          { key: 'recommendations' as TabType, label: lang === 'zh' ? '相关推荐' : 'Recommendations', icon: '📖' }
+          { key: 'phase' as TabType, label: lang === 'zh' ? '阶段学习' : 'Learning', icon: 'library' as AppIconName, tone: 'blue' as const },
+          { key: 'practice' as TabType, label: lang === 'zh' ? '费曼实践' : 'Practice', icon: 'graduation' as AppIconName, tone: 'green' as const },
+          { key: 'notes' as TabType, label: lang === 'zh' ? '我的笔记' : 'Notes', icon: 'note' as AppIconName, tone: 'amber' as const },
+          { key: 'recommendations' as TabType, label: lang === 'zh' ? '相关推荐' : 'Recommendations', icon: 'bookOpen' as AppIconName, tone: 'violet' as const }
         ].map(tab => (
           <button
             key={tab.key}
@@ -478,7 +562,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 : 'hover:bg-[var(--bg-card)]'
             }`}
           >
-            <span>{tab.icon}</span>
+            <AppIcon name={tab.icon} tone={activeTab === tab.key ? 'inherit' : tab.tone} size={18} />
             <span>{tab.label}</span>
           </button>
         ))}
@@ -490,7 +574,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           {/* 如果还没开始分析，显示开始按钮 */}
           {Object.keys(responses).length === 0 && !loading && (
             <div className="card text-center py-16">
-              <div className="text-6xl mb-4">📚</div>
+              <AppIcon name="library" tone="blue" size={56} className="mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">
                 {lang === 'zh' ? '开始深度学习' : 'Start Deep Learning'}
               </h3>
@@ -501,25 +585,26 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               </p>
               <button
                 onClick={handleAnalyzeAll}
-                disabled={!client || loading}
-                className="btn-primary text-lg px-8 py-4"
+                disabled={loading}
+                className="btn-primary inline-flex items-center justify-center gap-2 text-lg px-8 py-4"
               >
-                {lang === 'zh' ? '🚀 开始 AI 深度分析' : '🚀 Start AI Analysis'}
+                <AppIcon name="sparkles" size={20} />
+                {lang === 'zh' ? '开始 AI 深度分析' : 'Start AI Analysis'}
               </button>
             </div>
           )}
 
           {analysisError && (
-            <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
+            <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
               <span>{analysisError}</span>
               <div className="flex gap-2">
-                {(aiConsentRequired || apiKeyInvalid) && (
+                {(missingApiKey || aiConsentRequired || apiKeyInvalid) && (
                   <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
                     {lang === 'zh' ? '前往设置' : 'Open Settings'}
                   </button>
                 )}
-                {Object.keys(responses).length < LEARNING_PHASES.length && !aiConsentRequired && !apiKeyInvalid && (
-                  <button onClick={handleAnalyzeAll} disabled={!client || loading} className="btn-secondary text-sm py-2">
+                {client && Object.keys(responses).length < LEARNING_PHASES.length && !aiConsentRequired && !apiKeyInvalid && (
+                  <button onClick={handleAnalyzeAll} disabled={loading} className="btn-secondary text-sm py-2">
                     {lang === 'zh' ? '重试缺失阶段' : 'Retry Missing Phases'}
                   </button>
                 )}
@@ -531,8 +616,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           {loading && Object.keys(responses).length < LEARNING_PHASES.length && (
             <div className="card">
               <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-                <p className="text-yellow-400 text-sm font-medium text-center">
-                  ⚠️ {lang === 'zh' 
+                <p className="flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400 text-sm font-medium text-center">
+                  <AppIcon name="alert" size={17} />{lang === 'zh'
                     ? '正在分析中，请不要关闭或离开此页面，否则分析会中断' 
                     : 'Analyzing, please do not close or leave this page'}
                 </p>
@@ -578,10 +663,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                             : 'bg-[var(--bg-secondary)] opacity-30 cursor-not-allowed'
                       }`}
                     >
-                      <span className="text-2xl mb-1">{p.icon}</span>
+                      <AppIcon name={phaseIconNames[p.id]} tone={idx === currentPhase ? 'inherit' : phaseIconTones[p.id]} size={22} className="mb-1" />
                       <span className="text-xs text-center">{t(lang, `phases.${p.id}.subtitle`)}</span>
-                      {responses[p.id] && isPhaseCompleted(idx, completedPhaseCount) && <span className="text-green-400 text-xs mt-1">✓</span>}
-                      {responses[p.id] && !isPhaseCompleted(idx, completedPhaseCount) && <span className="text-yellow-400 text-xs mt-1">○</span>}
+                      {responses[p.id] && isPhaseCompleted(idx, completedPhaseCount) && <AppIcon name="success" tone="green" size={14} className="mt-1" />}
+                      {responses[p.id] && !isPhaseCompleted(idx, completedPhaseCount) && <AppIcon name="circle" tone="amber" size={13} className="mt-1" />}
                     </button>
                   ))}
                 </div>
@@ -591,8 +676,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 
                 {analyzingInBackground && (
                   <div className="mt-4 text-center">
-                    <p className="text-xs text-yellow-400">
-                      ⏳ {lang === 'zh' ? '后台分析中，你可以自由浏览已完成的阶段' : 'Analyzing in background, feel free to browse'}
+                    <p className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                      <AppIcon name="refresh" tone="amber" size={14} className="animate-spin" />
+                      {lang === 'zh' ? '后台分析中，你可以自由浏览已完成的阶段' : 'Analyzing in background, feel free to browse'}
                     </p>
                   </div>
                 )}
@@ -602,7 +688,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               {phase && responses[phase.id] && (
                 <div className="card">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="text-3xl">{phase.icon}</span>
+                    <AppIcon name={phaseIconNames[phase.id]} tone={phaseIconTones[phase.id]} size={28} />
                     <div>
                       <h2 className="text-xl font-bold">{t(lang, `phases.${phase.id}.title`)}</h2>
                       <p className="text-[var(--text-secondary)] text-sm">{t(lang, `phases.${phase.id}.subtitle`)}</p>
@@ -619,27 +705,28 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                       {isPhaseCompleted(currentPhase, completedPhaseCount) ? (
                         // 已完成的阶段，显示已完成标记
                         <div className="mt-6 text-center py-3 bg-green-500/10 border border-green-500/30 rounded-xl">
-                          <span className="text-green-400">✓ {lang === 'zh' ? '已完成此阶段' : 'Phase Completed'}</span>
+                          <span className="inline-flex items-center gap-2 text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={17} />{lang === 'zh' ? '已完成此阶段' : 'Phase Completed'}</span>
                         </div>
                       ) : (
                         // 当前进度的阶段，可以点击完成
                         <button
                           onClick={handleCompletePhase}
                           disabled={savingProgress}
-                          className="mt-6 w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="mt-6 w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
+                          <AppIcon name={currentPhase < LEARNING_PHASES.length - 1 ? 'check' : 'arrowRight'} size={18} />
                           {savingProgress
                             ? (lang === 'zh' ? '保存中...' : 'Saving...')
                             : currentPhase < LEARNING_PHASES.length - 1
-                            ? (lang === 'zh' ? '✓ 完成此阶段，进入下一步 →' : '✓ Complete & Next →')
-                            : (lang === 'zh' ? '✓ 完成学习，去实践 →' : '✓ Complete & Practice →')}
+                            ? (lang === 'zh' ? '完成此阶段，进入下一步' : 'Complete & Next')
+                            : (lang === 'zh' ? '完成学习，去实践' : 'Complete & Practice')}
                         </button>
                       )}
                     </>
                   ) : (
                     // 未到达的阶段，显示锁定提示
                     <div className="text-center py-16">
-                      <div className="text-6xl mb-4">🔒</div>
+                      <AppIcon name="lock" tone="muted" size={56} className="mx-auto mb-4" />
                       <p className="text-[var(--text-secondary)] text-lg mb-2">
                         {lang === 'zh' ? '此阶段尚未解锁' : 'This Phase is Locked'}
                       </p>
@@ -671,7 +758,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">✍️</span>
+                  <AppIcon name="graduation" tone="blue" size={24} />
                   <h3 className="font-bold">{lang === 'zh' ? '教学模拟' : 'Teaching'}</h3>
                 </div>
                 {practiceRecords.length > 0 && (
@@ -697,13 +784,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                       : 'bg-yellow-500 text-white'
                   }`}>
                     {Math.max(...practiceRecords.map(r => r.scores.overall)) >= 60
-                      ? (lang === 'zh' ? '✓ 已通过' : '✓ Passed')
+                      ? (lang === 'zh' ? '已通过' : 'Passed')
                       : (lang === 'zh' ? '未通过' : 'Not Passed')}
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-4 text-[var(--text-secondary)]">
-                  <div className="text-4xl mb-2">📝</div>
+                  <AppIcon name="note" tone="blue" size={36} className="mx-auto mb-2" />
                   <div className="text-sm">{lang === 'zh' ? '还没有记录' : 'No records yet'}</div>
                 </div>
               )}
@@ -711,7 +798,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               {practiceRecords.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-blue-500/20 text-center">
                   <span className="text-xs text-blue-400">
-                    {lang === 'zh' ? '点击查看详细记录 →' : 'Click to view details →'}
+                    <span className="inline-flex items-center gap-1">{lang === 'zh' ? '点击查看详细记录' : 'Click to view details'}<AppIcon name="arrowRight" size={13} /></span>
                   </span>
                 </div>
               )}
@@ -726,7 +813,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">💬</span>
+                  <AppIcon name="message" tone="green" size={24} />
                   <h3 className="font-bold">{lang === 'zh' ? '角色问答' : 'Q&A'}</h3>
                 </div>
                 {book.qaPracticeRecords && book.qaPracticeRecords.length > 0 && (
@@ -769,13 +856,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                             : 'bg-yellow-500 text-white'
                         }`}>
                           {latestRecordPassed
-                            ? (lang === 'zh' ? '✓ 已通过' : '✓ Passed')
+                            ? (lang === 'zh' ? '已通过' : 'Passed')
                             : (lang === 'zh' ? '未通过' : 'Not Passed')}
                         </div>
                       </div>
                       <div className="mt-3 pt-3 border-t border-green-500/20 text-center">
                         <span className="text-xs text-green-400">
-                          {lang === 'zh' ? '点击查看详细记录 →' : 'Click to view details →'}
+                          <span className="inline-flex items-center gap-1">{lang === 'zh' ? '点击查看详细记录' : 'Click to view details'}<AppIcon name="arrowRight" size={13} /></span>
                         </span>
                       </div>
                     </>
@@ -783,7 +870,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 })()
               ) : (
                 <div className="text-center py-4 text-[var(--text-secondary)]">
-                  <div className="text-4xl mb-2">💭</div>
+                  <AppIcon name="message" tone="muted" size={36} className="mx-auto mb-2" />
                   <div className="text-sm">{lang === 'zh' ? '还没有记录' : 'No records yet'}</div>
                 </div>
               )}
@@ -796,7 +883,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-cyan-100 flex items-center justify-center flex-shrink-0">
-                    <span className="text-xl">📋</span>
+                    <AppIcon name="clipboard" tone="cyan" size={20} />
                   </div>
                   <div>
                     <h3 className="text-cyan-700 font-semibold text-base mb-0.5">
@@ -821,7 +908,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           {/* 教学模拟 */}
           <div className="card">
             <div className="flex items-center gap-3 mb-4">
-              <span className="text-3xl">✍️</span>
+              <AppIcon name="graduation" tone="blue" size={30} />
               <div>
                 <h2 className="text-xl font-bold">{t(lang, 'practice.title')}</h2>
                 <p className="text-[var(--text-secondary)]">{t(lang, 'practice.subtitle')}</p>
@@ -876,10 +963,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 onClick={() => setShowPracticeHistory(!showPracticeHistory)}
                 className="w-full flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
               >
-                <h3 className="font-semibold">📊 {t(lang, 'practice.history')} ({practiceRecords.length})</h3>
-                <span className={`text-sm text-[var(--text-secondary)] transition-transform duration-200 ${showPracticeHistory ? 'rotate-180' : ''}`}>
-                  ▼
-                </span>
+                <h3 className="flex items-center gap-2 font-semibold"><AppIcon name="chart" tone="blue" size={18} />{t(lang, 'practice.history')} ({practiceRecords.length})</h3>
+                <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showPracticeHistory ? 'rotate-180' : ''}`} />
               </button>
               
               {showPracticeHistory && (
@@ -965,7 +1050,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       {activeTab === 'notes' && (
         <div className="animate-fade-in">
           <div className="card mb-6">
-            <h2 className="text-xl font-bold mb-4">📝 {t(lang, 'practice.notes')}</h2>
+            <h2 className="flex items-center gap-2 text-xl font-bold mb-4"><AppIcon name="note" tone="amber" size={22} />{t(lang, 'practice.notes')}</h2>
             <textarea
               value={newNote}
               onChange={e => {
@@ -988,7 +1073,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           </div>
 
           <div className="card">
-            <h3 className="font-semibold mb-4">📚 {lang === 'zh' ? '笔记历史' : 'History'} ({noteRecords.length})</h3>
+            <h3 className="flex items-center gap-2 font-semibold mb-4"><AppIcon name="library" tone="blue" size={19} />{lang === 'zh' ? '笔记历史' : 'History'} ({noteRecords.length})</h3>
             {noteRecords.length === 0 ? (
               <p className="text-[var(--text-secondary)] text-center py-8">
                 {lang === 'zh' ? '还没有笔记' : 'No notes yet'}
@@ -1026,7 +1111,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         <div className="animate-fade-in">
           {book.status !== 'finished' ? (
             <div className="card text-center py-16">
-              <div className="text-6xl mb-4">🔒</div>
+              <AppIcon name="lock" tone="muted" size={56} className="mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">
                 {lang === 'zh' ? '相关推荐已锁定' : 'Recommendations Locked'}
               </h3>
@@ -1036,8 +1121,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                   : 'Complete reading to unlock book recommendations'}
               </p>
               <div className="inline-block px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                <p className="text-yellow-400 text-sm">
-                  ⚠️ {lang === 'zh' 
+                <p className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm">
+                  <AppIcon name="alert" size={17} />{lang === 'zh'
                     ? '需要通过教学模拟（60分+）和角色问答（全部60分+）才能解锁' 
                     : 'Pass teaching simulation (60+) and all Q&A (60+) to unlock'}
                 </p>

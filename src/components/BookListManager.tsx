@@ -15,6 +15,7 @@ import {
   getListsForBook,
   getRelationTypeName
 } from '@/lib/bookRelations'
+import AppIcon from './AppIcon'
 
 interface Props {
   lang: Language
@@ -109,10 +110,11 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
     <div className="space-y-4">
       {/* 头部 */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold">
+        <h3 className="flex items-center gap-2 text-lg font-bold">
+          <AppIcon name="library" tone="blue" size={20} />
           {book
-            ? (lang === 'zh' ? '📚 书单' : '📚 Book Lists')
-            : (lang === 'zh' ? '📚 我的书单' : '📚 My Lists')
+            ? (lang === 'zh' ? '书单' : 'Book Lists')
+            : (lang === 'zh' ? '我的书单' : 'My Lists')
           }
         </h3>
         {!book && (
@@ -120,7 +122,8 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
             onClick={() => setShowCreateModal(true)}
             className="btn-primary text-sm py-2"
           >
-            + {lang === 'zh' ? '新建书单' : 'New List'}
+            <AppIcon name="plus" size={16} />
+            {lang === 'zh' ? '新建书单' : 'New List'}
           </button>
         )}
       </div>
@@ -128,7 +131,7 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
       {/* 书单列表 */}
       {lists.length === 0 ? (
         <div className="card text-center py-8">
-          <div className="text-4xl mb-2">📚</div>
+          <AppIcon name="library" tone="muted" size={36} className="mx-auto mb-2" />
           <p className="text-[var(--text-secondary)]">
             {book
               ? (lang === 'zh' ? '这本书还没有添加到任何书单' : 'This book is not in any list yet')
@@ -140,7 +143,8 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
               onClick={() => setShowCreateModal(true)}
               className="btn-secondary mt-4"
             >
-              + {lang === 'zh' ? '创建第一个书单' : 'Create first list'}
+              <AppIcon name="plus" size={16} />
+              {lang === 'zh' ? '创建第一个书单' : 'Create first list'}
             </button>
           )}
         </div>
@@ -157,7 +161,7 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
                       className="text-[var(--accent)] hover:bg-[var(--accent)]/10 p-1.5 rounded"
                       title={lang === 'zh' ? '查看' : 'View'}
                     >
-                      👁️
+                      <AppIcon name="eye" tone="blue" size={17} />
                     </button>
                   )}
                   <button
@@ -165,14 +169,14 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
                     className="text-[var(--accent)] hover:bg-[var(--accent)]/10 p-1.5 rounded"
                     title={lang === 'zh' ? '编辑' : 'Edit'}
                   >
-                    ✏️
+                    <AppIcon name="edit" tone="amber" size={17} />
                   </button>
                   <button
                     onClick={() => handleDeleteList(list.id)}
                     className="text-red-400 hover:bg-red-400/10 p-1.5 rounded"
                     title={lang === 'zh' ? '删除' : 'Delete'}
                   >
-                    🗑️
+                    <AppIcon name="trash" tone="red" size={17} />
                   </button>
                 </div>
               </div>
@@ -205,8 +209,9 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-4">
-              {lang === 'zh' ? '📚 新建书单' : '📚 Create New List'}
+            <h2 className="flex items-center gap-2 text-xl font-bold mb-4">
+              <AppIcon name="library" tone="blue" size={22} />
+              {lang === 'zh' ? '新建书单' : 'Create New List'}
             </h2>
 
             <div className="space-y-4">
@@ -264,8 +269,9 @@ export default function BookListManager({ lang, book, onBookAdded }: Props) {
       {editingList && (
         <div className="modal-overlay" onClick={() => setEditingList(null)}>
           <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-4">
-              {lang === 'zh' ? '✏️ 编辑书单' : '✏️ Edit List'}
+            <h2 className="flex items-center gap-2 text-xl font-bold mb-4">
+              <AppIcon name="edit" tone="amber" size={22} />
+              {lang === 'zh' ? '编辑书单' : 'Edit List'}
             </h2>
 
             <div className="space-y-4">
@@ -357,9 +363,11 @@ function BookListViewer({ lang, list, allBooks, onClose, onUpdate }: BookListVie
           <h2 className="text-xl font-bold">{list.name}</h2>
           <button
             onClick={onClose}
-            className="text-2xl text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            aria-label={lang === 'zh' ? '关闭' : 'Close'}
+            title={lang === 'zh' ? '关闭' : 'Close'}
           >
-            ×
+            <AppIcon name="close" size={20} />
           </button>
         </div>
 
@@ -375,7 +383,8 @@ function BookListViewer({ lang, list, allBooks, onClose, onUpdate }: BookListVie
             onClick={() => setShowAddBooks(true)}
             className="btn-secondary text-sm py-2"
           >
-            + {lang === 'zh' ? '添加书籍' : 'Add Books'}
+            <AppIcon name="plus" size={16} />
+            {lang === 'zh' ? '添加书籍' : 'Add Books'}
           </button>
         </div>
 
@@ -394,8 +403,10 @@ function BookListViewer({ lang, list, allBooks, onClose, onUpdate }: BookListVie
               <button
                 onClick={() => handleRemoveBook(book.id)}
                 className="text-red-400 hover:bg-red-400/10 p-2 rounded"
+                aria-label={lang === 'zh' ? `从书单移除《${book.name}》` : `Remove ${book.name} from list`}
+                title={lang === 'zh' ? '移出书单' : 'Remove from list'}
               >
-                🗑️
+                <AppIcon name="trash" tone="red" size={18} />
               </button>
             </div>
           ))}
@@ -403,7 +414,7 @@ function BookListViewer({ lang, list, allBooks, onClose, onUpdate }: BookListVie
 
         {booksInList.length === 0 && (
           <div className="text-center py-8 text-[var(--text-secondary)]">
-            <div className="text-4xl mb-2">📚</div>
+            <AppIcon name="library" tone="muted" size={36} className="mx-auto mb-2" />
             <p>{lang === 'zh' ? '书单是空的' : 'List is empty'}</p>
           </div>
         )}

@@ -12,6 +12,23 @@ import {
   CATEGORY_PHASE_CONFIGS
 } from '@/lib/learningModes'
 import { LEARNING_PHASES } from '@/lib/feynman-prompts'
+import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
+
+const modeIcons: Record<LearningMode, { name: AppIconName; tone: AppIconTone }> = {
+  sequential: { name: 'library', tone: 'blue' },
+  quick: { name: 'rocket', tone: 'cyan' },
+  deep: { name: 'target', tone: 'violet' },
+  custom: { name: 'settings', tone: 'amber' }
+}
+
+const phaseIcons: Record<string, { name: AppIconName; tone: AppIconTone }> = {
+  background: { name: 'scan', tone: 'cyan' },
+  overview: { name: 'library', tone: 'blue' },
+  deepDive: { name: 'target', tone: 'green' },
+  critical: { name: 'scale', tone: 'amber' },
+  reception: { name: 'users', tone: 'violet' },
+  synthesis: { name: 'route', tone: 'blue' }
+}
 
 interface Props {
   bookName: string
@@ -81,7 +98,7 @@ export default function LearningModeSelector({
       {/* 学习模式选择 */}
       <div className="card">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
-          <span className="text-xl">📖</span>
+          <AppIcon name="bookOpen" tone="blue" size={20} />
           <span>{lang === 'zh' ? '选择学习模式' : 'Choose Learning Mode'}</span>
         </h3>
 
@@ -114,16 +131,16 @@ export default function LearningModeSelector({
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-2xl">{config.icon}</span>
+                <AppIcon {...modeIcons[modeId]} size={24} />
                 <span className="font-semibold">{config.name[lang]}</span>
               </div>
               <p className="text-sm text-[var(--text-secondary)]">{config.description[lang]}</p>
               <div className="mt-2 flex items-center gap-2 text-xs">
-                <span className={config.allowSkip ? 'text-green-400' : 'text-yellow-400'}>
+                <span className={`inline-flex items-center gap-1 ${config.allowSkip ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  <AppIcon name={config.allowSkip ? 'check' : 'circle'} size={13} />
                   {config.allowSkip
-                    ? (lang === 'zh' ? '✓ 可跳过阶段' : '✓ Can skip')
-                    : (lang === 'zh' ? '○ 顺序完成' : '○ Sequential')
-                  }
+                    ? (lang === 'zh' ? '可跳过阶段' : 'Can skip')
+                    : (lang === 'zh' ? '顺序完成' : 'Sequential')}
                 </span>
                 <span className="text-[var(--text-secondary)]">
                   {config.phases.length > 0
@@ -143,11 +160,19 @@ export default function LearningModeSelector({
               <span className="font-medium text-[var(--text-primary)]">
                 {lang === 'zh' ? '已选择：' : 'Selected: '}
               </span>
-              {selectedModeConfig.icon} {selectedModeConfig.name[lang]}
+              <span className="inline-flex items-center gap-1.5">
+                <AppIcon {...modeIcons[selectedMode]} size={16} />
+                {selectedModeConfig.name[lang]}
+              </span>
             </p>
-            <p className="text-xs text-[var(--text-secondary)] mt-1">
-              {selectedModeConfig.phases.map(id => t(lang, `phases.${id}.subtitle`)).join(' → ')}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[var(--text-secondary)]">
+              {selectedModeConfig.phases.map((id, idx) => (
+                <span key={id} className="inline-flex items-center gap-1">
+                  {idx > 0 && <AppIcon name="chevronRight" tone="muted" size={12} />}
+                  {t(lang, `phases.${id}.subtitle`)}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -157,7 +182,7 @@ export default function LearningModeSelector({
         <div className="card animate-fade-in">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
-              <span className="text-xl">⚙️</span>
+              <AppIcon name="settings" tone="amber" size={20} />
               <span>{lang === 'zh' ? '自定义学习阶段' : 'Customize Phases'}</span>
             </h3>
 
@@ -203,7 +228,7 @@ export default function LearningModeSelector({
                       className="w-5 h-5"
                     />
 
-                    <span className="text-2xl">{phase.icon}</span>
+                    <AppIcon {...phaseIcons[phase.id]} size={24} />
 
                     <div className="flex-1">
                       <p className="font-medium">{t(lang, `phases.${phaseCustom.phaseId}.title`)}</p>
@@ -236,8 +261,9 @@ export default function LearningModeSelector({
                     const phase = LEARNING_PHASES.find(ph => ph.id === p.phaseId)!
                     return (
                       <span key={p.phaseId} className="text-sm flex items-center gap-1">
-                        {phase.icon} {t(lang, `phases.${p.phaseId}.subtitle`)}
-                        {idx < customPhases.filter(cp => cp.enabled).length - 1 && ' → '}
+                        <AppIcon {...phaseIcons[phase.id]} size={15} />
+                        {t(lang, `phases.${p.phaseId}.subtitle`)}
+                        {idx < customPhases.filter(cp => cp.enabled).length - 1 && <AppIcon name="chevronRight" tone="muted" size={13} />}
                       </span>
                     )
                   })}

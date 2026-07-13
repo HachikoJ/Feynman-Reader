@@ -544,19 +544,19 @@ export function getTrendDescription(trend: ScoreTrend, lang: Language): string {
     let desc = `当前 ${current.toFixed(0)}分 | 最高 ${best}分 | 平均 ${average.toFixed(1)}分\n`
 
     if (improvement > 20) {
-      desc += `📈 进步显著：比首次提高 ${improvement.toFixed(0)}%`
+      desc += `进步显著：比首次提高 ${improvement.toFixed(0)}%`
     } else if (improvement > 0) {
-      desc += `📈 持续进步：比首次提高 ${improvement.toFixed(0)}%`
+      desc += `持续进步：比首次提高 ${improvement.toFixed(0)}%`
     } else if (improvement < -10) {
-      desc += `📉 有所下降：比首次下降 ${Math.abs(improvement).toFixed(0)}%`
+      desc += `有所下降：比首次下降 ${Math.abs(improvement).toFixed(0)}%`
     } else {
-      desc += `➡️ 保持稳定`
+      desc += '保持稳定'
     }
 
     if (trendType === 'improving') {
-      desc += '\n🎯 最近表现呈上升趋势，继续保持！'
+      desc += '\n最近表现呈上升趋势，继续保持！'
     } else if (trendType === 'declining') {
-      desc += '\n⚠️ 最近表现有所下降，建议复习一下核心概念。'
+      desc += '\n最近表现有所下降，建议复习一下核心概念。'
     }
 
     return desc
@@ -565,19 +565,19 @@ export function getTrendDescription(trend: ScoreTrend, lang: Language): string {
   let desc = `Current: ${current.toFixed(0)} | Best: ${best} | Avg: ${average.toFixed(1)}\n`
 
   if (improvement > 20) {
-    desc += `\n📈 Significant improvement: ${improvement.toFixed(0)}% better than first attempt`
+    desc += `\nSignificant improvement: ${improvement.toFixed(0)}% better than first attempt`
   } else if (improvement > 0) {
-    desc += `\n📈 Improving: ${improvement.toFixed(0)}% better than first attempt`
+    desc += `\nImproving: ${improvement.toFixed(0)}% better than first attempt`
   } else if (improvement < -10) {
-    desc += `\n📉 Declining: ${Math.abs(improvement).toFixed(0)}% worse than first attempt`
+    desc += `\nDeclining: ${Math.abs(improvement).toFixed(0)}% worse than first attempt`
   } else {
-    desc += `\n➡️ Stable`
+    desc += '\nStable'
   }
 
   if (trendType === 'improving') {
-    desc += '\n🎯 Recent trend is upward, keep it up!'
+    desc += '\nRecent trend is upward, keep it up!'
   } else if (trendType === 'declining') {
-    desc += '\n⚠️ Recent trend is downward, consider reviewing core concepts.'
+    desc += '\nRecent trend is downward, consider reviewing core concepts.'
   }
 
   return desc

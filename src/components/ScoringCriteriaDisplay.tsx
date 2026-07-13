@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Language } from '@/lib/i18n'
 import { SCORING_CRITERIA, getScoringExplanation } from '@/lib/practiceEnhancement'
 import MarkdownRenderer from './MarkdownRenderer'
+import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 
 interface Props {
   lang: Language
@@ -14,12 +15,19 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
   const [expandedDimension, setExpandedDimension] = useState<string | null>(null)
   const [showFullGuide, setShowFullGuide] = useState(false)
 
+  const dimensionIcon = (dimension: string): { name: AppIconName; tone: AppIconTone } => {
+    if (dimension === 'accuracy') return { name: 'target', tone: 'blue' }
+    if (dimension === 'completeness') return { name: 'note', tone: 'green' }
+    return { name: 'message', tone: 'violet' }
+  }
+
   if (compact) {
     return (
       <div className="bg-[var(--bg-secondary)] rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="font-semibold text-sm">
-            {lang === 'zh' ? '📊 评分标准' : '📊 Scoring Criteria'}
+          <h4 className="flex items-center gap-2 font-semibold text-sm">
+            <AppIcon name="chart" tone="blue" size={16} />
+            {lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
           </h4>
           <button
             onClick={() => setShowFullGuide(!showFullGuide)}
@@ -64,8 +72,9 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
                     </div>
                   ))}
                 </div>
-                <div className="mt-2 p-2 bg-[var(--accent)]/10 rounded text-xs text-[var(--accent)]">
-                  💡 {criteria.tips[lang]}
+                <div className="flex items-start gap-2 mt-2 p-2 bg-[var(--accent)]/10 rounded text-xs text-[var(--accent)]">
+                  <AppIcon name="lightbulb" tone="amber" size={14} />
+                  <span>{criteria.tips[lang]}</span>
                 </div>
               </div>
             ))}
@@ -78,8 +87,9 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-bold">
-          {lang === 'zh' ? '📊 评分标准' : '📊 Scoring Criteria'}
+        <h3 className="flex items-center gap-2 text-xl font-bold">
+          <AppIcon name="chart" tone="blue" size={22} />
+          {lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
         </h3>
         <button
           onClick={() => setShowFullGuide(!showFullGuide)}
@@ -97,8 +107,9 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
         <div className="space-y-4">
           {/* 及格规则 */}
           <div className="bg-[var(--bg-secondary)] rounded-xl p-4">
-            <h4 className="font-semibold mb-3">
-              {lang === 'zh' ? '🎯 通过标准' : '🎯 Passing Standards'}
+            <h4 className="flex items-center gap-2 font-semibold mb-3">
+              <AppIcon name="target" tone="green" size={18} />
+              {lang === 'zh' ? '通过标准' : 'Passing Standards'}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
               <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-center">
@@ -125,13 +136,12 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
                   className="w-full p-4 flex items-center justify-between hover:bg-[var(--bg-card)] transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                    <span className={`w-10 h-10 rounded-full flex items-center justify-center ${
                       criteria.dimension === 'accuracy' ? 'bg-blue-500/20 text-blue-400' :
                       criteria.dimension === 'completeness' ? 'bg-green-500/20 text-green-400' :
                       'bg-purple-500/20 text-purple-400'
                     }`}>
-                      {criteria.dimension === 'accuracy' ? '🎯' :
-                       criteria.dimension === 'completeness' ? '📝' : '💬'}
+                      <AppIcon {...dimensionIcon(criteria.dimension)} size={20} />
                     </span>
                     <div className="text-left">
                       <div className="font-semibold">{criteria.name[lang]}</div>
@@ -141,7 +151,7 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
                   <span className={`text-[var(--text-secondary)] transition-transform ${
                     expandedDimension === key ? 'rotate-180' : ''
                   }`}>
-                    ▼
+                    <AppIcon name="chevronDown" size={18} />
                   </span>
                 </button>
 
@@ -181,7 +191,7 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
                     {/* 提分建议 */}
                     <div className="bg-[var(--accent)]/10 border border-[var(--accent)]/30 rounded-lg p-3">
                       <div className="flex items-start gap-2">
-                        <span>💡</span>
+                        <AppIcon name="lightbulb" tone="amber" size={18} />
                         <div>
                           <div className="font-medium text-[var(--accent)]">
                             {lang === 'zh' ? '提分建议' : 'Improvement Tips'}

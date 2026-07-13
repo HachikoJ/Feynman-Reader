@@ -17,14 +17,14 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
     lastUpdated: '最后更新：2026年7月',
     sections: [
       {
-        title: '1. 信息收集',
-        content: `本应用（"费曼读书助手"）尊重您的隐私。我们收集的信息包括：
+        title: '1. 本地信息处理',
+        content: `本应用（"费曼读书助手"）尊重您的隐私。应用在当前浏览器本地处理的数据包括：
 
 • **书籍数据**：您添加的书籍、笔记、实践记录等学习数据
 • **应用设置**：语言偏好、主题选择等个性化设置
 • **API Key**：用于调用 AI 服务的密钥（可选）
 
-除非您主动使用 AI 功能，以上数据仅存储在您的本地浏览器中。使用 AI 功能时，相关输入会直接发送给 DeepSeek。`
+**平台服务器不收集或保存上述用户数据。** 使用 AI 功能时，完成当前任务所需的相关输入会由您的浏览器直接发送给 DeepSeek。`
       },
       {
         title: '2. 数据存储',
@@ -42,16 +42,16 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
         title: '3. API Key 使用',
         content: `如果您选择使用 AI 功能：
 
-• API Key 仅用于调用 DeepSeek AI 服务
+• API Key 仅用于调用 DeepSeek V4 Flash 服务
 • API Key 存储在当前浏览器的本网站数据中，设置界面默认掩码显示
 • 本应用不收集或转存您的 API Key；调用时浏览器会将其直接发送给 DeepSeek
 • 您可以随时在设置中删除或更换 API Key
 
 浏览器端无法提供类似服务端密钥保险库的安全隔离。能够访问您的设备、浏览器配置、浏览器扩展或本网站运行环境的主体，可能读取该密钥，因此请勿在共享或不受信任的设备上保存。
 
-使用 AI 功能时，可能发送的内容包括书名、作者、简介、文档前 15,000 个字符、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。请勿在这些内容中填写不希望提供给 DeepSeek 的个人敏感信息。
+使用 AI 功能时，可能发送的内容包括书名、作者、简介、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。上传文档的解析原文完整保存在当前浏览器；调用 AI 时，较短文档可能发送完整原文，较长文档会从完整原文中检索并发送与当前任务相关且覆盖不同位置的片段。请勿在这些内容中填写不希望提供给 DeepSeek 的个人敏感信息。
 
-**Token 消耗说明**：以系统预设的 deepseek-v4-flash 为例，完成一本书的一次六阶段分析通常约消耗 3万-10万 Tokens。仅填写书籍信息时通常接近较低范围；上传较长文档时消耗会明显增加。该范围不包含角色问答、教学评估、重新生成、相关推荐等额外 AI 调用，仅供使用前估算，实际用量和费用以 DeepSeek 控制台记录为准。
+**Token 消耗与费用说明**：系统预设模型为 **DeepSeek V4 Flash**。根据当前使用情况粗略估算，一本书完整使用六阶段分析、教学评估、角色问答、重新生成、相关推荐、标签生成等 AI 功能，费用大约为 0.02 元。该数字仅供参考，并非固定价格或费用承诺；实际费用会随调用次数、输入长度、附件解析字符数量及模型价格变化。**模型计费以 DeepSeek 官方价格和您控制台中的实际账单为准。**
 
 建议：
 • 不要在不安全的设备上保存 API Key
@@ -86,7 +86,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
         title: '6. 第三方服务',
         content: `本应用使用以下第三方服务：
 
-• **DeepSeek AI**：用于提供智能评估功能
+• **DeepSeek V4 Flash**：用于提供书籍分析、学习评估、角色问答和推荐等 AI 功能
   - 您需要自行申请并配置 API Key
   - 使用 AI 功能会将上述相关内容直接发送给 DeepSeek
   - 您的使用受 DeepSeek 的服务条款约束
@@ -124,14 +124,14 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
     lastUpdated: 'Last Updated: July 2026',
     sections: [
       {
-        title: '1. Information Collection',
-        content: `This app ("Feynman Reader") respects your privacy. We collect:
+        title: '1. Local Information Processing',
+        content: `This app ("Feynman Reader") respects your privacy. Data processed locally in the current browser includes:
 
 • **Book Data**: Books, notes, practice records, and other learning data
 • **App Settings**: Language preference, theme selection, and other personalized settings
 • **API Key**: Used to call AI services (optional)
 
-Unless you actively use AI features, this data stays in your local browser. When you use AI features, the relevant input is sent directly to DeepSeek.`
+**Platform servers do not collect or store this user data.** When you use AI features, input needed for the current task is sent directly from your browser to DeepSeek.`
       },
       {
         title: '2. Data Storage',
@@ -149,14 +149,14 @@ The platform currently does not provide cloud storage, sync, or recovery service
         title: '3. API Key Usage',
         content: `If you choose to use AI features:
 
-• API Key is only used to call DeepSeek AI services
+• API Key is only used to call DeepSeek V4 Flash services
 • API Key is stored locally in your browser
 • This app does not collect or retain your API Key; your browser sends it directly to DeepSeek for a request
 • You can delete or change your API Key anytime in settings
 
-AI features may send the book title, author, description, the first 15,000 characters of an uploaded document, learning-phase input, teaching-practice content, persona Q&A, and related learning content used to generate recommendations. Do not include personal sensitive information that you do not want to provide to DeepSeek.
+AI features may send the book title, author, description, learning-phase input, teaching-practice content, persona Q&A, and related learning content used to generate recommendations. The complete parsed source remains in the current browser. Short documents may be sent in full for an AI request; for longer documents, the browser retrieves and sends task-relevant excerpts distributed across the full source. Do not include personal sensitive information that you do not want to provide to DeepSeek.
 
-**Token usage**: With the preset deepseek-v4-flash model, one complete six-phase analysis typically uses about 30,000-100,000 Tokens. Using book details alone is usually near the lower end, while longer uploaded documents increase usage significantly. This estimate does not include additional AI calls such as persona Q&A, teaching assessment, regeneration, or recommendations. It is provided for planning only; actual usage and cost are shown in your DeepSeek console.
+**Token usage and cost**: The preset model is **DeepSeek V4 Flash**. Based on current usage, using the complete set of AI features for one book, including six-phase analysis, teaching assessment, persona Q&A, regeneration, recommendations, and tag generation, costs roughly CNY 0.02. This figure is only a reference estimate, not a fixed price or cost commitment. Actual cost varies with request count, input length, characters parsed from attachments, and model pricing. **Billing follows official DeepSeek pricing and the actual records in your console.**
 
 Recommendations:
 • Don't save API Key on public/shared devices
@@ -190,7 +190,7 @@ We recommend exporting a backup before deletion.`
         title: '6. Third-Party Services',
         content: `This app uses the following third-party services:
 
-• **DeepSeek AI**: For intelligent assessment features
+• **DeepSeek V4 Flash**: For book analysis, learning assessment, persona Q&A, recommendations, and other AI features
   - You need to apply for and configure your own API Key
   - Using AI features sends the related content described above directly to DeepSeek
   - Your use is subject to DeepSeek's terms of service

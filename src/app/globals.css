@@ -70,6 +70,10 @@ body {
 }
 
 .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
   color: white;
   padding: 12px 24px;
@@ -87,6 +91,10 @@ body {
 }
 
 .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-primary);
@@ -177,8 +185,17 @@ body {
 }
 
 .nav-item {
-  padding: 12px 20px;
-  border-radius: 12px;
+  display: inline-flex;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
   transition: all 0.2s ease;
   color: var(--text-secondary);
 }

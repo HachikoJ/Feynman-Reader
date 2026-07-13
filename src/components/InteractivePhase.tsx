@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
-import { chat, createDeepSeekClient } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, chat, createDeepSeekClient } from '@/lib/deepseek'
 import {
   generateInteractiveQuestionPrompts,
   generateInteractiveRegeneratePrompts,
@@ -12,6 +12,7 @@ import {
 } from '@/lib/feynman-prompts'
 import MarkdownRenderer from './MarkdownRenderer'
 import { getThinkingQuestionsForPhase, ThinkingQuestion } from '@/lib/learningModes'
+import AppIcon from './AppIcon'
 
 interface Props {
   bookId: string
@@ -44,6 +45,7 @@ export default function InteractivePhase({
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateFocus, setRegenerateFocus] = useState('')
   const [regenerateTone, setRegenerateTone] = useState<RegenerateTone>('formal')
+  const [actionError, setActionError] = useState<string | null>(null)
 
   // 问答功能
   const [question, setQuestion] = useState('')
@@ -95,6 +97,7 @@ export default function InteractivePhase({
     if (!client) return
 
     setRegenerating(true)
+    setActionError(null)
 
     try {
       const { systemPrompt, userPrompt } = generateInteractiveRegeneratePrompts(
@@ -110,6 +113,11 @@ export default function InteractivePhase({
       onContentChange?.(response)
     } catch (error) {
       logger.error('Regeneration failed:', error)
+      setActionError(error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED
+        ? (lang === 'zh'
+            ? '文档上下文过长，系统自动缩减后仍未能重新生成。当前阶段内容已保留，请拆分文档后重试。'
+            : 'The document context is too long even after automatic reduction. The current phase content was kept; split the document and try again.')
+        : (lang === 'zh' ? '重新生成失败，请检查网络和 API Key 后重试。' : 'Regeneration failed. Check your network and API key, then try again.'))
     }
 
     setRegenerating(false)
@@ -121,6 +129,7 @@ export default function InteractivePhase({
     if (!client || !question.trim()) return
 
     setAsking(true)
+    setActionError(null)
     const userQuestion = question.trim()
 
     try {
@@ -139,6 +148,11 @@ export default function InteractivePhase({
       setQuestion('')
     } catch (error) {
       logger.error('Question failed:', error)
+      setActionError(error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED
+        ? (lang === 'zh'
+            ? '文档上下文过长，系统自动缩减后仍未完成回答。你的问题已保留，请拆分文档后重试。'
+            : 'The document context is too long even after automatic reduction. Your question was kept; split the document and try again.')
+        : (lang === 'zh' ? '提问失败，请检查网络和 API Key 后重试。' : 'The question failed. Check your network and API key, then try again.'))
     }
 
     setAsking(false)
@@ -151,11 +165,16 @@ export default function InteractivePhase({
 
   return (
     <div className="space-y-6">
+      {actionError && (
+        <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300">
+          {actionError}
+        </div>
+      )}
       {/* AI 分析内容 */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold flex items-center gap-2">
-            <span className="text-xl">🤖</span>
+            <AppIcon name="brain" tone="violet" size={20} />
             <span>{lang === 'zh' ? 'AI 分析' : 'AI Analysis'}</span>
           </h3>
 
@@ -166,7 +185,10 @@ export default function InteractivePhase({
                 onClick={() => setIsEditing(true)}
                 className="text-sm px-3 py-1 rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--border)] transition-colors"
               >
-                ✏️ {lang === 'zh' ? '编辑' : 'Edit'}
+                <span className="inline-flex items-center gap-1.5">
+                  <AppIcon name="edit" tone="amber" size={15} />
+                  {lang === 'zh' ? '编辑' : 'Edit'}
+                </span>
               </button>
             )}
 
@@ -175,7 +197,10 @@ export default function InteractivePhase({
               onClick={() => setShowRegenerateOptions(!showRegenerateOptions)}
               className="text-sm px-3 py-1 rounded-lg bg-[var(--bg-secondary)] hover:bg-[var(--border)] transition-colors"
             >
-              🔄 {lang === 'zh' ? '重新生成' : 'Regenerate'}
+              <span className="inline-flex items-center gap-1.5">
+                <AppIcon name="refresh" tone="blue" size={15} />
+                {lang === 'zh' ? '重新生成' : 'Regenerate'}
+              </span>
             </button>
           </div>
         </div>
@@ -282,7 +307,7 @@ export default function InteractivePhase({
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
-              <span className="text-xl">🤔</span>
+              <AppIcon name="lightbulb" tone="amber" size={20} />
               <span>{lang === 'zh' ? '思考题' : 'Thinking Questions'}</span>
             </h3>
             <button
@@ -302,8 +327,9 @@ export default function InteractivePhase({
                     {q.question[lang]}
                   </p>
                   {q.hint && (
-                    <p className="text-sm text-[var(--text-secondary)] mb-3">
-                      💡 {q.hint[lang]}
+                    <p className="flex items-start gap-2 text-sm text-[var(--text-secondary)] mb-3">
+                      <AppIcon name="lightbulb" tone="amber" size={16} />
+                      <span>{q.hint[lang]}</span>
                     </p>
                   )}
                   <textarea
@@ -322,7 +348,7 @@ export default function InteractivePhase({
       {/* AI 问答 */}
       <div className="card">
         <h3 className="font-semibold flex items-center gap-2 mb-4">
-          <span className="text-xl">💬</span>
+          <AppIcon name="message" tone="blue" size={20} />
           <span>{lang === 'zh' ? '向 AI 提问' : 'Ask AI'}</span>
         </h3>
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { Language } from '@/lib/i18n'
+import AppIcon from './AppIcon'
 
 interface BaseProps {
   className?: string
@@ -250,7 +251,7 @@ export function LoadingState({ type, count, lang }: LoadingStateProps) {
     default:
       return (
         <div className="card text-center py-12">
-          <div className="animate-spin text-4xl mb-4">⏳</div>
+          <AppIcon name="refresh" tone="accent" size={36} className="mx-auto mb-4 animate-spin" />
           <p className="text-[var(--text-secondary)]">加载中...</p>
         </div>
       )

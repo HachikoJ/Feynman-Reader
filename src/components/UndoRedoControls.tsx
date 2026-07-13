@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { Language } from '@/lib/i18n'
 import { undoRedoManager, UndoRedoState } from '@/lib/undoRedo'
 
@@ -22,15 +22,32 @@ export function isEditableShortcutTarget(target: EventTarget | null): boolean {
 export default function UndoRedoControls({ lang }: Props) {
   const [state, setState] = useState<UndoRedoState>(undoRedoManager.getState())
   const [showHint, setShowHint] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const operationInFlightRef = useRef(false)
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showStatus = useCallback((message: string) => {
+    setStatusMessage(message)
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+    statusTimerRef.current = setTimeout(() => setStatusMessage(null), 4000)
+  }, [])
 
   useEffect(() => {
     const unsubscribe = undoRedoManager.subscribe((newState) => {
       setState(newState)
     })
-    return unsubscribe
-  }, [])
+    const handleShortcutStatus = (event: Event) => {
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message
+      if (message) showStatus(message)
+    }
+    window.addEventListener('undo-redo-status', handleShortcutStatus)
+    return () => {
+      unsubscribe()
+      window.removeEventListener('undo-redo-status', handleShortcutStatus)
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
+    }
+  }, [showStatus])
 
   const handleUndo = async () => {
     if (operationInFlightRef.current) return
@@ -39,7 +56,7 @@ export default function UndoRedoControls({ lang }: Props) {
     try {
       const succeeded = await undoRedoManager.undo()
       if (!succeeded) {
-        window.toast?.error(lang === 'zh' ? '撤销失败，请检查本地存储后重试。' : 'Undo failed. Check local storage and try again.')
+        showStatus(lang === 'zh' ? '撤销失败，请检查本地存储后重试。' : 'Undo failed. Check local storage and try again.')
         return
       }
       setShowHint(true)
@@ -57,7 +74,7 @@ export default function UndoRedoControls({ lang }: Props) {
     try {
       const succeeded = await undoRedoManager.redo()
       if (!succeeded) {
-        window.toast?.error(lang === 'zh' ? '重做失败，请检查本地存储后重试。' : 'Redo failed. Check local storage and try again.')
+        showStatus(lang === 'zh' ? '重做失败，请检查本地存储后重试。' : 'Redo failed. Check local storage and try again.')
         return
       }
       setShowHint(true)
@@ -74,12 +91,13 @@ export default function UndoRedoControls({ lang }: Props) {
   const redoDesc = undoRedoManager.getRedoDescription()
 
   // 如果两个都不能用，不显示组件
-  if (!canUndo && !canRedo) {
+  if (!canUndo && !canRedo && !statusMessage) {
     return null
   }
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-2">
+      {(canUndo || canRedo) && (
       <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl p-2">
         {/* 撤销按钮 */}
         <button
@@ -143,6 +161,13 @@ export default function UndoRedoControls({ lang }: Props) {
           </>
         ) : null}
       </div>
+      )}
+
+      {statusMessage && (
+        <div role="alert" className="max-w-sm rounded-lg border border-red-500/40 bg-[var(--bg-card)] px-4 py-2 text-sm text-red-500 shadow-lg">
+          {statusMessage}
+        </div>
+      )}
 
       {/* 操作提示 */}
       {showHint && (
@@ -157,7 +182,7 @@ export default function UndoRedoControls({ lang }: Props) {
 }
 
 // Hook for keyboard shortcuts
-export function useUndoRedoShortcuts() {
+export function useUndoRedoShortcuts(lang: Language) {
   useEffect(() => {
     let shortcutInFlight = false
     const handleKeyDown = async (e: KeyboardEvent) => {
@@ -170,7 +195,9 @@ export function useUndoRedoShortcuts() {
         shortcutInFlight = true
         try {
           if (!await undoRedoManager.undo()) {
-            window.toast?.error('撤销失败，请检查本地存储后重试。')
+            window.dispatchEvent(new CustomEvent('undo-redo-status', {
+              detail: { message: lang === 'zh' ? '撤销失败，请检查本地存储后重试。' : 'Undo failed. Check local storage and try again.' }
+            }))
           }
         } finally {
           shortcutInFlight = false
@@ -183,7 +210,9 @@ export function useUndoRedoShortcuts() {
         shortcutInFlight = true
         try {
           if (!await undoRedoManager.redo()) {
-            window.toast?.error('重做失败，请检查本地存储后重试。')
+            window.dispatchEvent(new CustomEvent('undo-redo-status', {
+              detail: { message: lang === 'zh' ? '重做失败，请检查本地存储后重试。' : 'Redo failed. Check local storage and try again.' }
+            }))
           }
         } finally {
           shortcutInFlight = false
@@ -193,5 +222,5 @@ export function useUndoRedoShortcuts() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [lang])
 }

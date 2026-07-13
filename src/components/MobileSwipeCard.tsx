@@ -2,17 +2,18 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useSwipe, isTouchDevice } from '@/lib/touchGestures'
+import AppIcon, { AppIconName } from './AppIcon'
 
 interface Props {
   children: React.ReactNode
   leftAction?: {
-    icon: string
+    icon: AppIconName
     label: string
     color: string
     onAction: () => void
   }
   rightAction?: {
-    icon: string
+    icon: AppIconName
     label: string
     color: string
     onAction: () => void
@@ -170,7 +171,7 @@ export default function MobileSwipeCard({
         {action && (
           <div className="flex items-center gap-2 text-white">
             <span className="text-sm font-medium">{action.label}</span>
-            <span className="text-xl">{action.icon}</span>
+            <AppIcon name={action.icon} size={20} />
           </div>
         )}
       </div>
@@ -193,7 +194,7 @@ export default function MobileSwipeCard({
         {/* 长按指示器 */}
         {isLongPressing && (
           <div className="absolute inset-0 bg-[var(--accent)]/10 rounded-xl flex items-center justify-center">
-            <div className="text-2xl animate-pulse">⏳</div>
+            <AppIcon name="refresh" size={24} className="animate-spin text-[var(--accent)]" />
           </div>
         )}
 
@@ -208,7 +209,7 @@ export default function MobileSwipeCard({
                 className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
                 title={leftAction.label}
               >
-                {leftAction.icon}
+                <AppIcon name={leftAction.icon} tone="blue" size={18} />
               </button>
             )}
             {rightAction && (
@@ -217,7 +218,7 @@ export default function MobileSwipeCard({
                 className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
                 title={rightAction.label}
               >
-                {rightAction.icon}
+                <AppIcon name={rightAction.icon} tone="red" size={18} />
               </button>
             )}
           </div>
@@ -257,13 +258,13 @@ export function SwipeableBookCard({
   return (
     <MobileSwipeCard
       leftAction={onToggleStatus ? {
-        icon: book.status === 'unread' ? '📖' : book.status === 'reading' ? '✅' : '📚',
+        icon: book.status === 'unread' ? 'bookOpen' : book.status === 'reading' ? 'success' : 'library',
         label: book.status === 'unread' ? '开始阅读' : book.status === 'reading' ? '标记完成' : '标记未读',
         color: 'bg-blue-500',
         onAction: onToggleStatus
       } : undefined}
       rightAction={onDelete ? {
-        icon: '🗑️',
+        icon: 'trash',
         label: '删除',
         color: 'bg-red-500',
         onAction: onDelete

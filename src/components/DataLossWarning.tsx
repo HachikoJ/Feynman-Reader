@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AlertTriangle, CloudOff, Download, HardDrive } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 
@@ -13,7 +13,19 @@ interface Props {
 
 export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBackup }: Props) {
   const [confirmed, setConfirmed] = useState(false)
+  const [confirmationError, setConfirmationError] = useState(false)
+  const confirmationCheckboxRef = useRef<HTMLInputElement>(null)
   const isZh = lang === 'zh'
+
+  const runConfirmedAction = (action: () => void) => {
+    if (!confirmed) {
+      setConfirmationError(true)
+      confirmationCheckboxRef.current?.focus()
+      return
+    }
+
+    action()
+  }
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -56,17 +68,27 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
             <Download size={19} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
             <p>
               {isZh
-                ? '请定期前往“设置 > 数据管理”导出备份。平台无法恢复未备份的数据，因未及时备份造成的数据丢失需由用户自行承担。'
-                : 'Export a backup regularly from Settings > Data Management. The platform cannot recover data that was not backed up; users are responsible for losses caused by missing backups.'}
+                ? '请定期前往“设置 > 数据管理”导出备份。已有学习数据且距上次成功备份满 7 天时，系统会再次提醒，但不会自动备份。平台无法恢复未备份的数据。'
+                : 'Export a backup regularly from Settings > Data Management. When learning data exists, the system reminds you 7 days after the last successful backup, but it does not back up automatically. The platform cannot recover unbacked-up data.'}
             </p>
           </div>
         </div>
 
-        <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+        <label className={`mt-5 flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${
+          confirmationError
+            ? 'border-red-500/60 bg-red-500/10'
+            : 'border-amber-500/30 bg-amber-500/10'
+        }`}>
           <input
+            ref={confirmationCheckboxRef}
             type="checkbox"
             checked={confirmed}
-            onChange={event => setConfirmed(event.target.checked)}
+            aria-describedby={confirmationError ? 'data-risk-confirmation-error' : undefined}
+            onChange={event => {
+              const checked = event.target.checked
+              setConfirmed(checked)
+              if (checked) setConfirmationError(false)
+            }}
             className="mt-1 h-4 w-4 shrink-0 accent-amber-500"
           />
           <span>
@@ -76,12 +98,30 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
           </span>
         </label>
 
-        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <button type="button" onClick={onOpenBackup} disabled={!confirmed} className="btn-primary flex items-center justify-center gap-2">
-            <Download size={17} aria-hidden="true" />
-            {isZh ? '前往数据管理' : 'Open Data Management'}
-          </button>
-          <button type="button" onClick={onContinue} disabled={!confirmed} className="btn-secondary">
+        {confirmationError && (
+          <p id="data-risk-confirmation-error" role="alert" className="mt-2 text-sm font-medium text-red-500">
+            {isZh
+              ? '请先勾选上方确认项，确认了解本地数据风险后再继续。'
+              : 'Please check the confirmation above before continuing.'}
+          </p>
+        )}
+
+        <div className={`mt-5 grid grid-cols-1 gap-2 ${backupDue ? 'sm:grid-cols-2' : ''}`}>
+          {backupDue && (
+            <button
+              type="button"
+              onClick={() => runConfirmedAction(onOpenBackup)}
+              className="btn-primary flex items-center justify-center gap-2"
+            >
+              <Download size={17} aria-hidden="true" />
+              {isZh ? '前往数据管理' : 'Open Data Management'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => runConfirmedAction(onContinue)}
+            className="btn-secondary"
+          >
             {isZh ? '我已了解，继续使用' : 'I understand, continue'}
           </button>
         </div>

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { Language } from '@/lib/i18n'
 import MarkdownRenderer from './MarkdownRenderer'
+import AppIcon from './AppIcon'
 
 interface Props {
   content: string
@@ -111,16 +112,14 @@ export default function PhaseResult({ content, lang }: Props) {
               <div className="flex items-center gap-3">
                 {section.isKeyPoint && (
                   <span className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-secondary)] text-white text-lg shadow-lg">
-                    💡
+                    <AppIcon name="lightbulb" size={19} />
                   </span>
                 )}
                 <span className={`font-semibold ${section.isKeyPoint ? 'text-[var(--accent)] text-lg' : 'text-[var(--text-primary)]'}`}>
                   {section.title}
                 </span>
               </div>
-              <span className={`text-sm text-[var(--text-secondary)] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-                ▼
-              </span>
+              <AppIcon name="chevronDown" tone="muted" size={17} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
 
             {isExpanded && (
@@ -141,11 +140,11 @@ export default function PhaseResult({ content, lang }: Props) {
       {sections.length > 1 && (
         <div className="flex justify-center gap-4 pt-2">
           <button onClick={expandAll} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
-            {lang === 'zh' ? '📖 展开全部' : '📖 Expand All'}
+            <span className="inline-flex items-center gap-1.5"><AppIcon name="bookOpen" size={15} />{lang === 'zh' ? '展开全部' : 'Expand All'}</span>
           </button>
           <span className="text-[var(--border)]">|</span>
           <button onClick={collapseAll} className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors">
-            {lang === 'zh' ? '📕 收起全部' : '📕 Collapse All'}
+            <span className="inline-flex items-center gap-1.5"><AppIcon name="bookMarked" size={15} />{lang === 'zh' ? '收起全部' : 'Collapse All'}</span>
           </button>
         </div>
       )}

@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from 'react'
 import { logger } from '@/lib/logger'
 import { Language } from '@/lib/i18n'
 import { Book, addBook, flushPendingStoreWrites, getBooks, reloadBookFromPersistence } from '@/lib/store'
-import { AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, withDeepSeekDefaults } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, withDeepSeekDefaults, withDocumentContextRetry } from '@/lib/deepseek'
 import { secureSystemPrompt, secureUserMessage } from '@/lib/promptSecurity'
 import LoadingQuotes from './LoadingQuotes'
+import AppIcon from './AppIcon'
 
 interface RecommendedBook {
   title: string
@@ -62,14 +63,21 @@ function parseRecommendedBook(value: unknown, path: string): RecommendedBook {
   }
 }
 
-export function parseRecommendations(value: unknown): Recommendations {
+function normalizeRecommendationTitle(title: string): string {
+  return title
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s《》〈〉「」『』【】〔〕“”"'‘’（）()·:：,，.。!！?？\-—_]/g, '')
+}
+
+export function parseRecommendations(value: unknown, excludedTitle?: string): Recommendations {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('推荐数据必须是对象')
   const item = value as Record<string, unknown>
   if (!Array.isArray(item.sameAuthor) || item.sameAuthor.length > 10) throw new Error('同作者推荐数据无效')
   if (!Array.isArray(item.relatedTopics) || item.relatedTopics.length > 10) throw new Error('主题推荐数据无效')
   if (!Array.isArray(item.readingPath) || item.readingPath.length > 10) throw new Error('阅读路径数据无效')
 
-  const recommendations = {
+  const parsedRecommendations: Recommendations = {
     sameAuthor: item.sameAuthor.map((book, index) => parseRecommendedBook(book, `sameAuthor[${index}]`)),
     relatedTopics: item.relatedTopics.map((topic, index) => {
       if (!topic || typeof topic !== 'object' || Array.isArray(topic)) throw new Error(`主题推荐 ${index} 无效`)
@@ -90,6 +98,20 @@ export function parseRecommendations(value: unknown): Recommendations {
     })
   }
 
+  const normalizedExcludedTitle = excludedTitle ? normalizeRecommendationTitle(excludedTitle) : ''
+  const isExcluded = (recommendedBook: RecommendedBook) =>
+    Boolean(normalizedExcludedTitle) && normalizeRecommendationTitle(recommendedBook.title) === normalizedExcludedTitle
+
+  const recommendations: Recommendations = normalizedExcludedTitle
+    ? {
+        sameAuthor: parsedRecommendations.sameAuthor.filter(recommendedBook => !isExcluded(recommendedBook)),
+        relatedTopics: parsedRecommendations.relatedTopics
+          .map(topic => ({ ...topic, books: topic.books.filter(recommendedBook => !isExcluded(recommendedBook)) }))
+          .filter(topic => topic.books.length > 0),
+        readingPath: parsedRecommendations.readingPath.filter(step => !isExcluded(step.book))
+      }
+    : parsedRecommendations
+
   const recommendationCount = recommendations.sameAuthor.length +
     recommendations.relatedTopics.reduce((sum, topic) => sum + topic.books.length, 0) +
     recommendations.readingPath.length
@@ -103,6 +125,12 @@ export function getRecommendationErrorMessage(error: unknown, lang: Language): s
     return lang === 'zh'
       ? '请先在设置中同意 AI 数据传输，再获取相关推荐。'
       : 'Please consent to AI data transfer in Settings before requesting recommendations.'
+  }
+
+  if (error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED) {
+    return lang === 'zh'
+      ? '文档上下文过长，系统自动缩减后仍未能生成推荐。已有推荐不会被清除，请拆分文档后重试。'
+      : 'The document context is too long even after automatic reduction. Existing recommendations were kept; split the document and try again.'
   }
 
   if (error instanceof Error && error.message === 'RECOMMENDATION_SAVE_FAILED') {
@@ -158,7 +186,7 @@ export default function BookRecommendations({
   useEffect(() => {
     if (savedRecommendations) {
       try {
-        const data = parseRecommendations(JSON.parse(savedRecommendations))
+        const data = parseRecommendations(JSON.parse(savedRecommendations), book.name)
         setRecommendations(data)
         setErrorMessage(null)
       } catch (error) {
@@ -170,7 +198,7 @@ export default function BookRecommendations({
     } else {
       setRecommendations(null)
     }
-  }, [savedRecommendations, lang])
+  }, [savedRecommendations, lang, book.name])
 
   // 检查书籍是否已在书架中
   const isBookInShelf = (title: string, author: string): boolean => {
@@ -204,6 +232,8 @@ export default function BookRecommendations({
 2. 要考虑书籍的经典性和影响力
 3. 推荐理由要具体，说明与当前书籍的关联
 4. 难度要合理标注
+5. 严禁在任何推荐分组中返回输入数据里的当前书籍
+6. sameAuthor 只能返回同作者的其他著作，不能返回当前书籍的不同版本、译本或再版
 
 返回 JSON 格式：
 {
@@ -246,34 +276,44 @@ export default function BookRecommendations({
 
 只返回 JSON，不要其他内容。`
 
-      const userMessage = secureUserMessage(`请推荐：
+      const recommendationTask = `请推荐：
 1. 同作者的其他2-3本代表作
 2. 相关主题的经典著作（按2-3个主题分类，每类2-3本）
 3. 推荐的阅读路径（3个层次：入门巩固、深入理解、实践应用）
 
 要求：
 - 推荐的书籍必须真实存在
+- 所有分组都必须排除输入数据中的当前书籍
+- “同作者”只能推荐该作者的其他著作
 - 推荐理由要具体
-- 考虑难度梯度`, {
-        bookName: book.name,
-        author: book.author || '',
-        description: book.description || ''
-      })
-
-      const response = await client.chat.completions.create(withDeepSeekDefaults({
-        messages: [
-          { role: 'system', content: secureSystemPrompt(systemPrompt) },
-          { role: 'user', content: userMessage }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000
-      }))
+- 考虑难度梯度`
+      const response = await withDocumentContextRetry(
+        book.documentContent,
+        `${book.name} ${recommendationTask}`,
+        240_000,
+        documentContext => client.chat.completions.create(withDeepSeekDefaults({
+          messages: [
+            { role: 'system', content: secureSystemPrompt(systemPrompt) },
+            {
+              role: 'user',
+              content: secureUserMessage(recommendationTask, {
+                bookName: book.name,
+                author: book.author || '',
+                description: book.description || '',
+                ...documentContext
+              })
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000
+        }))
+      )
 
       const content = response.choices[0]?.message?.content?.trim()
       if (!content) throw new Error('AI response was empty')
       const jsonMatch = content.match(/\{[\s\S]*\}/)
       if (!jsonMatch) throw new Error('AI response did not contain recommendation JSON')
-      const data = parseRecommendations(JSON.parse(jsonMatch[0]))
+      const data = parseRecommendations(JSON.parse(jsonMatch[0]), book.name)
       try {
         await onRecommendationsChange(JSON.stringify(data))
       } catch (error) {
@@ -328,9 +368,9 @@ export default function BookRecommendations({
   const getDifficultyLabel = (difficulty?: string) => {
     if (!difficulty) return ''
     const labels = {
-      beginner: lang === 'zh' ? '⭐ 入门' : '⭐ Beginner',
-      intermediate: lang === 'zh' ? '⭐⭐ 进阶' : '⭐⭐ Intermediate',
-      advanced: lang === 'zh' ? '⭐⭐⭐ 专业' : '⭐⭐⭐ Advanced'
+      beginner: lang === 'zh' ? '入门' : 'Beginner',
+      intermediate: lang === 'zh' ? '进阶' : 'Intermediate',
+      advanced: lang === 'zh' ? '专业' : 'Advanced'
     }
     return labels[difficulty as keyof typeof labels] || ''
   }
@@ -343,8 +383,8 @@ export default function BookRecommendations({
         <>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-xl font-bold">
-                📚 {lang === 'zh' ? '相关推荐' : 'Related Recommendations'}
+              <h3 className="flex items-center gap-2 text-xl font-bold">
+                <AppIcon name="bookOpen" tone="violet" size={22} />{lang === 'zh' ? '相关推荐' : 'Related Recommendations'}
               </h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
                 {lang === 'zh'
@@ -357,10 +397,10 @@ export default function BookRecommendations({
                 <button
                   onClick={generateRecommendations}
                   disabled={loadingRecommendations}
-                  className="btn-secondary text-sm"
+                  className="btn-secondary flex items-center gap-2 text-sm"
                   title={lang === 'zh' ? '基于相同逻辑重新生成推荐' : 'Regenerate with same logic'}
                 >
-                  🔄 {lang === 'zh' ? '重新推荐' : 'Regenerate'}
+                  <AppIcon name="refresh" tone="violet" size={16} />{lang === 'zh' ? '重新推荐' : 'Regenerate'}
                 </button>
               )}
               {!recommendations && (
@@ -384,15 +424,15 @@ export default function BookRecommendations({
           {recommendations && (
             <div className="mb-6 p-5 bg-yellow-500/10 border-2 border-yellow-500/40 rounded-xl">
               <div className="flex items-start gap-3">
-                <div className="text-2xl flex-shrink-0">💡</div>
+                <AppIcon name="lightbulb" tone="amber" size={24} />
                 <div className="flex-1">
-                  <h4 className="font-bold text-[var(--text-primary)] text-base mb-2">
-                    {lang === 'zh' ? '📌 推荐说明' : '📌 About Recommendations'}
+                  <h4 className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-base mb-2">
+                    <AppIcon name="pin" tone="amber" size={17} />{lang === 'zh' ? '推荐说明' : 'About Recommendations'}
                   </h4>
                   <p className="text-[var(--text-primary)] text-sm leading-relaxed">
                     {lang === 'zh'
-                      ? '推荐基于固定逻辑生成：① 同作者的其他著作 ② 相关主题的经典书籍 ③ 进阶阅读路径。如果当前推荐不符合预期，可以点击右上角"🔄 重新推荐"按钮获取不同的书籍建议。'
-                      : 'Recommendations follow a fixed logic: ① More by same author ② Related classics ③ Reading path. Click "🔄 Regenerate" button above for different suggestions if needed.'}
+                      ? '推荐基于固定逻辑生成：① 同作者的其他著作 ② 相关主题的经典书籍 ③ 进阶阅读路径。如果当前推荐不符合预期，可以点击右上角“重新推荐”按钮获取不同的书籍建议。'
+                      : 'Recommendations follow a fixed logic: ① More by same author ② Related classics ③ Reading path. Use Regenerate above for different suggestions if needed.'}
                   </p>
                 </div>
               </div>
@@ -405,7 +445,7 @@ export default function BookRecommendations({
           {recommendations.sameAuthor && recommendations.sameAuthor.length > 0 && (
             <div>
               <h4 className="font-semibold mb-3 flex items-center gap-2">
-                <span>✍️</span>
+                <AppIcon name="edit" tone="blue" size={18} />
                 <span>{lang === 'zh' ? '同作者的其他著作' : 'More by the Same Author'}</span>
               </h4>
               <div className="space-y-3">
@@ -418,24 +458,26 @@ export default function BookRecommendations({
                           {recBook.year && <span className="text-sm text-[var(--text-secondary)] ml-2">({recBook.year})</span>}
                         </h5>
                         <p className="text-sm text-[var(--text-secondary)] mt-1">{recBook.description}</p>
-                        <p className="text-sm text-[var(--accent)] mt-2">
-                          💡 {recBook.reason}
+                        <p className="flex items-start gap-1.5 text-sm text-[var(--accent)] mt-2">
+                          <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5" />{recBook.reason}
                         </p>
                       </div>
                       <button
                         onClick={() => handleAddToBookshelf(recBook)}
                         disabled={isBookAdded(recBook) || isBookAdding(recBook)}
-                        className={`text-sm py-1 px-3 flex-shrink-0 ${
+                        className={`inline-flex min-h-9 flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1 text-sm ${
                           isBookAdded(recBook) || isBookAdding(recBook)
-                            ? 'bg-green-500/20 text-green-400 cursor-not-allowed'
+                            ? 'cursor-not-allowed border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                             : 'btn-secondary'
                         }`}
                       >
-                        {isBookAdding(recBook)
-                                ? (lang === 'zh' ? '添加中...' : 'Adding...')
-                                : isBookAdded(recBook)
-                          ? (lang === 'zh' ? '✓ 已添加' : '✓ Added')
-                          : (lang === 'zh' ? '+ 加入书架' : '+ Add')}
+                        {isBookAdding(recBook) ? (
+                          <><AppIcon name="refresh" size={14} className="animate-spin" />{lang === 'zh' ? '添加中...' : 'Adding...'}</>
+                        ) : isBookAdded(recBook) ? (
+                          <><AppIcon name="success" tone="green" size={14} />{lang === 'zh' ? '已添加' : 'Added'}</>
+                        ) : (
+                          <><AppIcon name="plus" tone="blue" size={14} />{lang === 'zh' ? '加入书架' : 'Add'}</>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -448,7 +490,7 @@ export default function BookRecommendations({
           {recommendations.relatedTopics && recommendations.relatedTopics.length > 0 && (
             <div>
               <h4 className="font-semibold mb-3 flex items-center gap-2">
-                <span>🎯</span>
+                <AppIcon name="target" tone="green" size={18} />
                 <span>{lang === 'zh' ? '相关主题经典著作' : 'Related Classic Works'}</span>
               </h4>
               <div className="space-y-4">
@@ -474,24 +516,26 @@ export default function BookRecommendations({
                                 {recBook.author} {recBook.year && `(${recBook.year})`}
                               </p>
                               <p className="text-sm text-[var(--text-secondary)] mt-1">{recBook.description}</p>
-                              <p className="text-sm text-[var(--accent)] mt-2">
-                                💡 {recBook.reason}
+                              <p className="flex items-start gap-1.5 text-sm text-[var(--accent)] mt-2">
+                                <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5" />{recBook.reason}
                               </p>
                             </div>
                             <button
                               onClick={() => handleAddToBookshelf(recBook)}
                               disabled={isBookAdded(recBook) || isBookAdding(recBook)}
-                              className={`text-sm py-1 px-3 flex-shrink-0 ${
+                              className={`inline-flex min-h-9 flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1 text-sm ${
                                 isBookAdded(recBook) || isBookAdding(recBook)
-                                  ? 'bg-green-500/20 text-green-400 cursor-not-allowed'
+                                  ? 'cursor-not-allowed border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                                   : 'btn-secondary'
                               }`}
                             >
-                              {isBookAdding(recBook)
-                                ? (lang === 'zh' ? '添加中...' : 'Adding...')
-                                : isBookAdded(recBook)
-                                ? (lang === 'zh' ? '✓ 已添加' : '✓ Added')
-                                : (lang === 'zh' ? '+ 加入书架' : '+ Add')}
+                              {isBookAdding(recBook) ? (
+                                <><AppIcon name="refresh" size={14} className="animate-spin" />{lang === 'zh' ? '添加中...' : 'Adding...'}</>
+                              ) : isBookAdded(recBook) ? (
+                                <><AppIcon name="success" tone="green" size={14} />{lang === 'zh' ? '已添加' : 'Added'}</>
+                              ) : (
+                                <><AppIcon name="plus" tone="blue" size={14} />{lang === 'zh' ? '加入书架' : 'Add'}</>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -507,7 +551,7 @@ export default function BookRecommendations({
           {recommendations.readingPath && recommendations.readingPath.length > 0 && (
             <div>
               <h4 className="font-semibold mb-3 flex items-center gap-2">
-                <span>🗺️</span>
+                <AppIcon name="route" tone="violet" size={18} />
                 <span>{lang === 'zh' ? '推荐阅读路径' : 'Recommended Reading Path'}</span>
               </h4>
               <p className="text-sm text-[var(--text-secondary)] mb-3">
@@ -533,24 +577,26 @@ export default function BookRecommendations({
                             <p className="text-sm text-[var(--text-secondary)] mt-1">
                               {path.book.description}
                             </p>
-                            <p className="text-sm text-[var(--accent)] mt-2">
-                              💡 {path.book.reason}
+                            <p className="flex items-start gap-1.5 text-sm text-[var(--accent)] mt-2">
+                              <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5" />{path.book.reason}
                             </p>
                           </div>
                           <button
                             onClick={() => handleAddToBookshelf(path.book)}
                             disabled={isBookAdded(path.book) || isBookAdding(path.book)}
-                            className={`text-sm py-1 px-3 flex-shrink-0 ${
+                            className={`inline-flex min-h-9 flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1 text-sm ${
                               isBookAdded(path.book) || isBookAdding(path.book)
-                                ? 'bg-green-500/20 text-green-400 cursor-not-allowed'
+                                ? 'cursor-not-allowed border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                                 : 'btn-secondary'
                             }`}
                           >
-                            {isBookAdding(path.book)
-                              ? (lang === 'zh' ? '添加中...' : 'Adding...')
-                              : isBookAdded(path.book)
-                              ? (lang === 'zh' ? '✓ 已添加' : '✓ Added')
-                              : (lang === 'zh' ? '+ 加入书架' : '+ Add')}
+                            {isBookAdding(path.book) ? (
+                              <><AppIcon name="refresh" size={14} className="animate-spin" />{lang === 'zh' ? '添加中...' : 'Adding...'}</>
+                            ) : isBookAdded(path.book) ? (
+                              <><AppIcon name="success" tone="green" size={14} />{lang === 'zh' ? '已添加' : 'Added'}</>
+                            ) : (
+                              <><AppIcon name="plus" tone="blue" size={14} />{lang === 'zh' ? '加入书架' : 'Add'}</>
+                            )}
                           </button>
                         </div>
                       </div>

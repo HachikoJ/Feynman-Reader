@@ -17,6 +17,7 @@ import {
   shareToSocialMedia,
   generateNoteShareImage
 } from '@/lib/share'
+import AppIcon from './AppIcon'
 
 interface ShareDialogProps {
   lang: Language
@@ -191,8 +192,10 @@ export default function ShareDialog({ lang, book, onClose, noteId, practiceId }:
           <button
             onClick={onClose}
             className="p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
+            aria-label={text.close}
+            title={text.close}
           >
-            ✕
+            <AppIcon name="close" tone="muted" size={20} />
           </button>
         </div>
 
@@ -348,7 +351,10 @@ export default function ShareDialog({ lang, book, onClose, noteId, practiceId }:
                     onClick={() => exportNoteAsMarkdown(book, noteId)}
                     className="p-4 bg-[var(--bg-secondary)] rounded-lg hover:bg-[var(--border)] transition-colors text-left"
                   >
-                    <div className="font-medium text-[var(--text-primary)]">📄 Markdown</div>
+                    <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+                      <AppIcon name="file" tone="blue" size={18} />
+                      Markdown
+                    </div>
                     <div className="text-sm text-[var(--text-secondary)]">{text.export.markdown}</div>
                   </button>
                 )}
@@ -358,7 +364,10 @@ export default function ShareDialog({ lang, book, onClose, noteId, practiceId }:
                     onClick={() => exportPracticeAsPDF(book, practiceId)}
                     className="p-4 bg-[var(--bg-secondary)] rounded-lg hover:bg-[var(--border)] transition-colors text-left"
                   >
-                    <div className="font-medium text-[var(--text-primary)]">📋 PDF / HTML</div>
+                    <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+                      <AppIcon name="clipboard" tone="violet" size={18} />
+                      PDF / HTML
+                    </div>
                     <div className="text-sm text-[var(--text-secondary)]">{text.export.pdf}</div>
                   </button>
                 )}
@@ -372,7 +381,10 @@ export default function ShareDialog({ lang, book, onClose, noteId, practiceId }:
                   }}
                   className="p-4 bg-[var(--bg-secondary)] rounded-lg hover:bg-[var(--border)] transition-colors text-left"
                 >
-                  <div className="font-medium text-[var(--text-primary)]">📊 进度卡片</div>
+                  <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+                    <AppIcon name="chart" tone="green" size={18} />
+                    进度卡片
+                  </div>
                   <div className="text-sm text-[var(--text-secondary)]">导出阅读进度数据</div>
                 </button>
               </div>

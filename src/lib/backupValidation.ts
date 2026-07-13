@@ -136,11 +136,14 @@ function normalizeTag(value: unknown, path: string): BookTag {
 function normalizeNote(value: unknown, path: string): NoteRecord {
   const item = record(value, path)
   if (!NOTE_TYPES.has(item.type as NoteRecord['type'])) fail(`${path}.type`, '取值无效')
+  const type = item.type as NoteRecord['type']
   return {
     id: identifier(item.id, `${path}.id`),
-    type: item.type as NoteRecord['type'],
+    type,
     content: stringValue(item.content, `${path}.content`, 200_000)!,
-    ...(item.aiReview !== undefined ? { aiReview: stringValue(item.aiReview, `${path}.aiReview`, 100_000)! } : {}),
+    ...(type === 'teaching' && item.aiReview !== undefined
+      ? { aiReview: stringValue(item.aiReview, `${path}.aiReview`, 100_000)! }
+      : {}),
     ...(item.phaseId !== undefined ? { phaseId: stringValue(item.phaseId, `${path}.phaseId`, 64)! } : {}),
     createdAt: timestamp(item.createdAt, `${path}.createdAt`)
   }

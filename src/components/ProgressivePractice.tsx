@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Language } from '@/lib/i18n'
 import { PRACTICE_TEMPLATES, PracticeTemplate } from '@/lib/practiceEnhancement'
+import AppIcon from './AppIcon'
 
 interface Props {
   lang: Language
@@ -64,8 +65,9 @@ export default function ProgressivePractice({
     <div className={`space-y-4 ${className}`}>
       {/* 模板选择 */}
       <div className="bg-[var(--bg-secondary)] rounded-xl p-4">
-        <h4 className="font-semibold mb-3">
-          {lang === 'zh' ? '📚 选择练习模式' : '📚 Choose Practice Mode'}
+        <h4 className="flex items-center gap-2 font-semibold mb-3">
+          <AppIcon name="library" tone="blue" size={18} />
+          {lang === 'zh' ? '选择练习模式' : 'Choose Practice Mode'}
         </h4>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {PRACTICE_TEMPLATES.map(template => (
@@ -117,7 +119,7 @@ export default function ProgressivePractice({
           {/* 步骤指导 */}
           <div className="bg-[var(--bg-secondary)] rounded-lg p-4 mb-4">
             <div className="flex items-start gap-2">
-              <span className="text-2xl">💡</span>
+              <AppIcon name="lightbulb" tone="amber" size={22} />
               <div>
                 <div className="font-medium text-[var(--accent)] mb-1">
                   {lang === 'zh' ? '本步骤指导' : 'Step Guidance'}
@@ -144,8 +146,9 @@ export default function ProgressivePractice({
           {/* 模板提示 */}
           {getStepTemplate() && (
             <div className="bg-[var(--accent)]/5 border border-[var(--accent)]/20 rounded-lg p-3 mb-4">
-              <div className="text-xs text-[var(--accent)] mb-2">
-                {lang === 'zh' ? '📝 可以参考以下模板：' : '📝 Template reference:'}
+              <div className="flex items-center gap-1.5 text-xs text-[var(--accent)] mb-2">
+                <AppIcon name="note" tone="accent" size={14} />
+                {lang === 'zh' ? '可以参考以下模板：' : 'Template reference:'}
               </div>
               <pre className="text-sm whitespace-pre-wrap font-sans text-[var(--text-secondary)]">
                 {getStepTemplate()}
@@ -160,7 +163,8 @@ export default function ProgressivePractice({
                 onClick={handlePrevStep}
                 className="btn-secondary flex-1"
               >
-                {lang === 'zh' ? '← 上一步' : '← Previous'}
+                <AppIcon name="arrowLeft" size={16} />
+                {lang === 'zh' ? '上一步' : 'Previous'}
               </button>
             )}
             {currentStepIndex < selectedTemplate.steps.length - 1 ? (
@@ -168,14 +172,16 @@ export default function ProgressivePractice({
                 onClick={handleNextStep}
                 className="btn-primary flex-1"
               >
-                {lang === 'zh' ? '下一步 →' : 'Next →'}
+                {lang === 'zh' ? '下一步' : 'Next'}
+                <AppIcon name="arrowRight" size={16} />
               </button>
             ) : (
               <button
                 onClick={handleNextStep}
                 className="btn-primary flex-1 bg-green-600 hover:bg-green-700"
               >
-                {lang === 'zh' ? '✓ 完成练习' : '✓ Complete'}
+                <AppIcon name="check" size={16} />
+                {lang === 'zh' ? '完成练习' : 'Complete'}
               </button>
             )}
           </div>

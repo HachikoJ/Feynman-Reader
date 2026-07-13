@@ -111,6 +111,22 @@ describe('backup import boundary', () => {
     expect(valid.valid).toBe(true)
     if (valid.valid) expect(valid.data.settings.apiKey).toBe('')
   })
+
+  it('does not treat imported reading-note metadata as an AI review', () => {
+    const book = createBook({
+      noteRecords: [
+        { id: 'note-1', type: 'note', content: '用户笔记', aiReview: '不应保留', createdAt: 1 },
+        { id: 'legacy-teaching', type: 'teaching', content: '旧版教学输出', aiReview: '旧版点评', createdAt: 2 }
+      ]
+    })
+
+    const result = normalizeImportData(createBackup([book]))
+    expect(result.valid).toBe(true)
+    if (!result.valid) return
+
+    expect(result.data.books[0].noteRecords[0].aiReview).toBeUndefined()
+    expect(result.data.books[0].noteRecords[1].aiReview).toBe('旧版点评')
+  })
 })
 
 describe('stored data recovery boundary', () => {

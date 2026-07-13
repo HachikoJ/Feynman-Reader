@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Language } from '@/lib/i18n'
 import {
   PERSONA_TYPES,
@@ -8,6 +8,7 @@ import {
   getSelectedPersonas,
   PersonaType
 } from '@/lib/practiceEnhancement'
+import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 
 interface Props {
   lang: Language
@@ -16,6 +17,15 @@ interface Props {
   maxSelect?: number
   compact?: boolean
 }
+
+const categoryIcons: Record<string, { name: AppIconName; tone: AppIconTone }> = {
+  beginner: { name: 'sprout', tone: 'green' },
+  peer: { name: 'handshake', tone: 'blue' },
+  critical: { name: 'scale', tone: 'amber' },
+  expert: { name: 'graduation', tone: 'violet' }
+}
+
+const getPersonaIcon = (persona: PersonaType) => categoryIcons[persona.category]
 
 export default function PersonaSelector({
   lang,
@@ -87,19 +97,13 @@ export default function PersonaSelector({
     expert: { zh: '专家', en: 'Expert' }
   }
 
-  const categoryIcons: Record<string, string> = {
-    beginner: '🌱',
-    peer: '🤝',
-    critical: '🤔',
-    expert: '🎓'
-  }
-
   if (compact) {
     return (
       <div className="bg-[var(--bg-secondary)] rounded-xl p-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium">
-            {lang === 'zh' ? '🎭 问答角色' : '🎭 Personas'}
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <AppIcon name="users" tone="violet" size={16} />
+            {lang === 'zh' ? '问答角色' : 'Personas'}
           </span>
           <span className="text-xs text-[var(--text-secondary)]">
             {selection.length} / {maxSelect}
@@ -113,7 +117,8 @@ export default function PersonaSelector({
                 key={persona.id}
                 className="inline-flex items-center gap-1 px-2 py-1 bg-[var(--accent)]/10 text-[var(--accent)] rounded text-xs"
               >
-                {persona.icon} {persona.name[lang]}
+                <AppIcon {...getPersonaIcon(persona)} size={14} />
+                {persona.name[lang]}
               </span>
             ))}
           </div>
@@ -130,8 +135,9 @@ export default function PersonaSelector({
     <div className="space-y-4">
       {/* 快速选择 */}
       <div className="bg-[var(--bg-secondary)] rounded-xl p-4">
-        <h4 className="font-semibold mb-3">
-          {lang === 'zh' ? '🎯 快速选择' : '🎯 Quick Select'}
+        <h4 className="flex items-center gap-2 font-semibold mb-3">
+          <AppIcon name="target" tone="blue" size={18} />
+          {lang === 'zh' ? '快速选择' : 'Quick Select'}
         </h4>
 
         <div className="grid grid-cols-3 gap-2 mb-3">
@@ -174,8 +180,10 @@ export default function PersonaSelector({
             onClick={() => setShowCustom(!showCustom)}
             className="text-sm text-[var(--accent)] hover:underline"
           >
-            {showCustom ? (lang === 'zh' ? '隐藏自定义选项' : 'Hide custom') : (lang === 'zh' ? '自定义角色' : 'Custom personas')}
-            {showCustom ? ' ▲' : ' ▼'}
+            <span className="inline-flex items-center gap-1">
+              {showCustom ? (lang === 'zh' ? '隐藏自定义选项' : 'Hide custom') : (lang === 'zh' ? '自定义角色' : 'Custom personas')}
+              <AppIcon name={showCustom ? 'chevronUp' : 'chevronDown'} size={14} />
+            </span>
           </button>
 
           {selection.length > 0 && (
@@ -193,8 +201,9 @@ export default function PersonaSelector({
       {showCustom && (
         <div className="card animate-fade-in">
           <div className="flex items-center justify-between mb-4">
-            <h4 className="font-semibold">
-              {lang === 'zh' ? '⚙️ 自定义角色' : '⚙️ Custom Personas'}
+            <h4 className="flex items-center gap-2 font-semibold">
+              <AppIcon name="users" tone="violet" size={18} />
+              {lang === 'zh' ? '自定义角色' : 'Custom Personas'}
             </h4>
             <span className="text-sm text-[var(--text-secondary)]">
               {selection.length} / {maxSelect}
@@ -204,7 +213,7 @@ export default function PersonaSelector({
           {(Object.entries(groupedPersonas) as [string, PersonaType[]][]).map(([category, personas]) => (
             <div key={category} className="mb-4 last:mb-0">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-lg">{categoryIcons[category]}</span>
+                <AppIcon {...categoryIcons[category]} size={18} />
                 <span className="text-sm font-medium">{categoryNames[category][lang]}</span>
               </div>
 
@@ -223,10 +232,10 @@ export default function PersonaSelector({
                       } ${!isSelected && selection.length >= maxSelect ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xl">{persona.icon}</span>
+                        <AppIcon {...getPersonaIcon(persona)} size={20} />
                         <span className="font-medium text-sm">{persona.name[lang]}</span>
                         {isSelected && (
-                          <span className="ml-auto text-green-400">✓</span>
+                          <AppIcon name="check" tone="green" size={16} className="ml-auto" />
                         )}
                       </div>
                       <p className="text-xs text-[var(--text-secondary)]">
@@ -254,8 +263,9 @@ export default function PersonaSelector({
       {selectedPersonas.length > 0 && !showCustom && (
         <div className="bg-[var(--bg-secondary)] rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-sm">
-              {lang === 'zh' ? '✓ 已选择' : '✓ Selected'}
+            <h4 className="flex items-center gap-2 font-semibold text-sm">
+              <AppIcon name="success" tone="green" size={16} />
+              {lang === 'zh' ? '已选择' : 'Selected'}
             </h4>
             <button
               onClick={() => setShowCustom(true)}
@@ -271,7 +281,7 @@ export default function PersonaSelector({
                 key={persona.id}
                 className="inline-flex items-center gap-2 px-3 py-2 bg-[var(--accent)]/10 text-[var(--accent)] rounded-lg"
               >
-                <span className="text-lg">{persona.icon}</span>
+                <AppIcon {...getPersonaIcon(persona)} size={18} />
                 <span className="font-medium">{persona.name[lang]}</span>
               </span>
             ))}
@@ -298,7 +308,7 @@ export function PersonaBadge({ personaId, lang }: { personaId: string; lang: Lan
 
   return (
     <span className="inline-flex items-center gap-1 px-2 py-1 bg-[var(--bg-secondary)] rounded text-xs">
-      <span>{persona.icon}</span>
+      <AppIcon {...getPersonaIcon(persona)} size={14} />
       <span>{persona.name[lang]}</span>
     </span>
   )

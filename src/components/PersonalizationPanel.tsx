@@ -18,6 +18,7 @@ import {
   validateThemeColor,
   fontSizes
 } from '@/lib/personalization'
+import AppIcon from './AppIcon'
 
 interface PersonalizationPanelProps {
   lang: Language
@@ -254,8 +255,10 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
           <button
             onClick={onClose}
             className="p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
+            aria-label={text.close}
+            title={text.close}
           >
-            ✕
+            <AppIcon name="close" tone="muted" size={20} />
           </button>
         </div>
 

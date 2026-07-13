@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Language } from '@/lib/i18n'
 import { CustomQuote } from '@/lib/store'
+import AppIcon from './AppIcon'
 
 // 预设金句（用于初始化）- 100条古今中外经典金句
 export const defaultQuotesZh: CustomQuote[] = [
@@ -190,7 +191,7 @@ export default function LoadingQuotes({ lang, quotes = [] }: Props) {
         <div className="relative mb-8">
           <div className="w-16 h-16 border-4 border-[var(--accent)]/30 rounded-full"></div>
           <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-[var(--accent)] rounded-full animate-spin"></div>
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl">📚</div>
+          <AppIcon name="library" tone="accent" size={24} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
         </div>
         <p className="text-sm text-[var(--text-secondary)]">
           {lang === 'zh' ? 'AI 正在深度分析中，请稍候...' : 'AI is analyzing, please wait...'}
@@ -207,7 +208,7 @@ export default function LoadingQuotes({ lang, quotes = [] }: Props) {
       <div className="relative mb-8">
         <div className="w-16 h-16 border-4 border-[var(--accent)]/30 rounded-full"></div>
         <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-[var(--accent)] rounded-full animate-spin"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl">📚</div>
+        <AppIcon name="library" tone="accent" size={24} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
       </div>
 
       {/* Quote */}

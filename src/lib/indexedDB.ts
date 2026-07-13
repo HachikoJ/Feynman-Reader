@@ -23,9 +23,9 @@ export type Language = 'zh' | 'en'
 
 export interface NoteRecord {
   id: string
-  type: 'note' | 'teaching'
+  type: 'note' | 'teaching' // teaching 仅用于兼容旧版教学模拟记录
   content: string
-  aiReview?: string
+  aiReview?: string // 普通笔记不会生成 AI 点评
   phaseId?: string
   createdAt: number
 }

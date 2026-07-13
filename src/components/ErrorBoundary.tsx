@@ -1,7 +1,7 @@
 'use client'
 
 import React, { Component, ErrorInfo, ReactNode } from 'react'
-import { AlertTriangle, Home, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Check, Home, RefreshCw } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import { Language } from '@/lib/i18n'
 
@@ -168,7 +168,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 <ul className="text-sm text-[var(--text-secondary)] space-y-1">
                   {messages.solutions.map((solution, idx) => (
                     <li key={idx} className="flex items-start gap-2">
-                      <span className="text-[var(--accent)] mt-0.5">✓</span>
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                       <span>{solution}</span>
                     </li>
                   ))}

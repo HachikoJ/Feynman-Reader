@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Language, t } from '@/lib/i18n'
+import AppIcon from './AppIcon'
 
 interface Props {
   content: string
@@ -173,7 +174,7 @@ export default function ResultCard({ content, lang }: Props) {
       {summarySection && (
         <div className="result-card">
           <div className="result-header flex items-center gap-2">
-            <span>💡</span>
+            <AppIcon name="lightbulb" tone="amber" size={18} />
             <span>{summarySection.title}</span>
           </div>
           <div className="result-body">
@@ -186,7 +187,7 @@ export default function ResultCard({ content, lang }: Props) {
       {insights.length > 0 && (
         <div className="card">
           <h4 className="font-semibold mb-4 flex items-center gap-2">
-            <span>🎯</span>
+            <AppIcon name="target" tone="green" size={18} />
             {insightsSection?.title || t(lang, 'result.keyInsights')}
           </h4>
           <div className="space-y-2">
@@ -208,11 +209,12 @@ export default function ResultCard({ content, lang }: Props) {
             className="w-full flex items-center justify-between"
           >
             <h4 className="font-semibold flex items-center gap-2">
-              <span>📖</span>
+              <AppIcon name="bookOpen" tone="blue" size={18} />
               {detailsSection.title || t(lang, 'result.details')}
             </h4>
-            <span className="text-[var(--text-secondary)] text-sm">
-              {expanded ? '收起 ▲' : '展开 ▼'}
+            <span className="inline-flex items-center gap-1 text-[var(--text-secondary)] text-sm">
+              {expanded ? '收起' : '展开'}
+              <AppIcon name={expanded ? 'chevronUp' : 'chevronDown'} size={16} />
             </span>
           </button>
           
