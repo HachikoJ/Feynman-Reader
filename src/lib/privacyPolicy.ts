@@ -34,6 +34,8 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
 • 本应用当前不提供学习数据的云端托管或跨设备同步服务
 • 使用 AI 功能时，相关输入会从您的浏览器直接传输给 DeepSeek
 • 您可以通过"数据管理"功能导出备份
+• 备份数据较大时会自动拆分为多个分卷，导入时需一次选择同组全部分卷
+• 备份文件不加密，包含书籍原文、笔记、教学实践、角色问答和 AI Token 用量记录，但不包含 API Key
 • 清理浏览器缓存或网站数据、卸载重装、浏览器更新或重置、切换设备或浏览器用户配置，均可能导致数据永久丢失
 
 本平台当前不提供学习数据的云端存储、同步与恢复服务，因此无法恢复未导出的本地数据。请您主动、定期导出备份；因未及时备份造成的数据丢失需由用户自行承担。`
@@ -46,12 +48,13 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
 • API Key 存储在当前浏览器的本网站数据中，设置界面默认掩码显示
 • 本应用不收集或转存您的 API Key；调用时浏览器会将其直接发送给 DeepSeek
 • 您可以随时在设置中删除或更换 API Key
+• 您可以随时取消勾选以撤回 AI 数据传输同意；撤回后，本应用不会再发起新的 AI 请求
 
 浏览器端无法提供类似服务端密钥保险库的安全隔离。能够访问您的设备、浏览器配置、浏览器扩展或本网站运行环境的主体，可能读取该密钥，因此请勿在共享或不受信任的设备上保存。
 
 使用 AI 功能时，可能发送的内容包括书名、作者、简介、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。上传文档的解析原文完整保存在当前浏览器；调用 AI 时，较短文档可能发送完整原文，较长文档会从完整原文中检索并发送与当前任务相关且覆盖不同位置的片段。请勿在这些内容中填写不希望提供给 DeepSeek 的个人敏感信息。
 
-**Token 消耗与费用说明**：系统预设模型为 **DeepSeek V4 Flash**。根据当前使用情况粗略估算，一本书完整使用六阶段分析、教学评估、角色问答、重新生成、相关推荐、标签生成等 AI 功能，费用大约为 0.02 元。该数字仅供参考，并非固定价格或费用承诺；实际费用会随调用次数、输入长度、附件解析字符数量及模型价格变化。**模型计费以 DeepSeek 官方价格和您控制台中的实际账单为准。**
+**Token 消耗与费用说明**：系统预设模型为 **DeepSeek V4 Flash**。每次 AI 调用成功后，本应用会在浏览器本地记录接口实际返回的输入、输出及合计 Token，您可在“设置 > 数据管理”查看并随备份导出。根据当前使用情况粗略估算，一本书完整使用六阶段分析、教学评估、角色问答、重新生成、相关推荐、标签生成等 AI 功能，费用大约为 0.02 元。该数字仅供参考，并非固定价格或费用承诺；API 返回 Token 数但不返回实际扣费金额，费用会随调用次数、输入长度、附件解析字符数量及模型价格变化。**模型计费以 DeepSeek 官方价格和您控制台中的实际账单为准。**
 
 建议：
 • 不要在不安全的设备上保存 API Key
@@ -141,6 +144,8 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
 • This app currently does not provide cloud hosting or cross-device sync for learning data
 • When you use AI features, relevant input is transmitted directly from your browser to DeepSeek
 • You can export backups via "Data Management"
+• Large backups are automatically split into multiple parts; select every part from the same set together when importing
+• Backup files are not encrypted and include book text, notes, teaching practice, persona Q&A, and AI token usage records, but exclude the API key
 • Clearing browser cache or site data, reinstalling, updating or resetting the browser, or switching devices or browser profiles may permanently delete your data
 
 The platform currently does not provide cloud storage, sync, or recovery services for learning data and therefore cannot recover local data that was not exported. Export backups proactively and regularly; users are responsible for losses caused by missing backups.`
@@ -153,10 +158,11 @@ The platform currently does not provide cloud storage, sync, or recovery service
 • API Key is stored locally in your browser
 • This app does not collect or retain your API Key; your browser sends it directly to DeepSeek for a request
 • You can delete or change your API Key anytime in settings
+• You can withdraw AI data transfer consent at any time by clearing the consent checkbox; the app will not start new AI requests after withdrawal
 
 AI features may send the book title, author, description, learning-phase input, teaching-practice content, persona Q&A, and related learning content used to generate recommendations. The complete parsed source remains in the current browser. Short documents may be sent in full for an AI request; for longer documents, the browser retrieves and sends task-relevant excerpts distributed across the full source. Do not include personal sensitive information that you do not want to provide to DeepSeek.
 
-**Token usage and cost**: The preset model is **DeepSeek V4 Flash**. Based on current usage, using the complete set of AI features for one book, including six-phase analysis, teaching assessment, persona Q&A, regeneration, recommendations, and tag generation, costs roughly CNY 0.02. This figure is only a reference estimate, not a fixed price or cost commitment. Actual cost varies with request count, input length, characters parsed from attachments, and model pricing. **Billing follows official DeepSeek pricing and the actual records in your console.**
+**Token usage and cost**: The preset model is **DeepSeek V4 Flash**. After each successful AI call, the app stores the input, output, and total token counts returned by the API locally in your browser. You can view them under Settings > Data Management and include them in backups. Based on current usage, the complete set of AI features for one book costs roughly CNY 0.02. This is only a broad reference, not a fixed price or cost commitment. The API returns token counts, not the billed amount; actual cost varies with request count, input length, attachment size, and model pricing. **Billing follows official DeepSeek pricing and the actual records in your console.**
 
 Recommendations:
 • Don't save API Key on public/shared devices

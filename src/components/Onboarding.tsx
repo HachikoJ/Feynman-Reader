@@ -90,7 +90,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
         { text: '阅读笔记用于自主记录与回顾，不进行 AI 评分', emphasis: '不进行 AI 评分', tone: 'emerald' },
         { text: '教学模拟和角色问答记录会按书籍保留，方便查看改进过程', emphasis: '按书籍保留', tone: 'sky' },
         { text: '可使用 AI 生成书籍标签，并统一管理标签与分类', emphasis: 'AI 生成书籍标签', tone: 'accent' },
-        { text: '完成费曼实践后，可获取同作者、相关主题和阅读路径推荐，并直接加入书架', emphasis: '直接加入书架', tone: 'amber' }
+        { text: '完成六阶段学习和费曼实践后，可获取同作者、相关主题和阅读路径推荐，并直接加入书架', emphasis: '直接加入书架', tone: 'amber' }
       ]
     },
     {
@@ -100,8 +100,8 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       iconTone: 'accent',
       tips: [
         { text: '系统预设模型为 DeepSeek V4 Flash', emphasis: 'DeepSeek V4 Flash', tone: 'accent' },
-        { text: '根据当前使用情况，一本书完整使用各项 AI 功能的费用约为 0.02 元，仅供参考', emphasis: '约为 0.02 元，仅供参考', tone: 'emerald' },
-        { text: '实际费用会随调用次数、输入长度和附件解析字符数量波动', emphasis: '实际费用会随调用次数、输入长度和附件解析字符数量波动', tone: 'amber' },
+        { text: '每次成功调用后，数据管理会记录接口实际返回的输入、输出和合计 Token', emphasis: '接口实际返回的 Token', tone: 'emerald' },
+        { text: '一本书完整使用各项 AI 功能约 0.02 元仅作粗略参考，实际费用会随调用次数和输入长度波动', emphasis: '约 0.02 元仅作粗略参考', tone: 'amber' },
         { text: '模型计费以 DeepSeek 官方价格和你控制台中的实际账单为准', emphasis: 'DeepSeek 官方价格和你控制台中的实际账单为准', tone: 'sky' }
       ]
     },
@@ -179,7 +179,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
         { text: 'Reading notes are for your own records and are not scored by AI', emphasis: 'not scored by AI', tone: 'emerald' },
         { text: 'Teaching and persona Q&A records stay organized by book', emphasis: 'organized by book', tone: 'sky' },
         { text: 'Generate book tags with AI and manage tags and categories centrally', emphasis: 'Generate book tags with AI', tone: 'accent' },
-        { text: 'After practice, get author, topic, and reading-path recommendations and add them to your shelf', emphasis: 'add them to your shelf', tone: 'amber' }
+        { text: 'After all six phases and practice, get author, topic, and reading-path recommendations and add them to your shelf', emphasis: 'add them to your shelf', tone: 'amber' }
       ]
     },
     {
@@ -189,8 +189,8 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       iconTone: 'accent',
       tips: [
         { text: 'The preset model is DeepSeek V4 Flash', emphasis: 'DeepSeek V4 Flash', tone: 'accent' },
-        { text: 'Using the complete AI workflow for one book is currently estimated at roughly CNY 0.02 for reference', emphasis: 'roughly CNY 0.02 for reference', tone: 'emerald' },
-        { text: 'Actual cost varies with request count, input length, and parsed attachment characters', emphasis: 'Actual cost varies', tone: 'amber' },
+        { text: 'After each successful call, Data Management records the input, output, and total tokens returned by the API', emphasis: 'tokens returned by the API', tone: 'emerald' },
+        { text: 'Roughly CNY 0.02 for a complete book workflow is only a broad reference; actual cost varies with calls and input length', emphasis: 'only a broad reference', tone: 'amber' },
         { text: 'Billing follows official DeepSeek pricing and the actual records in your console', emphasis: 'official DeepSeek pricing', tone: 'sky' }
       ]
     },

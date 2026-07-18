@@ -52,7 +52,7 @@ export const translations = {
       continueReading: '继续阅读',
       viewNotes: '查看笔记',
       delete: '删除',
-      progress: '进度',
+      progress: '阶段进度',
       tags: {
         title: '标签筛选',
         all: '全部标签',
@@ -215,7 +215,7 @@ export const translations = {
       continueReading: 'Continue',
       viewNotes: 'View Notes',
       delete: 'Delete',
-      progress: 'Progress',
+      progress: 'Phase Progress',
       tags: {
         title: 'Filter by Tags',
         all: 'All Tags',

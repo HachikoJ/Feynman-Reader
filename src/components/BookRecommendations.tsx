@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { logger } from '@/lib/logger'
 import { Language } from '@/lib/i18n'
 import { Book, addBook, flushPendingStoreWrites, getBooks, reloadBookFromPersistence } from '@/lib/store'
-import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, withDeepSeekDefaults, withDocumentContextRetry } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, createDeepSeekClient, requestDeepSeekCompletion, withDeepSeekDefaults, withDocumentContextRetry } from '@/lib/deepseek'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { secureSystemPrompt, secureUserMessage } from '@/lib/promptSecurity'
 import LoadingQuotes from './LoadingQuotes'
 import AppIcon from './AppIcon'
@@ -139,6 +140,16 @@ export function getRecommendationErrorMessage(error: unknown, lang: Language): s
       : 'Recommendations were generated but could not be saved locally. Existing recommendations were kept.'
   }
 
+  if (error instanceof Error && error.message === AI_REQUEST_CANCELLED) {
+    return lang === 'zh' ? '已取消本次推荐请求，原有推荐仍然保留。' : 'The recommendation request was cancelled. Existing recommendations were kept.'
+  }
+  if (error instanceof Error && error.message === AI_TASK_BUSY) {
+    return lang === 'zh' ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。' : 'Another AI task is running. Wait for it to finish or cancel it first.'
+  }
+  if (error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE) {
+    return lang === 'zh' ? 'AI 返回的推荐内容不完整，系统已拦截，请重新获取。' : 'The AI returned incomplete recommendations. Please try again.'
+  }
+
   if (error instanceof SyntaxError || (error instanceof Error && (
     error.message.startsWith('推荐数据') ||
     error.message.includes('推荐数据无效') ||
@@ -189,7 +200,7 @@ export default function BookRecommendations({
         const data = parseRecommendations(JSON.parse(savedRecommendations), book.name)
         setRecommendations(data)
         setErrorMessage(null)
-      } catch (error) {
+      } catch {
         logger.warn('Saved recommendation data could not be parsed.')
         setErrorMessage(lang === 'zh'
           ? '已保存的推荐数据无法读取，请重新生成。'
@@ -287,33 +298,44 @@ export default function BookRecommendations({
 - “同作者”只能推荐该作者的其他著作
 - 推荐理由要具体
 - 考虑难度梯度`
-      const response = await withDocumentContextRetry(
+      const data = await withDocumentContextRetry(
         book.documentContent,
         `${book.name} ${recommendationTask}`,
         240_000,
-        documentContext => client.chat.completions.create(withDeepSeekDefaults({
-          messages: [
-            { role: 'system', content: secureSystemPrompt(systemPrompt) },
-            {
-              role: 'user',
-              content: secureUserMessage(recommendationTask, {
-                bookName: book.name,
-                author: book.author || '',
-                description: book.description || '',
-                ...documentContext
-              })
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
-        }))
-      )
+        async documentContext => {
+          let lastValidationError: unknown
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            const response = await requestDeepSeekCompletion(client, withDeepSeekDefaults({
+              messages: [
+                { role: 'system', content: secureSystemPrompt(systemPrompt) },
+                {
+                  role: 'user',
+                  content: secureUserMessage(recommendationTask, {
+                    bookName: book.name,
+                    author: book.author || '',
+                    description: book.description || '',
+                    ...documentContext,
+                    ...(attempt > 0 ? { outputRepair: '上一次推荐 JSON 不完整。请严格按全部字段重新输出完整 JSON。' } : {})
+                  })
+                }
+              ],
+              temperature: attempt === 0 ? 0.7 : 0.2,
+              max_tokens: 2000
+            }), { task: 'book-recommendations', bookId: book.id })
 
-      const content = response.choices[0]?.message?.content?.trim()
-      if (!content) throw new Error('AI response was empty')
-      const jsonMatch = content.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) throw new Error('AI response did not contain recommendation JSON')
-      const data = parseRecommendations(JSON.parse(jsonMatch[0]), book.name)
+            try {
+              const content = response.choices[0]?.message?.content?.trim()
+              if (!content) throw new Error('AI response was empty')
+              const jsonMatch = content.match(/\{[\s\S]*\}/)
+              if (!jsonMatch) throw new Error('AI response did not contain recommendation JSON')
+              return parseRecommendations(JSON.parse(jsonMatch[0]), book.name)
+            } catch (error) {
+              lastValidationError = error
+            }
+          }
+          throw new Error(AI_OUTPUT_INCOMPLETE, { cause: lastValidationError })
+        }
+      )
       try {
         await onRecommendationsChange(JSON.stringify(data))
       } catch (error) {

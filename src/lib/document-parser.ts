@@ -140,11 +140,3 @@ export const SUPPORTED_FILE_TYPES = [
   '.md',
   '.json'
 ]
-
-export const SUPPORTED_MIME_TYPES = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-  'text/markdown',
-  'application/json'
-]

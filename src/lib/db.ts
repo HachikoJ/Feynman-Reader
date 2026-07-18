@@ -8,7 +8,16 @@
 import { indexedDB, initializeDatabase, migrateFromLocalStorage, getDatabaseStats } from './indexedDB'
 import type { AppSettings, Book, NoteRecord, PracticeRecord, QAPracticeRecord, ExportData } from './indexedDB'
 import { logger } from './logger'
-import { normalizeBooks, normalizeSettings, normalizeStoredBooks } from './backupValidation'
+import {
+  normalizeAIUsageRecords,
+  normalizeBookLists,
+  normalizeBookRelations,
+  normalizeBooks,
+  normalizeSettings,
+  normalizeStoredBooks
+} from './backupValidation'
+import type { AIUsageRecord } from './aiUsage'
+import type { BookOrganizationData } from './bookRelations'
 
 let dbInitialized = false
 
@@ -76,6 +85,52 @@ export async function getBooks(): Promise<Book[]> {
   }
 }
 
+const AI_USAGE_METADATA_KEY = 'ai-usage'
+const BOOK_ORGANIZATION_METADATA_KEY = 'book-organization'
+
+export async function getAIUsageRecords(): Promise<AIUsageRecord[]> {
+  await ensureInit()
+  const data = await indexedDB.get<{ key: string; records?: AIUsageRecord[] }>('metadata', AI_USAGE_METADATA_KEY)
+  const normalized = normalizeAIUsageRecords(data?.records)
+  if (!normalized.valid) {
+    logger.warn('Stored AI usage records are invalid and were ignored:', normalized.error)
+    return []
+  }
+  return normalized.data
+}
+
+export async function saveAIUsageRecords(records: AIUsageRecord[]): Promise<void> {
+  await ensureInit()
+  const normalized = normalizeAIUsageRecords(records)
+  if (!normalized.valid) throw new Error(normalized.error)
+  const saved = await indexedDB.put('metadata', { key: AI_USAGE_METADATA_KEY, records: normalized.data })
+  if (!saved) throw new Error('Failed to save AI usage records to IndexedDB')
+}
+
+export async function getBookOrganization(): Promise<BookOrganizationData> {
+  await ensureInit()
+  const data = await indexedDB.get<{ key: string } & BookOrganizationData>('metadata', BOOK_ORGANIZATION_METADATA_KEY)
+  const lists = normalizeBookLists(data?.lists)
+  if (!lists.valid) throw new Error(`Stored book lists are invalid: ${lists.error}`)
+  const relations = normalizeBookRelations(data?.relations)
+  if (!relations.valid) throw new Error(`Stored book relations are invalid: ${relations.error}`)
+  return { lists: lists.data, relations: relations.data }
+}
+
+export async function saveBookOrganization(data: BookOrganizationData): Promise<void> {
+  await ensureInit()
+  const lists = normalizeBookLists(data.lists)
+  if (!lists.valid) throw new Error(lists.error)
+  const relations = normalizeBookRelations(data.relations)
+  if (!relations.valid) throw new Error(relations.error)
+  const saved = await indexedDB.put('metadata', {
+    key: BOOK_ORGANIZATION_METADATA_KEY,
+    lists: lists.data,
+    relations: relations.data
+  })
+  if (!saved) throw new Error('Failed to save book organization to IndexedDB')
+}
+
 export async function saveBooks(books: Book[]): Promise<void> {
   await ensureInit()
   const normalized = normalizeBooks(books)
@@ -106,12 +161,6 @@ export async function restoreDeletedBook(book: Book): Promise<void> {
   if (!normalized.valid) throw new Error(normalized.error)
 
   await indexedDB.add('books', normalized.data[0])
-}
-
-export async function deleteBookById(id: string): Promise<void> {
-  await ensureInit()
-  const deleted = await indexedDB.delete('books', id)
-  if (!deleted) throw new Error(`Failed to delete book ${id}`)
 }
 
 export async function deleteExistingBookById(id: string, expectedUpdatedAt: number): Promise<void> {

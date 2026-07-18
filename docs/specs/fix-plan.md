@@ -495,31 +495,11 @@
 
 ## ✅ 已完成的 P2 级修复
 
-### 1. ✅ 协作分享功能
-**状态**: 已完成
-**文件**: `src/lib/share.ts`, `src/components/ShareDialog.tsx`
+### 1. 产品范围调整：单本书分享与导出
+**状态**: 已移除
 
-**已实现功能**:
-- ✅ 笔记分享链接生成 (Base64)
-- ✅ 笔记分享图片生成 (Canvas)
-- ✅ Markdown 格式导出
-- ✅ HTML 格式生成
-- ✅ 实践记录分享报告
-- ✅ 阅读进度卡片
-- ✅ 复制到剪贴板
-- ✅ 文件下载
-- ✅ 社交媒体分享 (Twitter, Facebook, 微博)
-- ✅ 原生分享 API 支持
-- ✅ 导出为 Markdown/PDF/JSON
-
-**代码变更**:
-- `generateNoteShareLink()` - 生成分享链接
-- `generateNoteShareImage()` - 生成分享图片
-- `generateNoteMarkdown()` - 生成 Markdown
-- `generatePracticeReport()` - 生成实践报告
-- `copyToClipboard()` - 复制到剪贴板
-- `shareToSocialMedia()` - 社交分享
-- `ShareDialog` - 分享对话框组件
+当前版本不提供单本书、笔记、实践记录或学习报告的文件导出与外部分享入口。
+设置页“数据管理”中的完整数据备份导入/导出不受影响。
 
 ### 2. ✅ 个性化定制
 **状态**: 已完成
@@ -572,48 +552,16 @@
 - `keyboardShortcuts` - 全局快捷键注册表
 - `initAccessibility()` - 初始化所有可访问性功能
 
-### 4. ✅ 第三方工具集成
-**状态**: 已完成
-**文件**: `src/lib/integrations.ts`
+### 4. 产品范围调整：第三方学习内容导出
+**状态**: 已移除
 
-**已实现功能**:
-- ✅ Notion 导出格式 (兼容 Markdown)
-- ✅ Obsidian 导出格式 (带 YAML front matter 和 wiki 链接)
-- ✅ Anki 卡片导出 (CSV 格式)
-- ✅ BibTeX 参考文献
-- ✅ OPML 大纲导出
-- ✅ CSV 统计导出
-- ✅ HTML 导出 (可打印)
-- ✅ JSON 导出
-- ✅ 下载辅助函数
+当前版本不提供面向 Notion、Obsidian、Anki 等外部工具的学习内容导出。
 
-**代码变更**:
-- `exportToNotion()` - 生成 Notion 兼容 Markdown
-- `exportToObsidian()` - 生成 Obsidian 文件集
-- `exportToAnki()` - 生成 Anki 导入文件
-- `exportToBibtex()` - 生成 BibTeX 参考文献
-- `exportToOPML()` - 生成 OPML 大纲
-- `exportToCSV()` - 生成 CSV 统计
-- `exportData()` - 通用导出函数
-- `downloadFile()` - 触发文件下载
-- `downloadObsidianFiles()` - 批量下载 Obsidian 文件
+### 5. ✅ 完整数据备份
+**状态**: 已保留
+**文件**: `src/lib/store.ts`, `src/components/Settings.tsx`
 
-### 5. ✅ 导入导出标准格式
-**状态**: 已完成
-**文件**: `src/lib/integrations.ts`
-
-**已实现功能**:
-- ✅ 支持的导出格式: markdown, html, json, csv, pdf, notion, obsidian, anki, bibtex, opml
-- ✅ ExportOptions 接口配置
-- ✅ 带元数据导出
-- ✅ 时间戳支持
-- ✅ 分组导出 (按书/日期/类型)
-- ✅ 多模板支持 (default, detailed, minimal)
-
-**代码变更**:
-- `export type ExportFormat` - 导出格式类型定义
-- `export interface ExportOptions` - 导出选项接口
-- `exportData()` - 根据格式导出数据
+设置页“数据管理”继续提供完整数据备份的导入与导出，仅用于用户自行保管和恢复本地数据。
 
 ### 6. ✅ 多学习方法支持
 **状态**: 已完成
@@ -689,7 +637,7 @@
 **新增修复**:
 18. ✅ 状态管理重构 (Zustand) (P1)
 19. ✅ 测试覆盖 (P1)
-20. ✅ 协作分享功能 (P2)
+20. ➖ 单本书分享与导出（后续从产品范围移除）
 21. ✅ 个性化定制 (P2)
 
 **新增文件**:
@@ -698,8 +646,6 @@
 - `jest.config.js` - Jest 配置
 - `jest.setup.js` - 测试环境设置
 - `src/lib/__tests__/validation.test.ts` - 验证模块测试
-- `src/lib/share.ts` - 分享功能库
-- `src/components/ShareDialog.tsx` - 分享对话框组件
 - `src/lib/personalization.ts` - 个性化配置库
 - `src/components/PersonalizationPanel.tsx` - 个性化设置面板
 
@@ -709,7 +655,7 @@
 **功能详情**:
 - **状态管理**: 使用 Zustand 替代分散的 useState，提供统一的状态管理
 - **测试**: 配置 Jest + React Testing Library，添加验证模块和 Store 的单元测试
-- **分享**: 实现笔记/实践的多种分享方式（链接、图片、Markdown、社交媒体）
+- **范围调整**: 当前版本不提供单本书、笔记或实践记录导出
 - **个性化**: 实现主题自定义、布局配置、学习偏好、快捷键、无障碍设置
 
 **构建状态**:
@@ -721,8 +667,8 @@
 ### 2026-01-22 - P2/P3 新功能完成
 **新增修复**:
 22. ✅ 可访问性支持 (P2)
-23. ✅ 第三方工具集成 (P2)
-24. ✅ 导入导出标准格式 (P2)
+23. ➖ 第三方学习内容导出（后续从产品范围移除）
+24. ✅ 完整数据备份导入/导出 (P2)
 25. ✅ 多学习方法支持 (P2)
 26. ✅ 离线功能支持 (P2)
 27. ✅ 数据同步 (P2)
@@ -731,14 +677,13 @@
 
 **新增文件**:
 - `src/lib/accessibility.ts` - 可访问性工具模块
-- `src/lib/integrations.ts` - 第三方工具集成
 - `src/lib/learningMethods.ts` - 多学习方法支持
 - `src/lib/plugins.ts` - 插件系统
 - `src/lib/gamification.ts` - 游戏化功能
 
 **功能详情**:
 - **可访问性**: 键盘导航、ARIA 属性、屏幕阅读器支持、WCAG 2.1 颜色对比度检查、键盘快捷键管理
-- **第三方集成**: Notion、Obsidian、Anki、BibTeX、OPML、CSV、HTML、JSON 导出格式
+- **数据备份**: 设置页保留完整本地数据备份的导入与导出
 - **学习方法**: 康奈尔笔记法、SQ3R 阅读法、思维导图法、番茄工作法、间隔重复法
 - **插件系统**: 插件管理器、钩子系统、插件 API、内置插件示例
 - **游戏化**: 成就系统、等级系统、经验值、挑战系统、连续学习打卡
@@ -809,8 +754,8 @@
 ### 2026-01-22 - P2/P3 功能全部完成
 **新增修复**:
 22. ✅ 可访问性支持 (P2) - WCAG 2.1 合规
-23. ✅ 第三方工具集成 (P2) - Notion/Obsidian/Anki/BibTeX/OPML
-24. ✅ 导入导出标准格式 (P2) - 10 种格式支持
+23. ➖ 第三方学习内容导出（已移除）
+24. ✅ 完整数据备份导入/导出 (P2)
 25. ✅ 多学习方法支持 (P2) - 6 种学习方法
 26. ✅ 离线功能支持 (P2) - Service Worker
 27. ✅ 数据同步 (P2) - 版本控制和合并
@@ -821,7 +766,6 @@
 
 **新增文件**:
 - `src/lib/accessibility.ts` - 可访问性工具 (600+ 行)
-- `src/lib/integrations.ts` - 第三方工具集成 (620+ 行)
 - `src/lib/learningMethods.ts` - 多学习方法支持 (650+ 行)
 - `src/lib/plugins.ts` - 插件系统 (550+ 行)
 - `src/lib/gamification.ts` - 游戏化功能 (600+ 行)
@@ -830,7 +774,7 @@
 
 **功能详情**:
 - **可访问性**: 键盘导航、焦点管理、ARIA 标签、屏幕阅读器公告、对比度检查、快捷键管理
-- **第三方集成**: 支持导出到 Notion、Obsidian、Anki、BibTeX、OPML、CSV、HTML、JSON 等格式
+- **数据备份**: 设置页支持完整本地数据的备份与恢复，不提供单本书或学习内容文件导出
 - **学习方法**: 费曼学习法、康奈尔笔记法、SQ3R 阅读法、思维导图法、番茄工作法、间隔重复法
 - **插件系统**: 完整的插件架构，支持钩子、API、数据存储、生命周期管理
 - **游戏化**: 18 个成就、10 个等级、每日/每周挑战、连续打卡、学习统计
@@ -1012,7 +956,7 @@
 
 #### 4. ✅ 费曼实践系统优化
 **状态**: 已完成
-**文件**: `src/lib/practiceEnhancement.ts`, `src/components/ScoringCriteriaDisplay.tsx`, `src/components/ProgressivePractice.tsx`, `src/components/ScoreTrendChart.tsx`, `src/components/PersonaSelector.tsx`, `src/components/QAPractice.tsx`, `src/lib/deepseek.ts`
+**文件**: `src/lib/practiceEnhancement.ts`, `src/components/ScoringCriteriaDisplay.tsx`, `src/components/ScoreTrendChart.tsx`, `src/components/PersonaSelector.tsx`, `src/components/QAPractice.tsx`, `src/components/ReadingView.tsx`, `src/lib/deepseek.ts`
 
 **已实现功能**:
 - ✅ **评分标准透明化** (`ScoringCriteriaDisplay`)
@@ -1020,11 +964,10 @@
   - 5个分数等级的详细说明和示例
   - 每个维度的提分建议
   - 完整的评分指南
-- ✅ **渐进式练习** (`ProgressivePractice`)
-  - 入门模式：4步引导练习（识别核心观点 → 关键论证 → 实际应用 → 整合表达）
-  - 进阶模式：结构化表达（核心概述 → 概念解释 → 核心论证 → 个人理解）
-  - 高级模式：自由表达
-  - 每步包含指导、模板、字数提示
+- ✅ **直接教学输出** (`ReadingView`)
+  - 用户直接用自己的话讲解整本书，不再选择练习等级
+  - 输入框保留核心观点、重要性和生活例子的结构提示
+  - 达到最低字数后直接提交AI评估
 - ✅ **角色问答优化** (`PersonaSelector`)
   - 10种角色类型（小学生、大学生、职场人士、科学家、创业者、老师、投资者、普通读者、质疑者、挑剔者）
   - 按类别分组（初学者、同行者、质疑者、专家）
@@ -1044,12 +987,10 @@
 **代码变更**:
 - `SCORING_CRITERIA` - 三维度评分标准
 - `getScoringExplanation()` - 评分指南生成
-- `PRACTICE_TEMPLATES` - 渐进式练习模板
 - `calculateScoreTrend()` - 分数趋势计算
 - `PERSONA_TYPES` - 10种角色定义
 - `getRecommendedPersonas()` / `getSelectedPersonas()` - 角色选择
 - `ScoringCriteriaDisplay` - 评分标准展示组件
-- `ProgressivePractice` - 渐进式练习组件
 - `ScoreTrendChart` - 进步追踪图表组件
 - `PersonaSelector` - 角色选择器组件
 - `generatePersonaQuestions()` - 支持自定义角色参数
@@ -1344,14 +1285,13 @@
 
 **进度更新**: 80% (41/51)
 
-### 2026-01-22 - P2 费曼实践系统优化完成
+### 2026-01-22 - P2 费曼实践系统优化完成（当前已简化）
 **已完成修复**:
 1. ✅ 费曼实践系统优化 (P2)
 
 **新增文件**:
 - `src/lib/practiceEnhancement.ts` - 费曼实践增强系统 (700+ 行)
 - `src/components/ScoringCriteriaDisplay.tsx` - 评分标准展示组件
-- `src/components/ProgressivePractice.tsx` - 渐进式练习组件
 - `src/components/ScoreTrendChart.tsx` - 进步追踪图表组件
 - `src/components/PersonaSelector.tsx` - 角色选择器组件
 
@@ -1361,7 +1301,7 @@
 
 **功能详情**:
 - **评分标准透明化**: 三维度评分（准确度、完整度、清晰度），5个分数等级，详细说明和示例
-- **渐进式练习**: 入门模式（4步引导）、进阶模式（结构化）、高级模式（自由表达）
+- **教学模拟**: 当前版本直接输入完整讲解，不再区分练习等级
 - **角色问答优化**: 10种角色类型，按类别分组，快速选择，自定义选择（最多5个）
 - **进步追踪**: SVG趋势图，当前/最高/平均分，趋势指示，改善百分比
 - **友好重答**: 显示上次回答，支持修改，只评估未通过的问题

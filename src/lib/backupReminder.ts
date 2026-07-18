@@ -16,6 +16,19 @@ interface BackupWarningInput {
   now?: number
 }
 
+type BackupDueInput = Omit<BackupWarningInput, 'acknowledged'>
+
+export function isBackupReminderDue({
+  bookCount,
+  lastBackupAt,
+  now = Date.now()
+}: BackupDueInput): boolean {
+  if (bookCount === 0) return false
+  if (!lastBackupAt || !Number.isFinite(lastBackupAt)) return true
+
+  return now - lastBackupAt >= BACKUP_REMINDER_INTERVAL_MS
+}
+
 export function shouldShowBackupWarning({
   acknowledged,
   bookCount,
@@ -23,8 +36,5 @@ export function shouldShowBackupWarning({
   now = Date.now()
 }: BackupWarningInput): boolean {
   if (!acknowledged) return true
-  if (bookCount === 0) return false
-  if (!lastBackupAt || !Number.isFinite(lastBackupAt)) return true
-
-  return now - lastBackupAt >= BACKUP_REMINDER_INTERVAL_MS
+  return isBackupReminderDue({ bookCount, lastBackupAt, now })
 }

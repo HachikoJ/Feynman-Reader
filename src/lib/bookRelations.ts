@@ -1,381 +1,110 @@
-/**
- * 书籍关系管理模块
- * 支持书籍关联、书单、前置/后续阅读等功能
- */
+import type { Book } from './store'
 
-import { Book } from './store'
-import { logger } from './logger'
-
-// 书籍关系类型
 export type BookRelationType = 'series' | 'related' | 'prerequisite' | 'sequel' | 'prequel'
 
-// 书籍关系
 export interface BookRelation {
   id: string
   fromBookId: string
   toBookId: string
   type: BookRelationType
-  note?: string // 关联说明
+  note?: string
   createdAt: number
 }
 
-// 书单
 export interface BookList {
   id: string
   name: string
   description?: string
-  cover?: string
   bookIds: string[]
-  tags?: string[]
-  isPublic: boolean
   createdAt: number
   updatedAt: number
 }
 
-// 书籍扩展（包含关系信息）
-export interface ExtendedBook extends Book {
-  relations?: BookRelation[]
-  relatedBooks?: Book[]
-  lists?: string[] // 所属书单 ID
+export interface BookOrganizationData {
+  lists: BookList[]
+  relations: BookRelation[]
 }
 
-const RELATIONS_KEY = 'feynman-book-relations'
-const LISTS_KEY = 'feynman-book-lists'
+export interface BookOrganizationSnapshot {
+  listIds: string[]
+  relations: BookRelation[]
+}
 
-/**
- * 获取所有书籍关系
- */
-export function getBookRelations(): BookRelation[] {
-  if (typeof window === 'undefined') return []
-  const saved = localStorage.getItem(RELATIONS_KEY)
-  if (saved) {
-    try {
-      return JSON.parse(saved)
-    } catch (e) {
-      logger.error('Failed to parse book relations:', e)
-      return []
-    }
+export const EMPTY_BOOK_ORGANIZATION: BookOrganizationData = {
+  lists: [],
+  relations: []
+}
+
+export const BOOK_RELATION_TYPES: BookRelationType[] = [
+  'related',
+  'prerequisite',
+  'series',
+  'sequel',
+  'prequel'
+]
+
+export function getRelationTypeName(type: BookRelationType, lang: 'zh' | 'en' = 'zh'): string {
+  const names: Record<BookRelationType, { zh: string; en: string }> = {
+    related: { zh: '主题相关', en: 'Related topic' },
+    prerequisite: { zh: '前置阅读', en: 'Prerequisite' },
+    series: { zh: '同一系列', en: 'Same series' },
+    sequel: { zh: '后续作品', en: 'Sequel' },
+    prequel: { zh: '前作', en: 'Prequel' }
   }
-  return []
+  return names[type][lang]
 }
 
-/**
- * 保存书籍关系
- */
-function saveBookRelations(relations: BookRelation[]): void {
-  localStorage.setItem(RELATIONS_KEY, JSON.stringify(relations))
+export function getRelationTypeDescription(type: BookRelationType, lang: 'zh' | 'en' = 'zh'): string {
+  const descriptions: Record<BookRelationType, { zh: string; en: string }> = {
+    related: { zh: '两本书讨论相近主题，可对照阅读', en: 'The books cover related topics and work well together' },
+    prerequisite: { zh: '建议先读目标书，再阅读当前书', en: 'Read the target book before this one' },
+    series: { zh: '属于同一套书或同一系列', en: 'Books in the same series' },
+    sequel: { zh: '目标书是当前书的后续作品', en: 'The target book follows this one' },
+    prequel: { zh: '目标书是当前书的前作', en: 'The target book precedes this one' }
+  }
+  return descriptions[type][lang]
 }
 
-/**
- * 添加书籍关系
- */
-export function addBookRelation(
+export function getBooksInList(list: BookList, books: Book[]): Book[] {
+  const byId = new Map(books.map(book => [book.id, book]))
+  return list.bookIds.flatMap(bookId => {
+    const book = byId.get(bookId)
+    return book ? [book] : []
+  })
+}
+
+export function getRelationsForBook(bookId: string, relations: BookRelation[]): BookRelation[] {
+  return relations.filter(relation => relation.fromBookId === bookId || relation.toBookId === bookId)
+}
+
+export function getRelatedBookId(bookId: string, relation: BookRelation): string {
+  return relation.fromBookId === bookId ? relation.toBookId : relation.fromBookId
+}
+
+export function getBookRelationIdentity(
   fromBookId: string,
   toBookId: string,
-  type: BookRelationType,
-  note?: string
-): BookRelation {
-  const relations = getBookRelations()
+  type: BookRelationType
+): string {
+  if (type === 'related' || type === 'series') {
+    return [fromBookId, toBookId].sort().join('\u0000') + `\u0000${type}`
+  }
+  return `${fromBookId}\u0000${toBookId}\u0000${type}`
+}
 
-  // 检查是否已存在相同关系
-  const exists = relations.some(
-    r => r.fromBookId === fromBookId && r.toBookId === toBookId && r.type === type
-  )
-  if (exists) {
-    throw new Error('该关系已存在')
+export function getRelationTypeNameForBook(
+  bookId: string,
+  relation: BookRelation,
+  lang: 'zh' | 'en' = 'zh'
+): string {
+  if (relation.fromBookId === bookId || relation.type === 'related' || relation.type === 'series') {
+    return getRelationTypeName(relation.type, lang)
   }
 
-  const relation: BookRelation = {
-    id: Date.now().toString(),
-    fromBookId,
-    toBookId,
-    type,
-    note,
-    createdAt: Date.now()
+  const inverseType: Record<Exclude<BookRelationType, 'related' | 'series'>, BookRelationType> = {
+    prerequisite: 'sequel',
+    sequel: 'prequel',
+    prequel: 'sequel'
   }
-
-  relations.push(relation)
-  saveBookRelations(relations)
-
-  return relation
-}
-
-/**
- * 删除书籍关系
- */
-export function removeBookRelation(relationId: string): boolean {
-  const relations = getBookRelations()
-  const index = relations.findIndex(r => r.id === relationId)
-  if (index === -1) return false
-
-  relations.splice(index, 1)
-  saveBookRelations(relations)
-  return true
-}
-
-/**
- * 删除书籍的所有关系
- */
-export function removeBookRelations(bookId: string): void {
-  const relations = getBookRelations()
-  const filtered = relations.filter(r => r.fromBookId !== bookId && r.toBookId !== bookId)
-  saveBookRelations(filtered)
-}
-
-/**
- * 获取书籍的关联关系
- */
-export function getBookRelationsFor(bookId: string): {
-  outgoing: BookRelation[] // 从该书出发的关系
-  incoming: BookRelation[] // 指向该书的关系
-} {
-  const relations = getBookRelations()
-  return {
-    outgoing: relations.filter(r => r.fromBookId === bookId),
-    incoming: relations.filter(r => r.toBookId === bookId)
-  }
-}
-
-/**
- * 获取书籍的相关书籍列表
- */
-export function getRelatedBooks(bookId: string, allBooks: Book[]): Book[] {
-  const { outgoing } = getBookRelationsFor(bookId)
-  const relatedIds = outgoing.map(r => r.toBookId)
-  return allBooks.filter(b => relatedIds.includes(b.id))
-}
-
-/**
- * 获取书籍的前置书籍
- */
-export function getPrerequisiteBooks(bookId: string, allBooks: Book[]): Book[] {
-  const { incoming } = getBookRelationsFor(bookId)
-  const prerequisiteIds = incoming
-    .filter(r => r.type === 'prerequisite')
-    .map(r => r.fromBookId)
-  return allBooks.filter(b => prerequisiteIds.includes(b.id))
-}
-
-/**
- * 获取书籍的后续书籍
- */
-export function getSequelBooks(bookId: string, allBooks: Book[]): Book[] {
-  const { outgoing } = getBookRelationsFor(bookId)
-  const sequelIds = outgoing
-    .filter(r => r.type === 'sequel')
-    .map(r => r.toBookId)
-  return allBooks.filter(b => sequelIds.includes(b.id))
-}
-
-/**
- * 获取同系列书籍
- */
-export function getSeriesBooks(bookId: string, allBooks: Book[]): Book[] {
-  const relations = getBookRelations()
-  const seriesRelations = relations.filter(r =>
-    (r.fromBookId === bookId || r.toBookId === bookId) && r.type === 'series'
-  )
-
-  const seriesIds = new Set<string>()
-  seriesIds.add(bookId)
-
-  seriesRelations.forEach(r => {
-    seriesIds.add(r.fromBookId)
-    seriesIds.add(r.toBookId)
-  })
-
-  return allBooks.filter(b => seriesIds.has(b.id) && b.id !== bookId)
-}
-
-// ==================== 书单管理 ====================
-
-/**
- * 获取所有书单
- */
-export function getBookLists(): BookList[] {
-  if (typeof window === 'undefined') return []
-  const saved = localStorage.getItem(LISTS_KEY)
-  if (saved) {
-    try {
-      return JSON.parse(saved)
-    } catch (e) {
-      logger.error('Failed to parse book lists:', e)
-      return []
-    }
-  }
-  return []
-}
-
-/**
- * 保存书单
- */
-function saveBookLists(lists: BookList[]): void {
-  localStorage.setItem(LISTS_KEY, JSON.stringify(lists))
-}
-
-/**
- * 创建书单
- */
-export function createBookList(
-  name: string,
-  description?: string,
-  cover?: string
-): BookList {
-  const lists = getBookLists()
-
-  const newList: BookList = {
-    id: Date.now().toString(),
-    name,
-    description,
-    cover,
-    bookIds: [],
-    isPublic: false,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  }
-
-  lists.push(newList)
-  saveBookLists(lists)
-
-  return newList
-}
-
-/**
- * 更新书单
- */
-export function updateBookList(
-  listId: string,
-  updates: Partial<Omit<BookList, 'id' | 'createdAt'>>
-): BookList | null {
-  const lists = getBookLists()
-  const index = lists.findIndex(l => l.id === listId)
-  if (index === -1) return null
-
-  lists[index] = {
-    ...lists[index],
-    ...updates,
-    updatedAt: Date.now()
-  }
-
-  saveBookLists(lists)
-  return lists[index]
-}
-
-/**
- * 删除书单
- */
-export function deleteBookList(listId: string): boolean {
-  const lists = getBookLists()
-  const index = lists.findIndex(l => l.id === listId)
-  if (index === -1) return false
-
-  lists.splice(index, 1)
-  saveBookLists(lists)
-  return true
-}
-
-/**
- * 添加书籍到书单
- */
-export function addBookToList(listId: string, bookId: string): boolean {
-  const lists = getBookLists()
-  const list = lists.find(l => l.id === listId)
-  if (!list) return false
-
-  if (list.bookIds.includes(bookId)) return false // 已存在
-
-  list.bookIds.push(bookId)
-  list.updatedAt = Date.now()
-  saveBookLists(lists)
-  return true
-}
-
-/**
- * 从书单中移除书籍
- */
-export function removeBookFromList(listId: string, bookId: string): boolean {
-  const lists = getBookLists()
-  const list = lists.find(l => l.id === listId)
-  if (!list) return false
-
-  const index = list.bookIds.indexOf(bookId)
-  if (index === -1) return false
-
-  list.bookIds.splice(index, 1)
-  list.updatedAt = Date.now()
-  saveBookLists(lists)
-  return true
-}
-
-/**
- * 获取书单中的书籍
- */
-export function getBooksInList(listId: string, allBooks: Book[]): Book[] {
-  const lists = getBookLists()
-  const list = lists.find(l => l.id === listId)
-  if (!list) return []
-
-  return allBooks.filter(b => list.bookIds.includes(b.id))
-}
-
-/**
- * 获取书籍所在的书单
- */
-export function getListsForBook(bookId: string): BookList[] {
-  const lists = getBookLists()
-  return lists.filter(l => l.bookIds.includes(bookId))
-}
-
-/**
- * 获取推荐阅读路径（基于前置关系）
- */
-export function getReadingPath(bookId: string, allBooks: Book[]): Book[] {
-  const path: Book[] = []
-  const visited = new Set<string>()
-
-  const traverse = (id: string) => {
-    if (visited.has(id)) return
-    visited.add(id)
-
-    // 先添加前置书籍
-    const prerequisites = getPrerequisiteBooks(id, allBooks)
-    prerequisites.forEach(book => traverse(book.id))
-
-    // 再添加当前书籍
-    const book = allBooks.find(b => b.id === id)
-    if (book && !path.find(p => p.id === id)) {
-      path.push(book)
-    }
-  }
-
-  traverse(bookId)
-  return path
-}
-
-/**
- * 获取关系类型的中文名称
- */
-export function getRelationTypeName(type: BookRelationType): string {
-  const names: Record<BookRelationType, string> = {
-    series: '系列',
-    related: '相关',
-    prerequisite: '前置必读',
-    sequel: '续作',
-    prequel: '前作'
-  }
-  return names[type] || type
-}
-
-/**
- * 获取关系类型的描述
- */
-export function getRelationTypeDescription(type: BookRelationType): string {
-  const descriptions: Record<BookRelationType, string> = {
-    series: '同一系列的书籍，建议按顺序阅读',
-    related: '内容相关的书籍，可以互相参考',
-    prerequisite: '阅读本书前建议先阅读的书籍',
-    sequel: '本书的后续作品',
-    prequel: '本书的前作'
-  }
-  return descriptions[type] || ''
+  return getRelationTypeName(inverseType[relation.type], lang)
 }

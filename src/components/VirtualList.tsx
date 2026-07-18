@@ -11,6 +11,8 @@ interface VirtualListProps<T> {
   className?: string
   onEndReached?: () => void
   endReachedThreshold?: number
+  getItemKey?: (item: T, index: number) => React.Key
+  testId?: string
 }
 
 export function VirtualList<T>({
@@ -21,11 +23,13 @@ export function VirtualList<T>({
   overscan = 3,
   className = '',
   onEndReached,
-  endReachedThreshold = 200
+  endReachedThreshold = 200,
+  getItemKey,
+  testId
 }: VirtualListProps<T>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
-  const [containerHeight, setContainerHeight] = useState(height)
+  const containerHeight = height
 
   // 计算每个项目的高度
   const getItemHeight = useCallback((item: T, index: number) => {
@@ -48,17 +52,15 @@ export function VirtualList<T>({
                       itemPositions[itemPositions.length - 1]?.height || 0
 
   // 计算可见范围
-  const { startIndex, endIndex, offsetY } = useMemo(() => {
+  const { startIndex, endIndex } = useMemo(() => {
     let start = 0
     let end = items.length - 1
-    let offset = 0
 
     for (let i = 0; i < items.length; i++) {
       const itemBottom = itemPositions[i].offset + itemPositions[i].height
 
       if (itemBottom <= scrollTop) {
         start = i + 1
-        offset = itemBottom
       } else if (itemPositions[i].offset < scrollTop + containerHeight) {
         end = i
       } else {
@@ -70,7 +72,7 @@ export function VirtualList<T>({
     start = Math.max(0, start - overscan)
     end = Math.min(items.length - 1, end + overscan)
 
-    return { startIndex: start, endIndex: end, offsetY: offset }
+    return { startIndex: start, endIndex: end }
   }, [scrollTop, itemPositions, items.length, containerHeight, overscan])
 
   // 检查是否滚动到底部
@@ -94,6 +96,7 @@ export function VirtualList<T>({
   return (
     <div
       ref={containerRef}
+      data-testid={testId}
       className={`overflow-auto ${className}`}
       style={{ height: containerHeight }}
       onScroll={handleScroll}
@@ -110,7 +113,7 @@ export function VirtualList<T>({
 
           return (
             <div
-              key={actualIndex}
+              key={getItemKey ? getItemKey(item, actualIndex) : actualIndex}
               style={{
                 position: 'absolute',
                 top: position.offset,
@@ -137,6 +140,7 @@ interface SimpleVirtualListProps<T> {
   itemHeight: number
   visibleCount: number
   className?: string
+  getItemKey?: (item: T, index: number) => React.Key
 }
 
 export function SimpleVirtualList<T>({
@@ -144,7 +148,8 @@ export function SimpleVirtualList<T>({
   renderItem,
   itemHeight,
   visibleCount,
-  className = ''
+  className = '',
+  getItemKey
 }: SimpleVirtualListProps<T>) {
   const [scrollTop, setScrollTop] = useState(0)
 
@@ -156,8 +161,6 @@ export function SimpleVirtualList<T>({
     items.length - 1,
     startIndex + visibleCount + 2
   )
-
-  const offsetY = startIndex * itemHeight
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop(e.currentTarget.scrollTop)
@@ -177,10 +180,10 @@ export function SimpleVirtualList<T>({
       >
         {items.slice(startIndex, endIndex + 1).map((item, i) => (
           <div
-            key={startIndex + i}
+            key={getItemKey ? getItemKey(item, startIndex + i) : startIndex + i}
             style={{
               position: 'absolute',
-              top: (startIndex + i) * itemHeight - offsetY,
+              top: (startIndex + i) * itemHeight,
               left: 0,
               right: 0,
               height: itemHeight

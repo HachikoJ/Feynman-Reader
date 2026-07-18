@@ -1,33 +1,13 @@
 import {
-  escapeHtml,
   sanitizeTextInput,
   validateBookName,
   validateAuthorName,
   validateContent,
   detectMaliciousContent,
-  validateApiKey,
-  validateFileUpload
+  validateApiKey
 } from '../validation'
 
 describe('validation.ts', () => {
-  describe('escapeHtml', () => {
-    it('should escape HTML special characters', () => {
-      expect(escapeHtml('<script>alert("xss")</script>'))
-        .toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;&#x2F;script&gt;')
-      expect(escapeHtml('<div>Hello</div>'))
-        .toBe('&lt;div&gt;Hello&lt;&#x2F;div&gt;')
-    })
-
-    it('should handle empty strings', () => {
-      expect(escapeHtml('')).toBe('')
-    })
-
-    it('should escape all special characters', () => {
-      expect(escapeHtml('<>&"\''))
-        .toBe('&lt;&gt;&amp;&quot;&#039;')
-    })
-  })
-
   describe('sanitizeTextInput', () => {
     it('should preserve markup while removing control characters', () => {
       expect(sanitizeTextInput('<script>alert("xss")</script>Hello'))
@@ -150,29 +130,4 @@ describe('validation.ts', () => {
     })
   })
 
-  describe('validateFileUpload', () => {
-    it('should accept valid files', () => {
-      const file = new File(['content'], 'test.pdf', { type: 'application/pdf' })
-      Object.defineProperty(file, 'size', { value: 1024 * 1024 }) // 1MB
-      expect(validateFileUpload(file, ['.pdf'], 50)).toEqual({ valid: true })
-    })
-
-    it('should reject files that are too large', () => {
-      const file = new File(['content'], 'large.pdf', { type: 'application/pdf' })
-      Object.defineProperty(file, 'size', { value: 51 * 1024 * 1024 }) // 51MB
-      expect(validateFileUpload(file, ['.pdf'], 50)).toEqual({
-        valid: false,
-        error: '文件大小不能超过 50MB'
-      })
-    })
-
-    it('should reject unsupported file types', () => {
-      const file = new File(['content'], 'test.exe', { type: 'application/x-msdownload' })
-      Object.defineProperty(file, 'size', { value: 1024 })
-      expect(validateFileUpload(file, ['.pdf'], 50)).toEqual({
-        valid: false,
-        error: '不支持的文件类型。允许的类型：.pdf'
-      })
-    })
-  })
 })

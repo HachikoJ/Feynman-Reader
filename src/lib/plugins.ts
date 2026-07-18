@@ -6,6 +6,7 @@
 
 import { logger } from './logger'
 import { addBook, deleteBook, getBook, getBooks, getSettings, saveSettings, updateBook } from './store'
+import { showAppConfirm, showAppPrompt } from './appDialog'
 
 // ============================================================================
 // 插件类型定义
@@ -58,9 +59,6 @@ export interface PluginHooks {
   onReadingViewRender?: (book: any) => React.ComponentType | null
   onSettingsRender?: () => React.ComponentType | null
 
-  // 数据导出
-  onExport?: (format: string, data: any) => any | Promise<any>
-
   // 自定义命令
   onCommand?: (command: string, ...args: any[]) => any | Promise<any>
 }
@@ -87,8 +85,8 @@ export interface PluginAPI {
   // UI 工具
   ui: {
     toast: (message: string, type?: 'success' | 'error' | 'info') => void
-    confirm: (message: string) => boolean
-    prompt: (message: string) => string | null
+    confirm: (message: string) => Promise<boolean>
+    prompt: (message: string) => Promise<string | null>
   }
 
   // 通知
@@ -233,12 +231,16 @@ class PluginManager {
             detail: { message, type }
           }))
         },
-        confirm: (message: string) => {
-          return window.confirm(message)
-        },
-        prompt: (message: string) => {
-          return window.prompt(message)
-        }
+        confirm: (message: string) => showAppConfirm({
+          title: getSettings().language === 'zh' ? '请确认' : 'Please confirm',
+          message,
+          tone: 'warning'
+        }),
+        prompt: (message: string) => showAppPrompt({
+          title: getSettings().language === 'zh' ? '请输入' : 'Enter a value',
+          message,
+          tone: 'info'
+        })
       },
       notify: {
         send: (event: string, data?: any) => {
@@ -534,13 +536,6 @@ export const builtinPlugins = [
     description: '每次打开应用显示学习名言',
     installed: true,
     builtin: true
-  },
-  {
-    id: 'export-evernote',
-    name: 'Evernote 导出',
-    description: '将笔记导出到 Evernote',
-    installed: false,
-    builtin: false
   },
   {
     id: 'kindle-sync',

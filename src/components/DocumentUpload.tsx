@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Language, t } from '@/lib/i18n'
+import { Language } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 import { MAX_DOCUMENT_FILE_SIZE, parseDocument, SUPPORTED_FILE_TYPES } from '@/lib/document-parser'
-import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { getSettings, addBook, flushPendingStoreWrites, reloadBookFromPersistence, BookTag } from '@/lib/store'
 import { MAX_BOOK_TAGS, MAX_TAG_LENGTH } from '@/lib/dataLimits'
 import { detectMaliciousContent, sanitizeTextInput, validateAuthorName, validateBookName, validateContent } from '@/lib/validation'
@@ -106,7 +107,12 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
       let info = fallbackInfo
       try {
         const client = await createDeepSeekClient(settings.apiKey)
-        info = await analyzeDocumentForBookInfo(client, parsed.content, parsed.fileName)
+        info = await analyzeDocumentForBookInfo(
+          client,
+          parsed.content,
+          parsed.fileName,
+          { task: 'document-metadata' }
+        )
         logger.debug('AI 分析完成:', info)
         if (info.confidence === 0) {
           setAnalysisWarning(lang === 'zh'
@@ -117,7 +123,16 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
         logger.error('AI 分析失败，转为手工确认:', analysisError)
         const consentRequired = analysisError instanceof Error && analysisError.message === AI_DATA_CONSENT_REQUIRED
         const contextLimitExceeded = analysisError instanceof Error && analysisError.message === AI_CONTEXT_LIMIT_EXCEEDED
-        setAnalysisWarning(contextLimitExceeded
+        const cancelled = analysisError instanceof Error && analysisError.message === AI_REQUEST_CANCELLED
+        const busy = analysisError instanceof Error && analysisError.message === AI_TASK_BUSY
+        const incomplete = analysisError instanceof Error && analysisError.message === AI_OUTPUT_INCOMPLETE
+        setAnalysisWarning(cancelled
+          ? (lang === 'zh' ? '已取消 AI 信息提取。完整文档仍已保留，请手工确认后添加。' : 'AI extraction was cancelled. The full document was kept; confirm the details manually.')
+          : busy
+          ? (lang === 'zh' ? '已有 AI 任务正在运行。完整文档已保留，请稍后重试或手工确认。' : 'Another AI task is running. The full document was kept; retry later or confirm manually.')
+          : incomplete
+          ? (lang === 'zh' ? 'AI 返回的信息不完整，系统已拦截。完整文档已保留，请手工确认后添加。' : 'The AI returned incomplete information. The full document was kept; confirm manually.')
+          : contextLimitExceeded
           ? (lang === 'zh'
               ? '文档上下文过长，系统自动缩减后仍未能提取书籍信息。完整原文会继续保留，请手工确认后添加。'
               : 'The document context was still too long after automatic reduction. The full text will be kept; confirm the book details manually.')

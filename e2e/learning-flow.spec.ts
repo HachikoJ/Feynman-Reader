@@ -1,120 +1,92 @@
 import { test, expect } from '@playwright/test'
+import { addBookForE2E, prepareAppForE2E } from './testState'
 
 /**
  * 学习流程 E2E 测试
  * 测试用户从添加书籍到完成学习的完整流程
  */
 
+test.beforeEach(async ({ page }) => {
+  await prepareAppForE2E(page)
+})
+
 test.describe('添加书籍流程', () => {
   test('应该能够成功添加一本书', async ({ page }) => {
     await page.goto('/')
 
     // 打开添加书籍对话框
-    const addButton = page.locator('button:has-text("添加"), button:has-text("新建")').first()
+    const addButton = page.getByRole('button', { name: '添加书籍', exact: true }).first()
     await addButton.click()
 
     // 等待对话框
-    const dialog = page.locator('dialog, [role="dialog"], .modal, [class*="dialog" i], [class*="modal" i]')
-    await expect(dialog).toBeVisible()
+    const dialogHeading = page.getByRole('heading', { name: '添加书籍', exact: true })
+    await expect(dialogHeading).toBeVisible()
 
     // 填写书籍信息
-    const nameInput = page.locator('input[name="name"], input[placeholder*="书名" i], input[id*="name" i]').first()
+    const nameInput = page.getByPlaceholder('输入书名...')
     await nameInput.fill('E2E 测试书籍')
 
-    const authorInput = page.locator('input[name="author"], input[placeholder*="作者" i], input[id*="author" i]').first()
+    const authorInput = page.getByPlaceholder('输入作者...')
     await authorInput.fill('测试作者')
 
     // 提交表单
-    const submitButton = page.locator('button:has-text("确认"), button:has-text("添加"), button:has-text("保存"), button[type="submit"]').first()
+    const submitButton = page.getByRole('button', { name: '添加', exact: true })
     await submitButton.click()
 
     // 等待对话框关闭
-    await expect(dialog).not.toBeVisible({ timeout: 5000 })
+    await expect(dialogHeading).not.toBeVisible({ timeout: 5000 })
 
     // 验证书籍添加成功
-    await expect(page.locator('text=/E2E 测试书籍/')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('heading', { name: 'E2E 测试书籍', exact: true })).toBeVisible()
   })
 
   test('应该验证必填字段', async ({ page }) => {
     await page.goto('/')
 
     // 打开添加书籍对话框
-    const addButton = page.locator('button:has-text("添加"), button:has-text("新建")').first()
+    const addButton = page.getByRole('button', { name: '添加书籍', exact: true }).first()
     await addButton.click()
 
-    // 尝试直接提交（不填写任何信息）
-    const submitButton = page.locator('button:has-text("确认"), button:has-text("添加"), button[type="submit"]').first()
-    await submitButton.click()
-
-    // 应该显示验证错误或对话框仍在
-    const dialog = page.locator('dialog, [role="dialog"], .modal, [class*="dialog" i], [class*="modal" i]')
-    const isDialogVisible = await dialog.isVisible().catch(() => false)
-
-    // 如果对话框关闭了，检查是否有错误提示
-    if (!isDialogVisible) {
-      await expect(page.locator('text=/错误|失败|必填/i')).toBeVisible()
-    }
+    const submitButton = page.getByRole('button', { name: '添加', exact: true })
+    await expect(submitButton).toBeDisabled()
+    await expect(page.getByRole('heading', { name: '添加书籍', exact: true })).toBeVisible()
   })
 })
 
 test.describe('学习阶段流程', () => {
+  const bookName = '学习阶段测试书'
+
   test.beforeEach(async ({ page }) => {
-    await page.goto('/')
+    await addBookForE2E(page, bookName)
   })
 
   test('应该能够进入书籍的阅读视图', async ({ page }) => {
-    // 查找第一本书
-    const bookCard = page.locator('[class*="book"], article').first()
-
-    const isVisible = await bookCard.isVisible().catch(() => false)
-    if (isVisible) {
-      await bookCard.click()
-
-      // 验证进入阅读视图
-      await expect(page.locator('[class*="reading"], [class*="phase"], text=/阶段|笔记/').first()).toBeVisible({ timeout: 5000 })
-    }
+    await page.getByRole('button', { name: '列表视图', exact: true }).click()
+    await page.getByRole('button', { name: '开始阅读', exact: true }).click()
+    await expect(page.getByRole('heading', { name: `《${bookName}》`, exact: true })).toBeVisible()
   })
 
   test('应该显示学习阶段列表', async ({ page }) => {
-    // 进入第一本书
-    const bookCard = page.locator('[class*="book"], article').first()
-    const isVisible = await bookCard.isVisible().catch(() => false)
-
-    if (isVisible) {
-      await bookCard.click()
-
-      // 检查阶段列表
-      const phases = page.locator('[class*="phase"], [data-phase], button:has-text("阶段")')
-      const phaseCount = await phases.count()
-
-      // 应该至少有阶段相关的元素
-      expect(phaseCount).toBeGreaterThan(0)
-    }
+    await page.getByRole('button', { name: '列表视图', exact: true }).click()
+    await page.getByRole('button', { name: '开始阅读', exact: true }).click()
+    await expect(page.getByRole('button', { name: '阶段学习', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '开始深度学习', exact: true })).toBeVisible()
   })
 })
 
 test.describe('费曼实践流程', () => {
+  const bookName = '费曼实践测试书'
+
+  test.beforeEach(async ({ page }) => {
+    await addBookForE2E(page, bookName)
+  })
+
   test('应该能够打开费曼实践面板', async ({ page }) => {
-    await page.goto('/')
-
-    // 进入第一本书
-    const bookCard = page.locator('[class*="book"], article').first()
-    const isVisible = await bookCard.isVisible().catch(() => false)
-
-    if (isVisible) {
-      await bookCard.click()
-
-      // 查找费曼实践相关按钮
-      const practiceButton = page.locator('button:has-text("费曼"), button:has-text("实践"), [class*="practice" i]').first()
-
-      const isPracticeVisible = await practiceButton.isVisible().catch(() => false)
-      if (isPracticeVisible) {
-        await practiceButton.click()
-
-        // 验证实践面板打开
-        await expect(page.locator('text=/教学模拟|角色问答/i').or(page.locator('[class*="practice" i], dialog'))).toBeVisible({ timeout: 5000 })
-      }
-    }
+    await page.getByRole('button', { name: '列表视图', exact: true }).click()
+    await page.getByRole('button', { name: '开始阅读', exact: true }).click()
+    await page.getByRole('button', { name: '费曼实践', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '费曼实践', exact: true })).toBeVisible()
+    await expect(page.getByText('AI 会分析你的教学实践内容，找出其中的漏洞和不足，然后从不同角色的视角提出针对性的问题')).toBeVisible()
   })
 })
 
@@ -122,33 +94,26 @@ test.describe('数据持久化', () => {
   test('添加的书籍应该在刷新后仍然存在', async ({ page }) => {
     await page.goto('/')
 
-    // 记录当前书籍数量
-    const bookCardsBefore = page.locator('[class*="book"], article')
-    const countBefore = await bookCardsBefore.count()
-
     // 添加新书
-    const addButton = page.locator('button:has-text("添加"), button:has-text("新建")').first()
+    const addButton = page.getByRole('button', { name: '添加书籍', exact: true }).first()
     await addButton.click()
 
-    const dialog = page.locator('dialog, [role="dialog"], .modal, [class*="dialog" i], [class*="modal" i]')
-    await expect(dialog).toBeVisible()
+    const dialogHeading = page.getByRole('heading', { name: '添加书籍', exact: true })
+    await expect(dialogHeading).toBeVisible()
 
-    const nameInput = page.locator('input[name="name"], input[placeholder*="书名" i]').first()
-    await nameInput.fill(`持久化测试-${Date.now()}`)
+    const bookName = `持久化测试-${Date.now()}`
+    await page.getByPlaceholder('输入书名...').fill(bookName)
 
-    const submitButton = page.locator('button:has-text("确认"), button:has-text("添加")').first()
+    const submitButton = page.getByRole('button', { name: '添加', exact: true })
     await submitButton.click()
 
-    await expect(dialog).not.toBeVisible({ timeout: 5000 })
+    await expect(dialogHeading).not.toBeVisible({ timeout: 5000 })
 
     // 刷新页面
     await page.reload()
 
-    // 验证书籍数量增加
-    const bookCardsAfter = page.locator('[class*="book"], article')
-    const countAfter = await bookCardsAfter.count()
-
-    expect(countAfter).toBeGreaterThanOrEqual(countBefore)
+    // 验证刷新后书籍仍然存在
+    await expect(page.getByRole('heading', { name: bookName, exact: true })).toBeVisible()
   })
 })
 
@@ -157,22 +122,9 @@ test.describe('设置影响', () => {
     await page.goto('/')
 
     // 进入设置
-    await page.click('button:has-text("设置"), button:has-text("⚙️")')
-
-    // 查找语言切换选项
-    const langOption = page.locator('button:has-text("English"), button:has-text("英文")').first()
-    const isVisible = await langOption.isVisible().catch(() => false)
-
-    if (isVisible) {
-      await langOption.click()
-
-      // 检查界面语言变化
-      await page.waitForTimeout(500)
-
-      // 应该能看到英文界面元素
-      const englishElement = page.locator('text=/Settings|Bookshelf|Language/')
-      await expect(englishElement.first()).toBeVisible()
-    }
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('button', { name: 'Switch to English' }).click()
+    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   })
 
   test('更改主题应该更新界面样式', async ({ page }) => {
@@ -182,21 +134,11 @@ test.describe('设置影响', () => {
     const currentTheme = await page.locator('html').getAttribute('data-theme')
 
     // 进入设置
-    await page.click('button:has-text("设置"), button:has-text("⚙️")')
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('button', { name: '切换至深色主题' }).click()
+    const newTheme = await page.locator('html').getAttribute('data-theme')
 
-    // 尝试切换主题
-    const themeButton = page.locator('button:has-text("深色"), button:has-text("light"), button:has-text("dark")').first()
-    const isVisible = await themeButton.isVisible().catch(() => false)
-
-    if (isVisible) {
-      await themeButton.click()
-
-      // 检查主题属性变化
-      await page.waitForTimeout(500)
-      const newTheme = await page.locator('html').getAttribute('data-theme')
-
-      // 主题应该改变或至少存在
-      expect(newTheme).toBeTruthy()
-    }
+    expect(newTheme).toBeTruthy()
+    expect(newTheme).not.toBe(currentTheme)
   })
 })

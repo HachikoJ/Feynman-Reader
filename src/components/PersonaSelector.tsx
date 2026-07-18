@@ -297,19 +297,3 @@ export default function PersonaSelector({
     </div>
   )
 }
-
-/**
- * 角色展示标签组件
- */
-export function PersonaBadge({ personaId, lang }: { personaId: string; lang: Language }) {
-  const persona = PERSONA_TYPES.find(p => p.id === personaId)
-
-  if (!persona) return null
-
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-1 bg-[var(--bg-secondary)] rounded text-xs">
-      <AppIcon {...getPersonaIcon(persona)} size={14} />
-      <span>{persona.name[lang]}</span>
-    </span>
-  )
-}

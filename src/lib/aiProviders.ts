@@ -5,6 +5,8 @@
 
 import { getSettings } from './store'
 import { secureSystemPrompt } from './promptSecurity'
+import { aiRequestManager } from './aiRequestManager'
+import type OpenAI from 'openai'
 
 // AI 提供商类型
 export type AIProviderType = 'deepseek' | 'openai' | 'claude' | 'gemini' | 'custom'
@@ -71,16 +73,16 @@ class DeepSeekProvider implements IAIProvider {
   name = 'DeepSeek'
 
   async chat(messages: AIMessage[], options: ChatOptions = {}): Promise<AIResponse> {
-    const { createDeepSeekClient, withDeepSeekDefaults } = await import('./deepseek')
+    const { createDeepSeekClient, requestDeepSeekCompletion, withDeepSeekDefaults } = await import('./deepseek')
     const apiKey = this.getApiKey()
 
     const client = await createDeepSeekClient(apiKey)
     const securedMessages = secureProviderMessages(messages)
-    const response = await client.chat.completions.create(withDeepSeekDefaults({
+    const response = await requestDeepSeekCompletion(client, withDeepSeekDefaults({
       messages: securedMessages.map(m => ({ role: m.role, content: m.content })),
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2000
-    }))
+    }), { task: 'provider-chat' })
 
     return {
       content: response.choices[0]?.message?.content || '',
@@ -99,12 +101,15 @@ class DeepSeekProvider implements IAIProvider {
 
     const client = await createDeepSeekClient(apiKey)
     const securedMessages = secureProviderMessages(messages)
-    const stream = await client.chat.completions.create(withDeepSeekDefaults({
-      messages: securedMessages.map(m => ({ role: m.role, content: m.content })),
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 2000,
-      stream: true
-    }))
+    const stream = aiRequestManager.runStream(
+      { task: 'provider-stream' },
+      signal => client.chat.completions.create(withDeepSeekDefaults({
+        messages: securedMessages.map(m => ({ role: m.role, content: m.content })),
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 2000,
+        stream: true
+      }), { signal }) as unknown as Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>>
+    )
 
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content || ''

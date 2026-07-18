@@ -1,23 +1,38 @@
 import OpenAI from 'openai'
 import { logger } from './logger'
 import { secureSystemPrompt, secureUserMessage } from './promptSecurity'
-import { getSettings } from './store'
+import { addAIUsageRecord, getSettings } from './store'
 import { buildDocumentContext, DEFAULT_DOCUMENT_CONTEXT_CHARS } from './documentContext'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY, AIRequestContext, aiRequestManager } from './aiRequestManager'
 
 export const DEEPSEEK_MODEL = 'deepseek-v4-flash'
 export const AI_DATA_CONSENT_REQUIRED = 'AI_DATA_CONSENT_REQUIRED'
 export const DEEPSEEK_API_KEY_INVALID = 'DEEPSEEK_API_KEY_INVALID'
 export const AI_CONTEXT_LIMIT_EXCEEDED = 'AI_CONTEXT_LIMIT_EXCEEDED'
+export const AI_OUTPUT_INCOMPLETE = 'AI_OUTPUT_INCOMPLETE'
 
 const DOCUMENT_CONTEXT_FALLBACK_RATIOS = [0.75, 0.5, 0.25] as const
 const BOOK_INFO_DOCUMENT_CONTEXT_CHARS = 120_000
 const SUPPORTING_FEATURE_DOCUMENT_CONTEXT_CHARS = 240_000
 
-function documentContextFields(documentContent: string | undefined, task: string, maxChars = DEFAULT_DOCUMENT_CONTEXT_CHARS) {
+interface DocumentContextFields extends Record<string, unknown> {
+  documentContent?: string
+  documentCitationIds?: string[]
+}
+
+function documentContextFields(
+  documentContent: string | undefined,
+  task: string,
+  maxChars = DEFAULT_DOCUMENT_CONTEXT_CHARS
+): DocumentContextFields {
   if (!documentContent) return {}
   const context = buildDocumentContext(documentContent, task, maxChars)
   return {
     documentContent: context.content,
+    documentCitationIds: context.citationIds,
+    documentEvidenceRule: context.complete && context.citationIds.length === 1
+      ? '引用整份原文时在相关结论后标注 [S1]。'
+      : '引用原文时必须在相关结论后标注提供的 [S编号]；不得编造未提供的编号。',
     documentSourceLength: context.sourceLength,
     documentContextComplete: context.complete,
     documentContextCoverage: context.complete
@@ -75,7 +90,7 @@ export async function withDocumentContextRetry<T>(
   documentContent: string | undefined,
   task: string,
   initialMaxChars: number,
-  request: (contextFields: Record<string, unknown>) => Promise<T>
+  request: (contextFields: DocumentContextFields) => Promise<T>
 ): Promise<T> {
   const budgets = [
     initialMaxChars,
@@ -94,6 +109,112 @@ export async function withDocumentContextRetry<T>(
   }
 
   throw new Error(AI_CONTEXT_LIMIT_EXCEEDED)
+}
+
+type CompletionParams = OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming
+
+export async function requestDeepSeekCompletion(
+  client: OpenAI,
+  params: CompletionParams,
+  requestContext: AIRequestContext
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  let requestParams = params
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await aiRequestManager.run(requestContext, signal => (
+      client.chat.completions.create(requestParams, { signal })
+    ))
+
+    if (response.usage) {
+      const promptTokens = response.usage.prompt_tokens
+      const completionTokens = response.usage.completion_tokens
+      const totalTokens = response.usage.total_tokens
+      if ([promptTokens, completionTokens, totalTokens].every(value => Number.isInteger(value) && value >= 0)) {
+        addAIUsageRecord({
+          task: requestContext.task,
+          model: response.model || DEEPSEEK_MODEL,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          createdAt: Date.now(),
+          ...(requestContext.bookId ? { bookId: requestContext.bookId } : {}),
+          ...(requestContext.sessionId ? { sessionId: requestContext.sessionId } : {})
+        })
+      }
+    }
+
+    if (response.choices[0]?.finish_reason !== 'length') return response
+    requestParams = {
+      ...requestParams,
+      max_tokens: Math.max(1000, Math.min(8000, Math.ceil((requestParams.max_tokens || 2000) * 1.75)))
+    }
+  }
+
+  throw new Error(AI_OUTPUT_INCOMPLETE)
+}
+
+function normalizedHeading(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/[：:。.!！?？*`]/g, '').replace(/\s+/g, ' ')
+}
+
+function validateMarkdownSections(content: string, requiredHeadings: string[]): void {
+  if (requiredHeadings.length === 0) return
+  const sections = content.split(/^##\s+/m).slice(1).map(section => {
+    const [heading = '', ...body] = section.split('\n')
+    return { heading: normalizedHeading(heading), body: body.join('\n').replace(/[#>*_`\s-]/g, '') }
+  })
+
+  for (const requiredHeading of requiredHeadings) {
+    const section = sections.find(candidate => candidate.heading === normalizedHeading(requiredHeading))
+    if (!section || section.body.length < 4) {
+      throw new Error(`Missing or empty section: ${requiredHeading}`)
+    }
+  }
+
+  if ((content.match(/```/g) || []).length % 2 !== 0) {
+    throw new Error('Unclosed Markdown code fence')
+  }
+}
+
+function validateSourceCitations(content: string, citationIds: string[], required: boolean): void {
+  if (!required) return
+  const citations = [...content.matchAll(/\[(S\d+)\]/g)].map(match => match[1])
+  if (citations.length === 0) throw new Error('Source citation is missing')
+  const allowed = new Set(citationIds)
+  if (citations.some(citation => !allowed.has(citation))) {
+    throw new Error('Source citation does not exist in the supplied document context')
+  }
+}
+
+async function requestCitedCompletion(
+  client: OpenAI,
+  createParams: (repair: boolean) => CompletionParams,
+  requestContext: AIRequestContext,
+  citationIds: string[],
+  requireSourceCitations: boolean
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  let lastValidationError: unknown
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await requestDeepSeekCompletion(client, createParams(attempt > 0), requestContext)
+    const content = response.choices[0]?.message?.content?.trim()
+    if (!content) {
+      lastValidationError = new Error('AI returned an empty response')
+      continue
+    }
+    try {
+      validateSourceCitations(content, citationIds, requireSourceCitations)
+      return response
+    } catch (error) {
+      lastValidationError = error
+    }
+  }
+  throw new Error(AI_OUTPUT_INCOMPLETE, { cause: lastValidationError })
+}
+
+export interface ChatRequestOptions {
+  requestContext?: AIRequestContext
+  requiredHeadings?: string[]
+  requireSourceCitations?: boolean
 }
 
 export interface PracticeEvaluation {
@@ -223,7 +344,10 @@ export async function validateDeepSeekApiKey(apiKey: string, client?: OpenAI): P
   })
 
   try {
-    await validationClient.models.list()
+    await aiRequestManager.run(
+      { task: 'api-key-validation' },
+      signal => validationClient.models.list({ signal })
+    )
   } catch (error) {
     if (isDeepSeekAuthenticationError(error)) {
       throw new Error(DEEPSEEK_API_KEY_INVALID)
@@ -236,57 +360,128 @@ export async function chat(
   client: OpenAI,
   systemPrompt: string,
   userMessage: string,
-  documentContent?: string
+  documentContent?: string,
+  options: ChatRequestOptions = {}
 ): Promise<string> {
-  const response = await withDocumentContextRetry(
+  return withDocumentContextRetry(
     documentContent,
     userMessage,
     DEFAULT_DOCUMENT_CONTEXT_CHARS,
-    documentContext => client.chat.completions.create(withDeepSeekDefaults({
-      messages: [
-        { role: 'system', content: secureSystemPrompt(systemPrompt) },
-        { role: 'user', content: secureUserMessage(userMessage, documentContext) }
-      ],
-      temperature: 0.7,
-      max_tokens: 2000
-    }))
+    async documentContext => {
+      let lastValidationError: unknown
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await requestDeepSeekCompletion(client, withDeepSeekDefaults({
+          messages: [
+            { role: 'system', content: secureSystemPrompt(systemPrompt) },
+            {
+              role: 'user',
+              content: secureUserMessage(userMessage, {
+                ...documentContext,
+                ...(options.requiredHeadings?.length
+                  ? {
+                      sourceBasisRule: documentContent
+                        ? '所有基于原文的关键判断都要在句末使用提供的 [S编号] 引用；证据不足时明确写为推断。'
+                        : '本次未提供原文，不得伪造原文引用；涉及具体文本的判断应明确说明基于模型知识。'
+                    }
+                  : {}),
+                ...(options.requiredHeadings?.length ? { requiredMarkdownSections: options.requiredHeadings } : {}),
+                ...(attempt > 0
+                  ? { outputRepair: '上一次输出未通过完整性或原文引用校验。请完整重新输出，补齐所有章节，并只使用提供的原文证据编号。' }
+                  : {})
+              })
+            }
+          ],
+          temperature: attempt === 0 ? 0.7 : 0.2,
+          max_tokens: 2000
+        }), options.requestContext || { task: 'general-chat' })
+
+        const content = response.choices[0]?.message?.content?.trim()
+        if (!content) {
+          lastValidationError = new Error('AI returned an empty response')
+          continue
+        }
+
+        try {
+          validateMarkdownSections(content, options.requiredHeadings || [])
+          validateSourceCitations(
+            content,
+            documentContext.documentCitationIds || [],
+            Boolean(options.requireSourceCitations && documentContent)
+          )
+          return content
+        } catch (error) {
+          lastValidationError = error
+        }
+      }
+
+      if (lastValidationError instanceof Error && lastValidationError.message === 'AI returned an empty response') {
+        throw lastValidationError
+      }
+      throw new Error(AI_OUTPUT_INCOMPLETE, { cause: lastValidationError })
+    }
   )
-
-  const content = response.choices[0]?.message?.content?.trim()
-  if (!content) {
-    throw new Error('AI returned an empty response')
-  }
-
-  return content
 }
 
 export async function chatJson(
   client: OpenAI,
   systemPrompt: string,
   userMessage: string,
-  documentContent?: string
+  documentContent?: string,
+  options: ChatRequestOptions = {}
 ): Promise<string> {
-  const response = await withDocumentContextRetry(
+  return withDocumentContextRetry(
     documentContent,
     userMessage,
     DEFAULT_DOCUMENT_CONTEXT_CHARS,
-    documentContext => client.chat.completions.create(withDeepSeekDefaults({
-      messages: [
-        { role: 'system', content: secureSystemPrompt(systemPrompt) },
-        { role: 'user', content: secureUserMessage(userMessage, documentContext) }
-      ],
-      temperature: 0.2,
-      max_tokens: 1600,
-      response_format: { type: 'json_object' }
-    }))
+    async documentContext => {
+      let lastValidationError: unknown
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await requestDeepSeekCompletion(client, withDeepSeekDefaults({
+          messages: [
+            { role: 'system', content: secureSystemPrompt(systemPrompt) },
+            {
+              role: 'user',
+              content: secureUserMessage(userMessage, {
+                ...documentContext,
+                ...(attempt > 0
+                  ? { outputRepair: '上一次 JSON 输出不完整或原文引用无效。请重新输出完整 JSON，并只使用提供的原文证据编号。' }
+                  : {})
+              })
+            }
+          ],
+          temperature: 0.2,
+          max_tokens: 1600,
+          response_format: { type: 'json_object' }
+        }), options.requestContext || { task: 'json-chat' })
+
+        const content = response.choices[0]?.message?.content?.trim()
+        if (!content) {
+          lastValidationError = new Error('AI evaluation returned an empty response')
+          continue
+        }
+
+        try {
+          const start = content.indexOf('{')
+          const end = content.lastIndexOf('}')
+          if (start < 0 || end <= start) throw new Error('AI evaluation did not contain a complete JSON object')
+          JSON.parse(content.slice(start, end + 1))
+          validateSourceCitations(
+            content,
+            documentContext.documentCitationIds || [],
+            Boolean(options.requireSourceCitations && documentContent)
+          )
+          return content
+        } catch (error) {
+          lastValidationError = error
+        }
+      }
+
+      if (lastValidationError instanceof Error && lastValidationError.message.includes('empty response')) {
+        throw lastValidationError
+      }
+      throw new Error(AI_OUTPUT_INCOMPLETE, { cause: lastValidationError })
+    }
   )
-
-  const content = response.choices[0]?.message?.content?.trim()
-  if (!content) {
-    throw new Error('AI evaluation returned an empty response')
-  }
-
-  return content
 }
 
 export interface GeneratedTag {
@@ -313,7 +508,8 @@ export async function generateBookMetadata(
   bookName: string,
   author?: string,
   description?: string,
-  documentContent?: string
+  documentContent?: string,
+  requestContext: AIRequestContext = { task: 'book-metadata' }
 ): Promise<GeneratedBookMetadata> {
   const systemPrompt = `你是一个严谨的图书信息整理助手。根据输入数据补全目标书籍的基础信息。
 
@@ -336,7 +532,7 @@ export async function generateBookMetadata(
     documentContent,
     task,
     BOOK_INFO_DOCUMENT_CONTEXT_CHARS,
-    documentContext => client.chat.completions.create(withDeepSeekDefaults({
+    documentContext => requestDeepSeekCompletion(client, withDeepSeekDefaults({
       messages: [
         { role: 'system', content: secureSystemPrompt(systemPrompt) },
         {
@@ -351,7 +547,7 @@ export async function generateBookMetadata(
       ],
       temperature: 0.2,
       max_tokens: 700
-    }))
+    }), requestContext)
   )
 
   const content = response.choices[0]?.message?.content?.trim()
@@ -373,7 +569,8 @@ export async function generateBookMetadata(
 export async function analyzeDocumentForBookInfo(
   client: OpenAI,
   content: string,
-  fileName: string
+  fileName: string,
+  requestContext: AIRequestContext = { task: 'document-metadata' }
 ): Promise<AnalyzedBookInfo> {
   const systemPrompt = `你是一个专业的图书信息分析专家。根据用户上传的文档内容，分析并提取书籍信息。
 
@@ -398,7 +595,7 @@ export async function analyzeDocumentForBookInfo(
   try {
     const task = '从完整文档中提取书名、作者、简介、主题和标签'
     const response = await withDocumentContextRetry(content, task, BOOK_INFO_DOCUMENT_CONTEXT_CHARS, documentContext => (
-      client.chat.completions.create(withDeepSeekDefaults({
+      requestDeepSeekCompletion(client, withDeepSeekDefaults({
         messages: [
           { role: 'system', content: secureSystemPrompt(systemPrompt) },
           {
@@ -411,7 +608,7 @@ export async function analyzeDocumentForBookInfo(
         ],
         temperature: 0.2,
         max_tokens: 1000
-      }))
+      }), requestContext)
     ))
 
     const responseContent = response.choices[0]?.message?.content || '{}'
@@ -452,7 +649,12 @@ export async function analyzeDocumentForBookInfo(
     }
   } catch (error) {
     logger.error('分析文档失败:', error)
-    if (error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED) throw error
+    if (error instanceof Error && [
+      AI_CONTEXT_LIMIT_EXCEEDED,
+      AI_OUTPUT_INCOMPLETE,
+      AI_REQUEST_CANCELLED,
+      AI_TASK_BUSY
+    ].includes(error.message)) throw error
     return {
       name: fileName.replace(/\.[^/.]+$/, ''),
       author: undefined,
@@ -467,7 +669,8 @@ export async function generateBookTags(
   client: OpenAI,
   bookName: string,
   author?: string,
-  description?: string
+  description?: string,
+  requestContext: AIRequestContext = { task: 'book-tags' }
 ): Promise<GeneratedTag[]> {
   const systemPrompt = `你是一个专业的图书分类专家。根据书名、作者和简介，为书籍生成合适的分类标签。
 
@@ -490,14 +693,14 @@ export async function generateBookTags(
   )
 
   try {
-    const response = await client.chat.completions.create(withDeepSeekDefaults({
+    const response = await requestDeepSeekCompletion(client, withDeepSeekDefaults({
       messages: [
         { role: 'system', content: secureSystemPrompt(systemPrompt) },
         { role: 'user', content: userMessage }
       ],
       temperature: 0.3,
       max_tokens: 500
-    }))
+    }), requestContext)
 
     const content = response.choices[0]?.message?.content || '[]'
     return parseGeneratedTags(parseJsonArray(content))
@@ -563,7 +766,8 @@ export async function generatePersonaQuestions(
   author?: string,
   documentContent?: string,
   bestTeachingContent?: string,
-  customPersonas?: { id: string; name: { zh: string; en: string }; icon: string; description: { zh: string; en: string } }[]
+  customPersonas?: { id: string; name: { zh: string; en: string }; icon: string; description: { zh: string; en: string } }[],
+  requestContext: AIRequestContext = { task: 'persona-questions' }
 ): Promise<{ persona: string; personaName: string; question: string }[]> {
   // 如果提供了自定义角色，使用自定义角色；否则随机选择3个
   let selectedPersonas: PersonaDefinition[]
@@ -603,7 +807,7 @@ export async function generatePersonaQuestions(
   try {
     const task = `围绕教学内容生成角色问题：${bestTeachingContent || bookName}`
     const response = await withDocumentContextRetry(documentContent, task, SUPPORTING_FEATURE_DOCUMENT_CONTEXT_CHARS, documentContext => (
-      client.chat.completions.create(withDeepSeekDefaults({
+      requestCitedCompletion(client, repair => withDeepSeekDefaults({
         messages: [
           { role: 'system', content: secureSystemPrompt(systemPrompt) },
           {
@@ -621,14 +825,15 @@ export async function generatePersonaQuestions(
                   description: persona.description
                 })),
                 teachingContent: bestTeachingContent?.slice(0, 3000) || '',
-                ...documentContext
+                ...documentContext,
+                ...(repair ? { outputRepair: '上一次输出缺少有效原文引用。请重新输出完整 JSON 数组，并只引用提供的 [S编号]。' } : {})
               }
             )
           }
         ],
         temperature: 0.7,
         max_tokens: 1000
-      }))
+      }), requestContext, documentContext.documentCitationIds || [], Boolean(documentContent))
     ))
 
     const content = response.choices[0]?.message?.content || '[]'
@@ -678,7 +883,8 @@ export async function evaluatePersonaAnswers(
   client: OpenAI,
   bookName: string,
   questions: { persona: string; personaName: string; question: string; answer: string }[],
-  documentContent?: string
+  documentContent?: string,
+  requestContext: AIRequestContext = { task: 'persona-evaluation' }
 ): Promise<{ persona: string; score: number; review: string; passed: boolean }[]> {
   const systemPrompt = `你是一个严格的阅读评估专家和批判性思维导师。你的任务是根据输入数据评估读者对目标书籍的理解程度，并找出理解中的所有漏洞。
 
@@ -742,7 +948,7 @@ export async function evaluatePersonaAnswers(
   try {
     const task = `评估这些角色问答：${JSON.stringify(questions)}`
     const response = await withDocumentContextRetry(documentContent, task, SUPPORTING_FEATURE_DOCUMENT_CONTEXT_CHARS, documentContext => (
-      client.chat.completions.create(withDeepSeekDefaults({
+      requestCitedCompletion(client, repair => withDeepSeekDefaults({
         messages: [
           { role: 'system', content: secureSystemPrompt(systemPrompt) },
           {
@@ -757,14 +963,15 @@ export async function evaluatePersonaAnswers(
                   question: question.question,
                   answer: question.answer
                 })),
-                ...documentContext
+                ...documentContext,
+                ...(repair ? { outputRepair: '上一次输出缺少有效原文引用。请重新输出完整 JSON 数组，并只引用提供的 [S编号]。' } : {})
               }
             )
           }
         ],
         temperature: 0.5,
         max_tokens: 2000
-      }))
+      }), requestContext, documentContext.documentCitationIds || [], Boolean(documentContent))
     ))
 
     const content = response.choices[0]?.message?.content || '[]'

@@ -1,6 +1,4 @@
 import { normalizeImportData, normalizeStoredBooks } from '../backupValidation'
-import { exportData } from '../integrations'
-import { generateNoteHTML, generatePracticeHTML } from '../share'
 import type { Book } from '../store'
 
 const questions = [
@@ -29,7 +27,7 @@ function createBook(overrides: Partial<Book> = {}): Book {
     qaPracticeRecords: [{
       id: 'qa-1',
       bookId: 'book-1',
-      questions,
+      questions: questions.map(question => ({ ...question })),
       allPassed: true,
       createdAt: 1,
       updatedAt: 1
@@ -102,6 +100,20 @@ describe('backup import boundary', () => {
     expect(result.data.books[0].qaPracticeRecords[0].allPassed).toBe(false)
   })
 
+  it('does not mark a book finished before all six phases are complete', () => {
+    const result = normalizeImportData(createBackup([
+      createBook({ status: 'finished', currentPhase: 5 })
+    ]))
+    expect(result.valid).toBe(true)
+    if (!result.valid) return
+
+    expect(result.data.books[0]).toMatchObject({
+      status: 'reading',
+      currentPhase: 5,
+      bestScore: 80
+    })
+  })
+
   it('rejects unsafe response keys and strips imported API keys', () => {
     const book = createBook()
     book.responses = JSON.parse('{"__proto__":"polluted"}')
@@ -148,27 +160,5 @@ describe('stored data recovery boundary', () => {
 
     expect(result.books.map(book => book.id)).toEqual(['book-1', 'book-2'])
     expect(result.errors).toHaveLength(1)
-  })
-})
-
-describe('HTML export boundary', () => {
-  const payload = '</title><script>globalThis.pwned=true</script><img src=x onerror=alert(1)>'
-  const book = createBook({
-    name: payload,
-    author: payload,
-    noteRecords: [{ id: 'note-1', type: 'note', content: payload, createdAt: 1 }]
-  })
-  book.practiceRecords[0].content = payload
-  book.practiceRecords[0].aiReview = payload
-
-  it.each([
-    ['note', () => generateNoteHTML(book, 'note-1')],
-    ['practice', () => generatePracticeHTML(book, 'practice-1')],
-    ['full export', () => exportData([book], 'html').content]
-  ])('escapes executable markup in %s HTML', (_name, generate) => {
-    const html = generate()
-    expect(html).not.toContain('<script>globalThis.pwned=true</script>')
-    expect(html).not.toContain('<img src=x onerror=alert(1)>')
-    expect(html).toContain('&lt;script&gt;')
   })
 })

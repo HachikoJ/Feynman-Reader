@@ -26,12 +26,33 @@ export function useServiceWorker(): UseServiceWorkerReturn {
       return
     }
 
+    const hadController = Boolean(navigator.serviceWorker.controller)
+    let reloadingForUpdate = false
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SW_UPDATED') {
+        setStatus('update-available')
+      }
+    }
+
+    const handleControllerChange = () => {
+      if (!hadController || reloadingForUpdate) return
+      reloadingForUpdate = true
+      window.location.reload()
+    }
+
+    navigator.serviceWorker.addEventListener('message', handleMessage)
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
+
     // 注册 Service Worker
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js', { updateViaCache: 'none' })
       .then((reg) => {
         setRegistration(reg)
         setStatus('active')
+        void reg.update().catch(error => {
+          logger.warn('Service Worker 更新检查失败:', error)
+        })
 
         // 检查更新
         reg.addEventListener('updatefound', () => {
@@ -50,20 +71,9 @@ export function useServiceWorker(): UseServiceWorkerReturn {
         setStatus('error')
       })
 
-    // 监听 Service Worker 控制变化
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'SW_UPDATED') {
-        setStatus('update-available')
-      }
-    }
-
-    navigator.serviceWorker.addEventListener('message', handleMessage)
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload()
-    })
-
     return () => {
       navigator.serviceWorker.removeEventListener('message', handleMessage)
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
     }
   }, [])
 

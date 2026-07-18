@@ -3,21 +3,54 @@
  * 支持离线访问和资源缓存
  */
 
-const STATIC_CACHE = 'feynman-static-v2'
-const DYNAMIC_CACHE = 'feynman-dynamic-v2'
+const APP_SHELL_CACHE = 'feynman-app-shell-v3'
+const ASSET_CACHE = 'feynman-assets-v3'
+const CURRENT_CACHES = new Set([APP_SHELL_CACHE, ASSET_CACHE])
 
 // 需要预缓存的静态资源
 const STATIC_ASSETS = [
-  '/',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
 ]
 
+async function fetchAndCache(request, cacheName, cacheKey = request) {
+  const response = await fetch(request)
+  if (response && response.status === 200 && response.type === 'basic') {
+    const cache = await caches.open(cacheName)
+    await cache.put(cacheKey, response.clone())
+  }
+  return response
+}
+
+async function networkFirst(request, cacheName, cacheKey, fallbackToRoot = false) {
+  try {
+    return await fetchAndCache(request, cacheName, cacheKey)
+  } catch {
+    const cachedResponse = await caches.match(cacheKey)
+    if (cachedResponse) return cachedResponse
+    if (fallbackToRoot) {
+      const cachedRoot = await caches.match('/')
+      if (cachedRoot) return cachedRoot
+    }
+    return new Response('离线模式不可用', {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: new Headers({ 'Content-Type': 'text/plain; charset=utf-8' })
+    })
+  }
+}
+
+async function cacheFirst(request, cacheKey) {
+  const cachedResponse = await caches.match(cacheKey)
+  if (cachedResponse) return cachedResponse
+  return fetchAndCache(request, ASSET_CACHE, cacheKey)
+}
+
 // 安装事件：预缓存静态资源
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
+    caches.open(ASSET_CACHE).then((cache) => {
       return cache.addAll(STATIC_ASSETS)
     })
   )
@@ -27,19 +60,18 @@ self.addEventListener('install', (event) => {
 // 激活事件：清理旧缓存
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    (async () => {
+      const cacheNames = await caches.keys()
+      await Promise.all(
         cacheNames
-          .filter((name) => {
-            return name !== STATIC_CACHE && name !== DYNAMIC_CACHE
-          })
-          .map((name) => {
-            return caches.delete(name)
-          })
+          .filter(name => name.startsWith('feynman-') && !CURRENT_CACHES.has(name))
+          .map(name => caches.delete(name))
       )
-    })
+      await self.clients.claim()
+      const clients = await self.clients.matchAll({ type: 'window' })
+      clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }))
+    })()
   )
-  self.clients.claim()
 })
 
 // 拦截网络请求
@@ -64,12 +96,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   const isAppRoute = ['/', '/privacy', '/privacy/'].includes(url.pathname)
-  const isStaticAsset =
-    url.pathname.startsWith('/_next/static/') ||
-    ['/manifest.json', '/icon-192.png', '/icon-512.png', '/favicon.ico', '/pdf.worker.min.mjs'].includes(url.pathname)
+  const isHashedAsset = url.pathname.startsWith('/_next/static/')
+  const isPublicAsset = ['/manifest.json', '/icon-192.png', '/icon-512.png', '/favicon.ico', '/pdf.worker.min.mjs'].includes(url.pathname)
 
   // 不缓存未知路径，避免任意 URL 把浏览器缓存空间持续撑大。
-  if (!isAppRoute && !isStaticAsset) {
+  if (!isAppRoute && !isHashedAsset && !isPublicAsset) {
     event.respondWith(fetch(request))
     return
   }
@@ -77,49 +108,17 @@ self.addEventListener('fetch', (event) => {
   // 查询参数不参与缓存键，随机参数始终命中同一份公开静态资源。
   const cacheKey = new Request(`${url.origin}${url.pathname}`, { method: 'GET' })
 
-  // 静态资源：缓存优先
-  event.respondWith(
-    caches.match(cacheKey).then((cachedResponse) => {
-      if (cachedResponse) {
-        // 后台更新缓存
-        fetch(request)
-          .then((response) => {
-            if (response && response.status === 200 && response.type === 'basic') {
-              caches.open(DYNAMIC_CACHE).then((cache) => cache.put(cacheKey, response))
-            }
-          })
-          .catch(() => {})
-        return cachedResponse
-      }
+  if (isAppRoute) {
+    event.respondWith(networkFirst(request, APP_SHELL_CACHE, cacheKey, true))
+    return
+  }
 
-      // 没有缓存，从网络获取
-      return fetch(request)
-        .then((response) => {
-          // 只缓存成功的响应
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response
-          }
+  if (isHashedAsset) {
+    event.respondWith(cacheFirst(request, cacheKey))
+    return
+  }
 
-          // 缓存响应
-          const responseClone = response.clone()
-          caches.open(DYNAMIC_CACHE).then((cache) => {
-            cache.put(cacheKey, responseClone)
-          })
-
-          return response
-        })
-        .catch(() => {
-          // 对于 HTML 请求，返回离线页面
-          if (request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('/') || new Response('离线模式不可用', {
-              status: 503,
-              statusText: 'Service Unavailable',
-              headers: new Headers({ 'Content-Type': 'text/plain' })
-            })
-          }
-        })
-    })
-  )
+  event.respondWith(networkFirst(request, ASSET_CACHE, cacheKey))
 })
 
 // 消息事件：处理来自客户端的消息
@@ -132,7 +131,9 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       caches.keys().then((cacheNames) => {
         return Promise.all(
-          cacheNames.map((name) => caches.delete(name))
+          cacheNames
+            .filter(name => name.startsWith('feynman-'))
+            .map(name => caches.delete(name))
         )
       })
     )

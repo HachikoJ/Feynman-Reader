@@ -4,10 +4,12 @@ import { useState, useMemo } from 'react'
 import { Language } from '@/lib/i18n'
 import MarkdownRenderer from './MarkdownRenderer'
 import AppIcon from './AppIcon'
+import SourceEvidence from './SourceEvidence'
 
 interface Props {
   content: string
   lang: Language
+  documentContent?: string
 }
 
 interface Section {
@@ -16,7 +18,7 @@ interface Section {
   isKeyPoint: boolean
 }
 
-export default function PhaseResult({ content, lang }: Props) {
+export default function PhaseResult({ content, lang, documentContent }: Props) {
   const parseContent = (text: string): Section[] => {
     const sections: Section[] = []
     const lines = text.split('\n')
@@ -136,6 +138,8 @@ export default function PhaseResult({ content, lang }: Props) {
           </div>
         )
       })}
+
+      <SourceEvidence content={content} documentContent={documentContent} lang={lang} />
 
       {sections.length > 1 && (
         <div className="flex justify-center gap-4 pt-2">

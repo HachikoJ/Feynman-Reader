@@ -5,7 +5,11 @@ jest.mock('../db', () => ({
   getSettings: jest.fn(),
   saveSettings: jest.fn(),
   getBooks: jest.fn(),
+  getAIUsageRecords: jest.fn(),
+  getBookOrganization: jest.fn(),
   saveBooks: jest.fn(),
+  saveAIUsageRecords: jest.fn(),
+  saveBookOrganization: jest.fn(),
   saveBook: jest.fn(),
   saveExistingBook: jest.fn(),
   restoreDeletedBook: jest.fn(),
@@ -31,12 +35,21 @@ import {
   addQAPracticeRecord,
   deleteQAPracticeRecord,
   calculateFinalScore,
+  addAIUsageRecord,
+  addBookRelation,
+  createBookList,
+  getBookLists,
+  getBookOrganizationSnapshot,
+  getBookRelations,
+  getAIUsageRecords,
   isQAPracticeRecordComplete,
   applyImportData,
   flushPendingStoreWrites,
   subscribeToPersistenceErrors,
   exportAllData,
   previewImportData,
+  restoreBookOrganizationSnapshot,
+  setBookListMembership,
   type AppSettings,
   type ExportData,
   type Book
@@ -47,7 +60,11 @@ const mockInitDB = db.initDB as jest.MockedFunction<typeof db.initDB>
 const mockGetSettings = db.getSettings as jest.MockedFunction<typeof db.getSettings>
 const mockSaveSettings = db.saveSettings as jest.MockedFunction<typeof db.saveSettings>
 const mockGetBooks = db.getBooks as jest.MockedFunction<typeof db.getBooks>
+const mockGetAIUsageRecords = db.getAIUsageRecords as jest.MockedFunction<typeof db.getAIUsageRecords>
+const mockGetBookOrganization = db.getBookOrganization as jest.MockedFunction<typeof db.getBookOrganization>
 const mockSaveBooks = db.saveBooks as jest.MockedFunction<typeof db.saveBooks>
+const mockSaveAIUsageRecords = db.saveAIUsageRecords as jest.MockedFunction<typeof db.saveAIUsageRecords>
+const mockSaveBookOrganization = db.saveBookOrganization as jest.MockedFunction<typeof db.saveBookOrganization>
 const mockSaveBook = db.saveBook as jest.MockedFunction<typeof db.saveBook>
 const mockSaveExistingBook = db.saveExistingBook as jest.MockedFunction<typeof db.saveExistingBook>
 const mockRestoreDeletedBook = db.restoreDeletedBook as jest.MockedFunction<typeof db.restoreDeletedBook>
@@ -56,6 +73,9 @@ const mockDeleteExistingBookById = db.deleteExistingBookById as jest.MockedFunct
 describe('IndexedDB-backed store cache', () => {
   beforeAll(() => {
     Object.defineProperty(global, 'window', { value: {}, configurable: true })
+    mockGetAIUsageRecords.mockResolvedValue([])
+    mockGetBookOrganization.mockResolvedValue({ lists: [], relations: [] })
+    mockSaveBookOrganization.mockResolvedValue(undefined)
   })
 
   it('loads IndexedDB data before exposing synchronous reads', async () => {
@@ -257,6 +277,7 @@ describe('IndexedDB-backed store cache', () => {
 
     const book = addBook('Caller trust test')
     const record = addPracticeRecord(book.id, {
+      sessionId: 'session-1',
       content: '不合格回答',
       aiReview: '需要继续完善',
       scores: { accuracy: 10, completeness: 10, clarity: 10, overall: 10 },
@@ -266,6 +287,80 @@ describe('IndexedDB-backed store cache', () => {
     expect(record.passed).toBe(false)
     expect(getBooks()[0]).toMatchObject({ status: 'reading', bestScore: 0 })
     await flushPendingStoreWrites()
+  })
+
+  it('combines teaching and Q&A scores only inside the same learning session', () => {
+    const questions = ['elementary', 'professional', 'scientist'].map(persona => ({
+      persona: persona as 'elementary' | 'professional' | 'scientist',
+      personaName: persona,
+      question: '问题',
+      score: 90,
+      passed: true
+    }))
+    const book = {
+      id: 'session-book',
+      name: 'Session Book',
+      status: 'reading' as const,
+      currentPhase: 6,
+      noteRecords: [],
+      responses: {},
+      practiceRecords: [{
+        id: 'practice-a',
+        bookId: 'session-book',
+        sessionId: 'session-a',
+        content: '教学内容',
+        aiReview: '点评',
+        scores: { accuracy: 90, completeness: 90, clarity: 90, overall: 90 },
+        passed: true,
+        createdAt: 1
+      }],
+      qaPracticeRecords: [{
+        id: 'qa-b',
+        bookId: 'session-book',
+        sessionId: 'session-b',
+        questions,
+        allPassed: true,
+        createdAt: 2,
+        updatedAt: 2
+      }],
+      bestScore: 0,
+      createdAt: 1,
+      updatedAt: 2
+    }
+
+    expect(calculateFinalScore(book)).toBe(0)
+    expect(calculateFinalScore({
+      ...book,
+      practiceRecords: [...book.practiceRecords, {
+        ...book.practiceRecords[0],
+        id: 'practice-b',
+        sessionId: 'session-b',
+        scores: { accuracy: 70, completeness: 70, clarity: 70, overall: 70 }
+      }]
+    })).toBe(80)
+  })
+
+  it('persists real token usage and includes it in exports', async () => {
+    mockSaveAIUsageRecords.mockResolvedValue(undefined)
+    addAIUsageRecord({
+      task: 'phase-analysis',
+      model: 'deepseek-v4-flash',
+      promptTokens: 100,
+      completionTokens: 20,
+      totalTokens: 120,
+      createdAt: 10,
+      bookId: 'book-1'
+    })
+
+    await flushPendingStoreWrites()
+
+    expect(getAIUsageRecords()).toEqual([
+      expect.objectContaining({ task: 'phase-analysis', totalTokens: 120 })
+    ])
+    expect(JSON.parse(exportAllData()).aiUsageRecords).toEqual([
+      expect.objectContaining({ totalTokens: 120 })
+    ])
+    expect(mockSaveAIUsageRecords).toHaveBeenCalled()
   })
 
   it('marks a book as reading when the user saves a note', async () => {
@@ -321,6 +416,72 @@ describe('IndexedDB-backed store cache', () => {
     })])
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(mockRestoreDeletedBook).toHaveBeenLastCalledWith(expect.objectContaining({ id: original.id, currentPhase: 4 }))
+  })
+
+  it('persists custom lists and relationships and includes them in backup data', async () => {
+    resetStoreCache()
+    mockInitDB.mockResolvedValue(undefined)
+    mockGetSettings.mockResolvedValue({
+      apiKey: '', language: 'zh', theme: 'light', hideApiKeyAlert: false, quotes: []
+    })
+    mockGetBooks.mockResolvedValue([])
+    mockSaveBook.mockResolvedValue(undefined)
+    mockSaveBookOrganization.mockResolvedValue(undefined)
+    await initializeStore()
+
+    const first = addBook('First Book')
+    const second = addBook('Second Book')
+    const list = createBookList('Core Reading', 'A focused list')
+    setBookListMembership(list.id, first.id, true)
+    const relation = addBookRelation(first.id, second.id, 'prerequisite', 'Read this first')
+    await flushPendingStoreWrites()
+
+    expect(getBookLists()).toEqual([
+      expect.objectContaining({ id: list.id, bookIds: [first.id] })
+    ])
+    expect(getBookRelations()).toEqual([
+      expect.objectContaining({ id: relation.id, fromBookId: first.id, toBookId: second.id })
+    ])
+    expect(JSON.parse(exportAllData())).toMatchObject({
+      version: 5,
+      bookLists: [{ id: list.id, bookIds: [first.id] }],
+      bookRelations: [{ id: relation.id, fromBookId: first.id, toBookId: second.id }]
+    })
+    expect(mockSaveBookOrganization).toHaveBeenCalled()
+  })
+
+  it('cleans organization data on delete and restores it with the undo snapshot', async () => {
+    const first = getBooks().find(book => book.name === 'First Book')!
+    const second = getBooks().find(book => book.name === 'Second Book')!
+    const snapshot = getBookOrganizationSnapshot(first.id)
+
+    deleteBook(first.id)
+    expect(getBookLists()[0].bookIds).not.toContain(first.id)
+    expect(getBookRelations()).toEqual([])
+
+    restoreBook(first)
+    restoreBookOrganizationSnapshot(first.id, snapshot)
+    await flushPendingStoreWrites()
+
+    expect(getBookLists()[0].bookIds).toContain(first.id)
+    expect(getBookRelations()).toEqual([
+      expect.objectContaining({ fromBookId: first.id, toBookId: second.id })
+    ])
+  })
+
+  it('loads version 4 backups without organization fields', () => {
+    const preview = previewImportData(JSON.stringify({
+      version: 4,
+      exportDate: Date.now(),
+      settings: getSettings(),
+      aiUsageRecords: [],
+      books: []
+    }))
+
+    expect(preview).toMatchObject({
+      valid: true,
+      data: { bookLists: [], bookRelations: [] }
+    })
   })
 
   it('redacts API keys from exports and preserves the current key when importing settings', async () => {
@@ -392,6 +553,7 @@ describe('IndexedDB-backed store cache', () => {
       version: 2,
       exportDate: Date.now(),
       settings: getSettings(),
+      aiUsageRecords: [],
       books: [{
         id: 'imported-book',
         name: 'Imported Book',
@@ -434,6 +596,7 @@ describe('IndexedDB-backed store cache', () => {
       version: 2,
       exportDate: Date.now(),
       settings: getSettings(),
+      aiUsageRecords: [],
       books: [{
         id: 'forged-book',
         name: 'Forged Book',
@@ -679,12 +842,14 @@ describe('IndexedDB-backed store cache', () => {
 
     const book = addBook('Completion Rollback')
     const teaching = addPracticeRecord(book.id, {
+      sessionId: 'completion-session',
       content: '教学内容',
       aiReview: '点评',
       scores: { accuracy: 80, completeness: 80, clarity: 80, overall: 80 },
       passed: true
     })
     const qa = addQAPracticeRecord(book.id, {
+      sessionId: 'completion-session',
       allPassed: true,
       questions: [
         { persona: 'elementary', personaName: '初学者', question: '问题一', score: 80, passed: true },
@@ -692,12 +857,18 @@ describe('IndexedDB-backed store cache', () => {
         { persona: 'scientist', personaName: '科学家', question: '问题三', score: 80, passed: true }
       ]
     })
+    expect(getBooks()[0]).toMatchObject({ status: 'reading', currentPhase: 0, bestScore: 80 })
+
+    updateBook(book.id, { currentPhase: 6 })
     expect(getBooks()[0]).toMatchObject({ status: 'finished', bestScore: 80 })
 
     deleteQAPracticeRecord(book.id, qa.id)
     expect(getBooks()[0]).toMatchObject({ status: 'reading', bestScore: 0 })
 
     deletePracticeRecord(book.id, teaching.id)
+    expect(getBooks()[0]).toMatchObject({ status: 'reading', currentPhase: 6, bestScore: 0 })
+
+    updateBook(book.id, { currentPhase: 0 })
     expect(getBooks()[0]).toMatchObject({ status: 'unread', bestScore: 0 })
   })
 })

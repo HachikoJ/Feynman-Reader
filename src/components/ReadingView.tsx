@@ -3,15 +3,17 @@
 import { useState, useEffect, useRef } from 'react'
 import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
-import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, checkFeynmanComplete, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
+import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
 import { createLocalId } from '@/lib/localId'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
-import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, chat, chatJson, createDeepSeekClient, generateBookMetadata, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, chat, chatJson, createDeepSeekClient, generateBookMetadata, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import LoadingQuotes from './LoadingQuotes'
 import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
 import MarkdownRenderer from './MarkdownRenderer'
+import SourceEvidence from './SourceEvidence'
 import BookRecommendations from './BookRecommendations'
 import {
   clampCompletedPhaseCount,
@@ -23,6 +25,8 @@ import {
 import { MAX_AI_ANSWER_LENGTH, MAX_NOTE_LENGTH } from '@/lib/dataLimits'
 import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 import { buildMissingBookMetadataUpdates, needsBookMetadataEnrichment } from '@/lib/bookMetadata'
+import BookListManager from './BookListManager'
+import { BookLearningAnalytics } from './Charts'
 
 interface Props {
   book: Book
@@ -51,6 +55,20 @@ const phaseIconTones: Record<string, AppIconTone> = {
   critical: 'amber',
   reception: 'violet',
   synthesis: 'blue'
+}
+
+function aiTaskErrorMessage(error: unknown, lang: Language): string | null {
+  if (!(error instanceof Error)) return null
+  if (error.message === AI_REQUEST_CANCELLED) {
+    return lang === 'zh' ? '已取消本次 AI 请求，尚未完成的内容不会保存。' : 'The AI request was cancelled. Incomplete content was not saved.'
+  }
+  if (error.message === AI_TASK_BUSY) {
+    return lang === 'zh' ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。' : 'Another AI task is running. Wait for it to finish or cancel it first.'
+  }
+  if (error.message === AI_OUTPUT_INCOMPLETE) {
+    return lang === 'zh' ? 'AI 输出未通过完整性或原文引用校验，请重试。' : 'The AI output failed completeness or source-citation validation. Try again.'
+  }
+  return null
 }
 
 export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack, onOpenSettings }: Props) {
@@ -82,6 +100,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const [showPracticeHistory, setShowPracticeHistory] = useState(false)
   const [qaShowHistory, setQaShowHistory] = useState(false)
   const [metadataEnrichmentStatus, setMetadataEnrichmentStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [showBookOrganizer, setShowBookOrganizer] = useState(false)
+  const [showLearningCharts, setShowLearningCharts] = useState(false)
   const analysisInFlightRef = useRef(false)
   const progressSaveInFlightRef = useRef(false)
   const practiceSubmissionRef = useRef(false)
@@ -139,7 +159,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           book.name,
           book.author,
           book.description,
-          book.documentContent
+          book.documentContent,
+          { task: 'book-metadata', bookId: targetBookId }
         )
         const latestBook = getBook(targetBookId) || book
         const updates = buildMissingBookMetadataUpdates(latestBook, candidate)
@@ -192,6 +213,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     const failedPhases: string[] = []
     let authenticationFailed = false
     let contextLimitExceeded = false
+    let interruptedMessage: string | null = null
 
     try {
       for (let i = 0; i < LEARNING_PHASES.length; i++) {
@@ -202,7 +224,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         
         try {
           const prompt = generatePhasePrompt(book.name, phase.id, lang)
-          const response = await chat(client, systemPrompt, prompt, book.documentContent)
+          const requiredHeadings = [...prompt.matchAll(/^##\s+(.+)$/gm)].map(match => match[1].trim())
+          const response = await chat(client, systemPrompt, prompt, book.documentContent, {
+            requiredHeadings,
+            requireSourceCitations: Boolean(book.documentContent),
+            requestContext: { task: `phase-${phase.id}`, bookId: book.id }
+          })
           newResponses[phase.id] = response
 
           await flushPendingStoreWrites()
@@ -234,6 +261,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             logger.warn('Phase analysis stopped because the reduced document context was still too long.')
             break
           }
+          const taskError = aiTaskErrorMessage(error, lang)
+          if (taskError) {
+            interruptedMessage = taskError
+            break
+          }
           logger.error(`Phase analysis failed: ${phase.id}`, error)
           failedPhases.push(t(lang, `phases.${phase.id}.subtitle`))
         }
@@ -242,7 +274,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       if (Object.keys(newResponses).length > 0) {
         setCurrentPhase(0)
       }
-      if (authenticationFailed) {
+      if (interruptedMessage) {
+        setAnalysisError(interruptedMessage)
+      } else if (authenticationFailed) {
         setAnalysisError(lang === 'zh'
           ? '当前 DeepSeek API Key 无效或已失效，请前往设置重新填写并保存。'
           : 'The current DeepSeek API key is invalid or expired. Update it in Settings.')
@@ -307,12 +341,16 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         : `Teaching content cannot exceed ${MAX_AI_ANSWER_LENGTH.toLocaleString()} characters.`)
       return
     }
-    if (!client || teachingNote.length < 200) {
-      if (aiConsentRequired) {
-        setPracticeError(lang === 'zh'
-          ? '请先在设置中同意 AI 数据传输后再提交。'
-          : 'Please consent to AI data transfer in Settings before submitting.')
-      }
+    if (teachingNote.length < 200) {
+      setPracticeError(lang === 'zh' ? '教学内容至少需要 200 字。' : 'Teaching content must be at least 200 characters.')
+      return
+    }
+    if (!client) {
+      setPracticeError(missingApiKey
+        ? (lang === 'zh' ? '提交 AI 评估前，请先在设置中填写并保存 DeepSeek API Key。' : 'Add and save your DeepSeek API key in Settings before AI review.')
+        : aiConsentRequired
+          ? (lang === 'zh' ? '请先在设置中同意 AI 数据传输后再提交。' : 'Please consent to AI data transfer in Settings before submitting.')
+          : (lang === 'zh' ? 'AI 尚未就绪，请检查 API Key 后重试。' : 'AI is not ready. Check your API key and try again.'))
       return
     }
     practiceSubmissionRef.current = true
@@ -322,20 +360,25 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     try {
       const prompt = generateReviewPrompt(book.name, teachingNote, lang)
       const systemPrompt = generateSystemPrompt(book.name, lang)
+      const sessionId = createLocalId()
       let response: string
 
       try {
-        response = await chatJson(client, systemPrompt, prompt, book.documentContent)
+        response = await chatJson(client, systemPrompt, prompt, book.documentContent, {
+          requireSourceCitations: Boolean(book.documentContent),
+          requestContext: { task: 'teaching-evaluation', bookId: book.id, sessionId }
+        })
       } catch (error) {
         logger.error('Practice evaluation request failed:', error)
         const contextLimitExceeded = error instanceof Error && error.message === AI_CONTEXT_LIMIT_EXCEEDED
-        setPracticeError(contextLimitExceeded
+        const taskError = aiTaskErrorMessage(error, lang)
+        setPracticeError(taskError || (contextLimitExceeded
           ? (lang === 'zh'
               ? '文档上下文过长，系统自动缩减后仍未完成评分。你填写的教学内容已保留，请拆分文档后重试。'
               : 'The document context is too long even after automatic reduction. Your teaching content was kept; split the document and try again.')
           : (lang === 'zh'
               ? '评分请求失败，请检查网络和 API Key 后重试。'
-              : 'The evaluation request failed. Check your network and API key, then try again.'))
+              : 'The evaluation request failed. Check your network and API key, then try again.')))
         return
       }
 
@@ -354,6 +397,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         await flushPendingStoreWrites()
         // addPracticeRecord 会自动检查并更新状态
         addPracticeRecord(book.id, {
+          sessionId,
           content: teachingNote,
           aiReview: result.review,
           scores: result.scores,
@@ -506,14 +550,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   }
 
   const phase = LEARNING_PHASES[currentPhase]
-  const phaseResponse = phase ? responses[phase.id] : null
   const practiceRecords = book.practiceRecords || []
   const completedPhaseCount = clampCompletedPhaseCount(book.currentPhase, LEARNING_PHASES.length)
-  const teachingPassed = practiceRecords.some(r => r.scores.overall >= 60)
-  const qaPassed = book.qaPracticeRecords && book.qaPracticeRecords.length > 0
-    ? book.qaPracticeRecords.some(isQAPracticeRecordComplete)
-    : false
-  const practiceComplete = teachingPassed && qaPassed
+  const practiceComplete = book.bestScore >= 60
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -542,7 +581,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             </p>
           )}
         </div>
-        <button onClick={onBack} className="btn-secondary flex items-center gap-2 text-sm py-2"><AppIcon name="arrowLeft" size={17} />{t(lang, 'reading.changeBook')}</button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button onClick={() => setShowBookOrganizer(true)} className="btn-secondary flex items-center gap-2 text-sm py-2">
+            <AppIcon name="bookMarked" tone="violet" size={17} />
+            {lang === 'zh' ? '整理' : 'Organize'}
+          </button>
+          <button onClick={onBack} className="btn-secondary flex items-center gap-2 text-sm py-2"><AppIcon name="arrowLeft" size={17} />{t(lang, 'reading.changeBook')}</button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -699,7 +744,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                   {/* 检查是否可以查看内容 */}
                   {isPhaseUnlocked(currentPhase, completedPhaseCount) ? (
                     <>
-                      <PhaseResult key={currentPhase} content={responses[phase.id]} lang={lang} />
+                      <PhaseResult
+                        key={currentPhase}
+                        content={responses[phase.id]}
+                        documentContent={book.documentContent}
+                        lang={lang}
+                      />
 
                       {/* 每个阶段都显示完成按钮 */}
                       {isPhaseCompleted(currentPhase, completedPhaseCount) ? (
@@ -877,6 +927,31 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             </div>
           </div>
 
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowLearningCharts(current => !current)}
+              className="flex items-center gap-2 text-sm font-medium text-[var(--accent)] hover:underline"
+            >
+              <AppIcon name={showLearningCharts ? 'chevronDown' : 'chevronRight'} size={16} />
+              <AppIcon name="chart" tone="violet" size={17} />
+              {lang === 'zh' ? '查看学习分析' : 'View learning analytics'}
+            </button>
+            {showLearningCharts && (
+              <div className="mt-4 animate-fade-in">
+                <BookLearningAnalytics book={book} lang={lang} />
+              </div>
+            )}
+          </div>
+
+          {(practiceRecords.length > 0 || (book.qaPracticeRecords?.length || 0) > 0) && (
+            <p className="text-center text-xs text-[var(--text-secondary)]">
+              {lang === 'zh'
+                ? '综合成绩只合并同一学习会话中的教学模拟和由该次教学生成的角色问答。'
+                : 'The final score combines teaching and persona Q&A only when they belong to the same learning session.'}
+            </p>
+          )}
+
           {/* 完成提示 */}
           {!practiceComplete && (
             <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-400 rounded-xl p-5 shadow-sm">
@@ -891,8 +966,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                     </h3>
                     <p className="text-gray-600 text-sm">
                       {lang === 'zh' 
-                        ? '教学模拟 60分+ ｜ 角色问答全部 60分+' 
-                        : 'Teaching 60+ | All Q&A 60+'}
+                        ? '同一学习会话：教学模拟 60分+ ｜ 角色问答全部 60分+'
+                        : 'Same session: Teaching 60+ | All Q&A 60+'}
                     </p>
                   </div>
                 </div>
@@ -921,7 +996,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               <>
                 <h3 className="font-semibold mb-1">{t(lang, 'practice.teach')}</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-3">{t(lang, 'practice.teachDesc')}</p>
-                
+
                 <textarea
                   value={teachingNote}
                   onChange={e => {
@@ -934,19 +1009,24 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 />
 
                 {practiceError && (
-                  <p role="alert" className="mb-3 text-sm text-red-400">
-                    {practiceError}
-                  </p>
+                  <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+                    <span>{practiceError}</span>
+                    {(missingApiKey || aiConsentRequired || apiKeyInvalid) && (
+                      <button type="button" onClick={onOpenSettings} className="btn-secondary py-1.5 text-xs">
+                        {lang === 'zh' ? '前往设置' : 'Open Settings'}
+                      </button>
+                    )}
+                  </div>
                 )}
-                
-                <div className="flex items-center justify-between">
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className={`text-sm ${teachingNote.length >= 200 ? 'text-green-400' : 'text-[var(--text-secondary)]'}`}>
                     {teachingNote.length.toLocaleString()} / {MAX_AI_ANSWER_LENGTH.toLocaleString()} {lang === 'zh' ? '字' : 'chars'}
                     {teachingNote.length < 200 && <span className="ml-2 text-yellow-400">({t(lang, 'practice.minChars')})</span>}
                   </span>
                   <button
                     onClick={handleSubmitPractice}
-                    disabled={loading || teachingNote.length < 200 || !client}
+                    disabled={loading || teachingNote.length < 200}
                     className="btn-primary"
                   >
                     {t(lang, 'practice.getReview')}
@@ -984,6 +1064,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                           <span className="text-xs text-[var(--text-secondary)]">
                             {new Date(record.createdAt).toLocaleString()}
                           </span>
+                          <span className="text-xs text-[var(--text-secondary)]">
+                            {lang === 'zh' ? '会话' : 'Session'} {record.sessionId?.slice(-6)}
+                          </span>
                           <button onClick={() => handleDeleteRecord(record.id)} className="text-red-400 text-sm">
                             {t(lang, 'practice.deleteRecord')}
                           </button>
@@ -1018,6 +1101,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                             </p>
                             <div className="bg-[var(--bg-card)] rounded p-3">
                               <MarkdownRenderer content={record.aiReview} />
+                              <SourceEvidence content={record.aiReview} documentContent={book.documentContent} lang={lang} />
                             </div>
                           </div>
                         </div>
@@ -1123,8 +1207,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               <div className="inline-block px-4 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <p className="flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm">
                   <AppIcon name="alert" size={17} />{lang === 'zh'
-                    ? '需要通过教学模拟（60分+）和角色问答（全部60分+）才能解锁' 
-                    : 'Pass teaching simulation (60+) and all Q&A (60+) to unlock'}
+                    ? '需要完成六阶段学习，并通过教学模拟（60分+）和角色问答（全部60分+）才能解锁'
+                    : 'Complete all six phases, pass teaching practice (60+), and pass all Q&A (60+) to unlock'}
                 </p>
               </div>
             </div>
@@ -1158,6 +1242,26 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           )}
         </div>
       )}
+
+      {showBookOrganizer && (
+        <div className="modal-overlay" onClick={() => setShowBookOrganizer(false)}>
+          <div className="modal-content max-h-[90vh] max-w-5xl overflow-y-auto" onClick={event => event.stopPropagation()}>
+            <div className="mb-1 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBookOrganizer(false)}
+                className="icon-button"
+                aria-label={lang === 'zh' ? '关闭书籍整理' : 'Close book organizer'}
+                title={lang === 'zh' ? '关闭' : 'Close'}
+              >
+                <AppIcon name="close" size={20} />
+              </button>
+            </div>
+            <BookListManager lang={lang} book={book} />
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

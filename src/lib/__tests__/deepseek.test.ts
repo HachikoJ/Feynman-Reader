@@ -3,11 +3,13 @@
 import OpenAI from 'openai'
 
 jest.mock('../store', () => ({
-  getSettings: jest.fn(() => ({ aiDataConsent: true }))
+  getSettings: jest.fn(() => ({ aiDataConsent: true })),
+  addAIUsageRecord: jest.fn()
 }))
 
 import {
   AI_CONTEXT_LIMIT_EXCEEDED,
+  AI_OUTPUT_INCOMPLETE,
   chat,
   DEEPSEEK_API_KEY_INVALID,
   DEEPSEEK_MODEL,
@@ -23,6 +25,7 @@ import {
   withDeepSeekDefaults
 } from '../deepseek'
 import { getSettings } from '../store'
+import { addAIUsageRecord } from '../store'
 
 describe('DeepSeek V4 Flash request defaults', () => {
   it('uses the V4 Flash model with thinking disabled', () => {
@@ -87,6 +90,58 @@ describe('general chat responses', () => {
     await expect(chat(client, 'system', '分析整本书', '长文内容'.repeat(20_000)))
       .rejects.toThrow(AI_CONTEXT_LIMIT_EXCEEDED)
     expect(create).toHaveBeenCalledTimes(4)
+  })
+
+  it('records the real token counts returned by the API', async () => {
+    const create = jest.fn().mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: '分析结果' } }],
+      model: DEEPSEEK_MODEL,
+      usage: { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 }
+    })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+
+    await chat(client, 'system', 'user', undefined, {
+      requestContext: { task: 'phase-analysis', bookId: 'book-1', sessionId: 'session-1' }
+    })
+
+    expect(addAIUsageRecord).toHaveBeenCalledWith(expect.objectContaining({
+      task: 'phase-analysis',
+      bookId: 'book-1',
+      sessionId: 'session-1',
+      promptTokens: 120,
+      completionTokens: 30,
+      totalTokens: 150
+    }))
+  })
+
+  it('retries once when a phase response is incomplete or cites unknown source chunks', async () => {
+    const create = jest.fn()
+      .mockResolvedValueOnce({
+        choices: [{ finish_reason: 'stop', message: { content: '## 核心要点\n内容 [S999]' } }]
+      })
+      .mockResolvedValueOnce({
+        choices: [{ finish_reason: 'stop', message: { content: '## 核心要点\n完整内容 [S1]\n\n## 作者生平\n完整内容 [S1]' } }]
+      })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+
+    await expect(chat(client, 'system', 'user', '原文内容', {
+      requiredHeadings: ['核心要点', '作者生平'],
+      requireSourceCitations: true,
+      requestContext: { task: 'phase-analysis', bookId: 'book-1' }
+    })).resolves.toContain('作者生平')
+    expect(create).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a second incomplete output with a stable error', async () => {
+    const create = jest.fn().mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: '## 核心要点\n只有一个部分' } }]
+    })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+
+    await expect(chat(client, 'system', 'user', undefined, {
+      requiredHeadings: ['核心要点', '作者生平']
+    })).rejects.toThrow(AI_OUTPUT_INCOMPLETE)
+    expect(create).toHaveBeenCalledTimes(2)
   })
 })
 

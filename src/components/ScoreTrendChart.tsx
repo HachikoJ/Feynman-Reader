@@ -35,15 +35,28 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
 
   // 计算图表尺寸
   const chartHeight = compact ? 80 : 150
-  const chartWidth = '100%'
+  const chartXPadding = 4
+  const chartTopPadding = 18
+  const chartBottomPadding = 6
+  const plotHeight = chartHeight - chartTopPadding - chartBottomPadding
+  const chartBottom = chartHeight - chartBottomPadding
+
+  const getPointX = (idx: number) => {
+    if (scores.length === 1) return 50
+    return chartXPadding + (idx / (scores.length - 1)) * (100 - chartXPadding * 2)
+  }
+
+  const getPointY = (score: number) => {
+    return chartTopPadding + (1 - (score - minScore) / range) * plotHeight
+  }
 
   // 生成 SVG 路径
   const generatePath = () => {
     if (scores.length === 0) return ''
 
     const points = scores.map((score, idx) => {
-      const x = (idx / (scores.length - 1 || 1)) * 100
-      const y = chartHeight - ((score - minScore) / range) * chartHeight
+      const x = getPointX(idx)
+      const y = getPointY(score)
       return `${x},${y}`
     })
 
@@ -54,7 +67,7 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
   const generateAreaPath = () => {
     const linePath = generatePath()
     if (!linePath) return ''
-    return `${linePath} L 100,${chartHeight} L 0,${chartHeight} Z`
+    return `${linePath} L ${getPointX(scores.length - 1)},${chartBottom} L ${getPointX(0)},${chartBottom} Z`
   }
 
   // 获取趋势颜色
@@ -167,76 +180,81 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
 
       {/* 趋势图表 */}
       <div className="bg-[var(--bg-secondary)] rounded-xl p-4 mb-4">
-        <svg
-          viewBox={`0 0 100 ${chartHeight}`}
-          preserveAspectRatio="none"
-          style={{ width: chartWidth, height: chartHeight }}
-          className="overflow-visible"
-        >
-          {/* 网格线 */}
-          {[0, 25, 50, 75, 100].map(level => (
-            <line
-              key={level}
-              x1="0"
-              y1={chartHeight - ((level - minScore) / range) * chartHeight}
-              x2="100"
-              y2={chartHeight - ((level - minScore) / range) * chartHeight}
-              stroke="var(--border)"
-              strokeWidth="0.5"
-              strokeDasharray="2,2"
+        <div data-testid="score-trend-plot" className="relative" style={{ height: chartHeight }}>
+          <svg
+            viewBox={`0 0 100 ${chartHeight}`}
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full overflow-visible"
+          >
+            {/* 网格线 */}
+            {[0, 25, 50, 75, 100].map(level => (
+              <line
+                key={level}
+                x1={chartXPadding}
+                y1={getPointY(level)}
+                x2={100 - chartXPadding}
+                y2={getPointY(level)}
+                stroke="var(--border)"
+                strokeWidth="0.5"
+                strokeDasharray="4,4"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+
+            {/* 填充区域 */}
+            <path
+              d={generateAreaPath()}
+              fill={trendColor}
+              opacity="0.2"
             />
-          ))}
 
-          {/* 填充区域 */}
-          <path
-            d={generateAreaPath()}
-            fill={trendColor}
-            opacity="0.2"
-          />
+            {/* 趋势线 */}
+            <path
+              d={generatePath()}
+              fill="none"
+              stroke={trendColor}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
 
-          {/* 趋势线 */}
-          <path
-            d={generatePath()}
-            fill="none"
-            stroke={trendColor}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* 数据点 */}
+          {/* Keep labels and markers outside the non-uniformly scaled SVG. */}
           {scores.map((score, idx) => {
-            const x = (idx / (scores.length - 1 || 1)) * 100
-            const y = chartHeight - ((score - minScore) / range) * chartHeight
+            const x = getPointX(idx)
+            const y = getPointY(score)
             const isLast = idx === scores.length - 1
             const isBest = score === trend.best
+            const markerSize = isLast ? 8 : isBest ? 6 : 4
 
             return (
-              <g key={idx}>
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={isLast ? 4 : isBest ? 3 : 2}
-                  fill={isBest ? '#22c55e' : isLast ? trendColor : 'var(--text-secondary)'}
-                  className="cursor-pointer hover:r-5 transition-all"
-                />
-                {/* 显示分数标签 */}
+              <div
+                key={idx}
+                data-testid="score-point"
+                className="pointer-events-none absolute"
+                style={{ left: `${x}%`, top: y, transform: 'translate(-50%, -50%)' }}
+              >
                 {isLast && (
-                  <text
-                    x={x}
-                    y={y - 8}
-                    textAnchor="middle"
-                    fontSize="8"
-                    fill="var(--text-primary)"
-                    fontWeight="bold"
+                  <span
+                    data-testid="latest-score-label"
+                    className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap text-sm font-bold leading-none text-[var(--text-primary)]"
                   >
                     {score}
-                  </text>
+                  </span>
                 )}
-              </g>
+                <span
+                  className="block rounded-full"
+                  style={{
+                    width: markerSize,
+                    height: markerSize,
+                    backgroundColor: isBest ? '#22c55e' : isLast ? trendColor : 'var(--text-secondary)'
+                  }}
+                />
+              </div>
             )
           })}
-        </svg>
+        </div>
 
         {/* X轴标签 */}
         <div className="flex justify-between mt-2 text-xs text-[var(--text-secondary)]">

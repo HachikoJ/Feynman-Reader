@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const localChrome = process.env.PLAYWRIGHT_USE_SYSTEM_CHROME === '1'
+  ? { channel: 'chrome' as const }
+  : {}
+
 /**
  * Playwright E2E 测试配置
  * 用于端到端测试，覆盖关键用户流程
@@ -36,7 +40,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
 
     /* 视频录制 */
-    video: 'retain-on-failure',
+    video: process.env.PLAYWRIGHT_USE_SYSTEM_CHROME === '1' ? 'off' : 'retain-on-failure',
 
     /* 操作超时 */
     actionTimeout: 10 * 1000,
@@ -47,7 +51,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], ...localChrome },
     },
 
     {
@@ -63,7 +67,7 @@ export default defineConfig({
     /* 移动端测试 */
     {
       name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
+      use: { ...devices['Pixel 5'], ...localChrome },
     },
     {
       name: 'Mobile Safari',

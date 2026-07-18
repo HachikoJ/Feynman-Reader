@@ -28,15 +28,18 @@ import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import UndoRedoControls, { useUndoRedoShortcuts } from '@/components/UndoRedoControls'
 import {
-  BACKUP_REMINDER_INTERVAL_MS,
   DATA_RISK_ACKNOWLEDGED_KEY,
   DATA_RISK_NOTICE_VERSION,
   LAST_BACKUP_AT_KEY,
   hasAcknowledgedCurrentDataRisk,
+  isBackupReminderDue,
   shouldShowBackupWarning
 } from '@/lib/backupReminder'
 import { getActiveStartupPrompt } from '@/lib/startupPrompt'
-import { validateApiKey } from '@/lib/validation'
+import { useServiceWorker } from '@/lib/useServiceWorker'
+import AITaskStatus from '@/components/AITaskStatus'
+import { LoadingState, Skeleton } from '@/components/Skeleton'
+import AppDialogHost from '@/components/AppDialogHost'
 
 type View = 'bookshelf' | 'reading' | 'settings'
 
@@ -72,6 +75,7 @@ export default function Home() {
 
   // P1 新增：启用撤销/重做快捷键
   useUndoRedoShortcuts(settings.language)
+  useServiceWorker()
 
   useEffect(() => {
     let cancelled = false
@@ -110,7 +114,7 @@ export default function Home() {
       const acknowledged = hasAcknowledgedCurrentDataRisk(localStorage.getItem(DATA_RISK_ACKNOWLEDGED_KEY))
       const lastBackupValue = localStorage.getItem(LAST_BACKUP_AT_KEY)
       const lastBackupAt = lastBackupValue ? Number(lastBackupValue) : null
-      const needsBackup = books.length > 0 && (!lastBackupAt || Date.now() - lastBackupAt >= BACKUP_REMINDER_INTERVAL_MS)
+      const needsBackup = isBackupReminderDue({ bookCount: books.length, lastBackupAt })
       setBackupDue(needsBackup)
       setShowDataLossWarning(shouldShowBackupWarning({
         acknowledged,
@@ -131,21 +135,13 @@ export default function Home() {
   const handleSettingsChange = (newSettings: AppSettings) => {
     setSettings(newSettings)
     document.documentElement.setAttribute('data-theme', newSettings.theme)
+    if (newSettings.apiKey.trim() && newSettings.aiDataConsent) {
+      setShowApiKeyAlert(false)
+    }
   }
 
   const handleSelectBook = (book: Book) => {
-    const apiKey = settings.apiKey.trim()
-    if (!apiKey && !settings.hideApiKeyAlert) {
-      setShowApiKeyAlert(true)
-      return
-    }
-    if (apiKey && (!validateApiKey(apiKey).valid || !settings.aiDataConsent)) {
-      setSelectedBook(null)
-      setShowApiKeyAlert(false)
-      setFocusApiConfigurationRequest(request => request + 1)
-      setView('settings')
-      return
-    }
+    setShowApiKeyAlert(false)
     setSelectedBook(book)
     setView('reading')
   }
@@ -206,7 +202,30 @@ export default function Home() {
   })
 
   if (!mounted) {
-    return null
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)]" aria-busy="true" aria-label="正在读取本地书架">
+        <nav className="border-b border-[var(--border)] bg-[var(--bg-primary)]">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-lg" />
+              <Skeleton className="hidden h-6 w-36 sm:block" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-11 w-24 rounded-lg" />
+              <Skeleton className="h-11 w-24 rounded-lg" />
+              <Skeleton className="h-11 w-11 rounded-lg" />
+            </div>
+          </div>
+        </nav>
+        <main className="mx-auto max-w-6xl px-4 py-8">
+          <div className="mb-6 space-y-2">
+            <Skeleton className="h-9 w-40" />
+            <Skeleton className="h-4 w-56" />
+          </div>
+          <LoadingState type="bookshelf" count={8} lang="zh" />
+        </main>
+      </div>
+    )
   }
 
   if (initializationError) {
@@ -231,6 +250,8 @@ export default function Home() {
     <ErrorBoundary lang={lang}>
       <AuthGuard>
         <div className="min-h-screen">
+          <AppDialogHost lang={lang} />
+          <AITaskStatus lang={lang} />
           {storageWriteError && (
             <div role="alert" className="sticky top-0 z-50 border-b border-red-500/50 bg-red-950 px-4 py-3 text-sm text-red-100">
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">

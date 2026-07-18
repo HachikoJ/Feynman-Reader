@@ -1,9 +1,11 @@
 export const MODEL_CONTEXT_TOKEN_LIMIT = 1_000_000
 export const MODEL_CONTEXT_RESERVED_TOKENS = 200_000
 export const DEFAULT_DOCUMENT_CONTEXT_CHARS = 600_000
+export const DOCUMENT_SOURCE_CHUNK_CHARS = 2_500
 
 export interface DocumentContext {
   content: string
+  citationIds: string[]
   sourceLength: number
   includedLength: number
   complete: boolean
@@ -43,22 +45,52 @@ export function buildDocumentContext(
   maxChars = DEFAULT_DOCUMENT_CONTEXT_CHARS
 ): DocumentContext {
   const source = documentContent.trim()
-  if (!source || source.length <= maxChars) {
+  if (!source) {
     return {
-      content: source,
+      content: '',
+      citationIds: [],
       sourceLength: documentContent.length,
-      includedLength: source.length,
+      includedLength: 0,
       complete: true,
-      selectedChunks: source ? 1 : 0,
-      totalChunks: source ? 1 : 0
+      selectedChunks: 0,
+      totalChunks: 0
     }
   }
 
-  const chunkSize = 2_500
+  const chunkSize = DOCUMENT_SOURCE_CHUNK_CHARS
   const chunks = Array.from(
     { length: Math.ceil(source.length / chunkSize) },
     (_, index) => source.slice(index * chunkSize, (index + 1) * chunkSize)
   )
+  if (chunks.length === 1) {
+    return {
+      content: source,
+      citationIds: ['S1'],
+      sourceLength: documentContent.length,
+      includedLength: source.length,
+      complete: true,
+      selectedChunks: 1,
+      totalChunks: 1
+    }
+  }
+
+  const renderChunk = (index: number) => {
+    const position = Math.round(index / Math.max(1, chunks.length - 1) * 100)
+    return `[S${index + 1}] [原文片段 ${index + 1}/${chunks.length}，约位于全文 ${position}%]\n${chunks[index]}`
+  }
+  const completeContent = chunks.map((_, index) => renderChunk(index)).join('\n\n')
+  if (completeContent.length <= maxChars) {
+    return {
+      content: completeContent,
+      citationIds: chunks.map((_, index) => `S${index + 1}`),
+      sourceLength: documentContent.length,
+      includedLength: source.length,
+      complete: true,
+      selectedChunks: chunks.length,
+      totalChunks: chunks.length
+    }
+  }
+
   const capacity = Math.max(3, Math.floor((maxChars - 2_000) / (chunkSize + 80)))
   const selected = new Set(evenlySpacedIndices(chunks.length, Math.ceil(capacity / 2)))
   const terms = taskTerms(task)
@@ -76,17 +108,47 @@ export function buildDocumentContext(
   }
 
   const selectedIndices = [...selected].sort((left, right) => left - right)
-  const content = selectedIndices.map(index => {
-    const position = Math.round(index / Math.max(1, chunks.length - 1) * 100)
-    return `[原文片段 ${index + 1}/${chunks.length}，约位于全文 ${position}%]\n${chunks[index]}`
-  }).join('\n\n')
+  const content = selectedIndices.map(renderChunk).join('\n\n')
 
   return {
     content: content.slice(0, maxChars),
+    citationIds: selectedIndices.map(index => `S${index + 1}`),
     sourceLength: documentContent.length,
     includedLength: selectedIndices.reduce((sum, index) => sum + chunks[index].length, 0),
     complete: false,
     selectedChunks: selectedIndices.length,
     totalChunks: chunks.length
+  }
+}
+
+export interface DocumentCitationExcerpt {
+  id: string
+  position: number
+  excerpt: string
+}
+
+export function getDocumentCitationExcerpt(
+  documentContent: string,
+  citationId: string,
+  maxChars = 800
+): DocumentCitationExcerpt | null {
+  const match = /^S(\d+)$/.exec(citationId)
+  if (!match) return null
+  const index = Number(match[1]) - 1
+  if (!Number.isInteger(index) || index < 0) return null
+
+  const source = documentContent.trim()
+  const totalChunks = Math.max(1, Math.ceil(source.length / DOCUMENT_SOURCE_CHUNK_CHARS))
+  if (index >= totalChunks) return null
+  const chunk = source.slice(
+    index * DOCUMENT_SOURCE_CHUNK_CHARS,
+    (index + 1) * DOCUMENT_SOURCE_CHUNK_CHARS
+  ).trim()
+  if (!chunk) return null
+
+  return {
+    id: citationId,
+    position: Math.round(index / Math.max(1, totalChunks - 1) * 100),
+    excerpt: chunk.length > maxChars ? `${chunk.slice(0, maxChars).trimEnd()}...` : chunk
   }
 }

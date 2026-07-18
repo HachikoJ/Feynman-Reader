@@ -1,16 +1,18 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Language, t } from '@/lib/i18n'
+import { Language } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
 import { Book, PersonaAnswerAttempt, PersonaQuestion, PracticeRecord, QAPracticeRecord, getQAPracticeRecords, addQAPracticeRecord, updateQAPracticeRecord, deleteQAPracticeRecord, flushPendingStoreWrites, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
-import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import MarkdownRenderer from './MarkdownRenderer'
+import SourceEvidence from './SourceEvidence'
 import LoadingQuotes from './LoadingQuotes'
-import PersonaSelector, { PersonaBadge } from './PersonaSelector'
+import PersonaSelector from './PersonaSelector'
 import ScoreTrendChart from './ScoreTrendChart'
 import ScoringCriteriaDisplay from './ScoringCriteriaDisplay'
-import { calculateScoreTrend, ProgressRecord, PERSONA_TYPES } from '@/lib/practiceEnhancement'
+import { ProgressRecord, PERSONA_TYPES } from '@/lib/practiceEnhancement'
 import { MAX_AI_ANSWER_LENGTH } from '@/lib/dataLimits'
 import AppIcon, { AppIconName } from './AppIcon'
 
@@ -35,13 +37,13 @@ export function selectActiveQARecord(records: QAPracticeRecord[]): QAPracticeRec
     }, null)
 }
 
-export function getBestPassedTeachingContent(records: PracticeRecord[] = []): string | undefined {
+export function getBestPassedTeachingRecord(records: PracticeRecord[] = []): PracticeRecord | undefined {
   return records
     .filter(record => record.scores.overall >= 60)
     .reduce<PracticeRecord | null>((best, record) => {
       if (!best) return record
       return record.scores.overall > best.scores.overall ? record : best
-    }, null)?.content
+    }, null) || undefined
 }
 
 export function haveAnswersForUnpassedQuestions(
@@ -173,7 +175,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
     setErrorMessage(null)
   }, [book.id])
 
-  const bestTeachingContent = getBestPassedTeachingContent(book.practiceRecords)
+  const bestTeachingRecord = getBestPassedTeachingRecord(book.practiceRecords)
+  const bestTeachingContent = bestTeachingRecord?.content
   const hasPassedTeaching = bestTeachingContent !== undefined
 
   const getRequestErrorMessage = (error: unknown, action: 'generate' | 'evaluate') => {
@@ -193,6 +196,16 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       return lang === 'zh'
         ? '文档上下文过长，系统自动缩减后仍未完成评分。你填写的回答已保留，请拆分文档后重试。'
         : 'The document context is too long even after automatic reduction. Your answers were kept; split the document and try again.'
+    }
+
+    if (error instanceof Error && error.message === AI_REQUEST_CANCELLED) {
+      return lang === 'zh' ? '已取消本次 AI 请求，已填写内容仍然保留。' : 'The AI request was cancelled. Your answers were kept.'
+    }
+    if (error instanceof Error && error.message === AI_TASK_BUSY) {
+      return lang === 'zh' ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。' : 'Another AI task is running. Wait for it to finish or cancel it first.'
+    }
+    if (error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE) {
+      return lang === 'zh' ? 'AI 输出未通过完整性或原文引用校验，请重试。' : 'The AI output failed completeness or source-citation validation. Try again.'
     }
 
     if (action === 'generate') {
@@ -238,28 +251,24 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         book.author,
         book.documentContent,
         bestTeachingContent,
-        selectedPersonas
+        selectedPersonas,
+        { task: 'persona-questions', bookId: book.id, sessionId: bestTeachingRecord!.sessionId }
       )
 
       if (questions.length !== PERSONA_QUESTION_COUNT) {
         throw new Error('AI returned an invalid question set')
       }
 
-      const newRecord: QAPracticeRecord = {
-        id: '',
-        bookId: book.id,
+      await flushPendingStoreWrites()
+      const savedRecord = addQAPracticeRecord(book.id, {
+        sessionId: bestTeachingRecord!.sessionId!,
         questions: questions.map(q => ({
           persona: q.persona as any,
           personaName: q.personaName,
           question: q.question
         })),
-        allPassed: false,
-        createdAt: 0,
-        updatedAt: 0
-      }
-
-      await flushPendingStoreWrites()
-      const savedRecord = addQAPracticeRecord(book.id, newRecord)
+        allPassed: false
+      })
       await flushPendingStoreWrites()
       setCurrentRecord(savedRecord)
       setQaRecords(getQAPracticeRecords(book.id))
@@ -319,7 +328,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         client,
         book.name,
         questionsToEvaluate.map(({ index: _index, ...question }) => question),
-        book.documentContent
+        book.documentContent,
+        { task: 'persona-evaluation', bookId: book.id, sessionId: currentRecord.sessionId }
       )
       const matchedEvaluations = matchEvaluationsToQuestions(questionsToEvaluate, evaluations)
       if (matchedEvaluations.length !== questionsToEvaluate.length) {
@@ -449,7 +459,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
     <div className="space-y-6">
       {/* 进步追踪图 */}
       {progressRecords.length > 0 && (
-        <details>
+        <details onToggle={event => setShowProgress(event.currentTarget.open)}>
           <summary className="cursor-pointer card flex items-center justify-between p-4 hover:bg-[var(--bg-secondary)] rounded-xl transition-colors">
             <h3 className="flex items-center gap-2 font-semibold">
               <AppIcon name="trendUp" tone="green" size={17} />{lang === 'zh' ? '进步追踪' : 'Progress Tracking'}
@@ -465,7 +475,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       )}
 
       {/* 评分标准 */}
-      <details>
+      <details onToggle={event => setShowCriteria(event.currentTarget.open)}>
         <summary className="cursor-pointer card flex items-center justify-between p-4 hover:bg-[var(--bg-secondary)] rounded-xl transition-colors">
           <h3 className="flex items-center gap-2 font-semibold">
             <AppIcon name="chart" tone="blue" size={17} />{lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
@@ -587,6 +597,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                       {q.score !== undefined && !q.passed && <span className="text-yellow-400 text-sm">{q.score}分</span>}
                     </div>
                     <p className="text-sm mb-3">{q.question}</p>
+                    <SourceEvidence content={q.question} documentContent={book.documentContent} lang={lang} />
                     
                     {q.userAnswer && q.aiReview && !q.passed && (
                       <div className="mt-3 border border-yellow-500/30 bg-yellow-500/10 rounded-lg p-3 text-sm">
@@ -601,6 +612,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                           {lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:'}
                         </p>
                         <MarkdownRenderer content={q.aiReview} />
+                        <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
                     )}
 
@@ -625,6 +637,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                           {lang === 'zh' ? 'AI 点评：' : 'AI Review:'}
                         </p>
                         <MarkdownRenderer content={q.aiReview} />
+                        <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
                     )}
                   </div>
@@ -697,6 +710,9 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                       <span className="text-xs text-[var(--text-secondary)]">
                         {new Date(record.createdAt).toLocaleString()}
                       </span>
+                      <span className="text-xs text-[var(--text-secondary)]">
+                        {lang === 'zh' ? '会话' : 'Session'} {record.sessionId?.slice(-6)}
+                      </span>
                       <button
                         onClick={() => handleDeleteRecord(record.id)}
                         disabled={deletingRecordIds.has(record.id)}
@@ -720,6 +736,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                           )}
                         </div>
                         <p className="text-[var(--text-secondary)] mb-2">{q.question}</p>
+                        <SourceEvidence content={q.question} documentContent={book.documentContent} lang={lang} />
                         {getQuestionAttempts(q).map((attempt, attemptIndex) => (
                           <div key={attemptIndex} className="mt-3 border-t border-[var(--border)] pt-3 first:mt-0 first:border-t-0 first:pt-0">
                             <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
@@ -734,6 +751,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                               {attempt.passed ? (lang === 'zh' ? 'AI 点评：' : 'AI Review:') : (lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:')}
                             </p>
                             <MarkdownRenderer content={attempt.aiReview} />
+                            <SourceEvidence content={attempt.aiReview} documentContent={book.documentContent} lang={lang} />
                           </div>
                         ))}
                       </div>

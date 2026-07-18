@@ -11,7 +11,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 const SHOULD_LOG = !IS_PRODUCTION
 
 class Logger {
-  private formatMessage(level: LogLevel, message: string, ...args: unknown[]): string {
+  private formatMessage(level: LogLevel, message: string): string {
     const timestamp = new Date().toISOString()
     const prefix = `[${timestamp}] [${level.toUpperCase()}]`
     return `${prefix} ${message}`

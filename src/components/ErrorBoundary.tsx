@@ -237,35 +237,3 @@ export class ErrorBoundary extends Component<Props, State> {
     return children
   }
 }
-
-// Hook-based error boundary wrapper for easier usage
-import { useEffect, useState } from 'react'
-
-export function withErrorBoundary<P extends object>(
-  Component: React.ComponentType<P>,
-  errorHandler?: (error: Error, errorInfo: ErrorInfo) => void
-): React.ComponentType<P> {
-  return function WrappedComponent(props: P) {
-    return (
-      <ErrorBoundary onError={errorHandler}>
-        <Component {...props} />
-      </ErrorBoundary>
-    )
-  }
-}
-
-// Custom hook for error reporting
-export function useErrorHandler() {
-  const [error, setError] = useState<Error | null>(null)
-
-  const resetError = () => setError(null)
-
-  // If an error is thrown, update state and trigger ErrorBoundary
-  useEffect(() => {
-    if (error) {
-      throw error
-    }
-  }, [error])
-
-  return { setError, resetError }
-}

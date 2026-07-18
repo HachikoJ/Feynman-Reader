@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  Gauge,
   HardDrive,
   Languages,
   Moon,
@@ -25,11 +26,13 @@ import {
   CustomQuote,
   getBooks,
   getSettings,
+  getAIUsageRecords,
+  getAIUsageSummary,
   saveBooks,
   saveSetting,
   saveSettings,
   downloadDataBackup,
-  previewImportData,
+  previewImportBackupFiles,
   applyImportData,
   getDataStats,
   ExportData,
@@ -37,7 +40,9 @@ import {
   flushPendingStoreWrites,
   initializeStore,
   reloadBooksFromPersistence,
-  reloadSettingsFromPersistence
+  reloadSettingsFromPersistence,
+  replaceAIUsageRecords,
+  subscribeToAIUsage
 } from '@/lib/store'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
@@ -45,9 +50,10 @@ import { privacyPolicyContent } from '@/lib/privacyPolicy'
 import { defaultQuotesZh, defaultQuotesEn } from './LoadingQuotes'
 import MarkdownRenderer from './MarkdownRenderer'
 import { LAST_BACKUP_AT_KEY } from '@/lib/backupReminder'
-import { MAX_BACKUP_FILE_BYTES } from '@/lib/backupValidation'
 import { validateApiKey } from '@/lib/validation'
 import { DEEPSEEK_API_KEY_INVALID, validateDeepSeekApiKey } from '@/lib/deepseek'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
+import { showAppConfirm } from '@/lib/appDialog'
 
 // P0 新增：IndexedDB 支持
 import {
@@ -79,9 +85,13 @@ export default function Settings({
   const [showKey, setShowKey] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [updatingAiPrivacy, setUpdatingAiPrivacy] = useState(false)
   const [savingQuickSetting, setSavingQuickSetting] = useState(false)
   const [quickSettingError, setQuickSettingError] = useState<string | null>(null)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [apiKeyConsentError, setApiKeyConsentError] = useState<string | null>(null)
+  const [apiActionStatus, setApiActionStatus] = useState<string | null>(null)
+  const [confirmingApiKeyDeletion, setConfirmingApiKeyDeletion] = useState(false)
   const [showConsentPolicy, setShowConsentPolicy] = useState(false)
   const [hasReadConsentPolicy, setHasReadConsentPolicy] = useState(false)
   const [newQuoteText, setNewQuoteText] = useState('')
@@ -96,9 +106,12 @@ export default function Settings({
   const [showDataManagement, setShowDataManagement] = useState(false)
   const [lastBackupAt, setLastBackupAt] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
-  const [awaitingBackupConfirmation, setAwaitingBackupConfirmation] = useState(false)
+  const [pendingBackupDownload, setPendingBackupDownload] = useState<{
+    fileCount: number
+    format: 'json' | 'multipart'
+  } | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
-  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importFiles, setImportFiles] = useState<File[]>([])
   const [importPreview, setImportPreview] = useState<ExportData | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [importOptions, setImportOptions] = useState({
@@ -107,6 +120,7 @@ export default function Settings({
     mergeBooks: true
   })
   const [importing, setImporting] = useState(false)
+  const [readingImport, setReadingImport] = useState(false)
   const [dataStats, setDataStats] = useState({
     totalBooks: 0,
     totalNotes: 0,
@@ -115,6 +129,7 @@ export default function Settings({
     dataSize: '0 B'
   })
   const [dataStatsError, setDataStatsError] = useState(false)
+  const [aiUsageSummary, setAIUsageSummary] = useState(() => getAIUsageSummary())
   const [dataOperationStatus, setDataOperationStatus] = useState<{
     message: string
     type: 'success' | 'error' | 'info'
@@ -161,6 +176,7 @@ export default function Settings({
     }
 
     setSettings(loaded)
+    setSettingsLoaded(true)
 
     // 获取数据统计
     if (typeof window !== 'undefined') {
@@ -182,6 +198,15 @@ export default function Settings({
     }
   }, [])
 
+  useEffect(() => subscribeToAIUsage(() => {
+    setAIUsageSummary(getAIUsageSummary())
+    try {
+      setDataStats(getDataStats())
+    } catch (error) {
+      logger.warn('Failed to refresh data size after AI usage update:', error)
+    }
+  }), [])
+
   useEffect(() => {
     if (openDataManagement) {
       setShowDataManagement(true)
@@ -190,6 +215,7 @@ export default function Settings({
 
   useEffect(() => {
     if (
+      !settingsLoaded ||
       focusApiConfigurationRequest <= 0 ||
       handledApiConfigurationRequestRef.current === focusApiConfigurationRequest
     ) return
@@ -198,20 +224,23 @@ export default function Settings({
     const apiKeyMissing = settings.apiKey.trim().length === 0
     const apiKeyValidation = validateApiKey(settings.apiKey)
     const missingConsent = settings.apiKey.trim().length > 0 && !settings.aiDataConsent
-    setApiKeyConsentError(apiKeyMissing
+    const configurationError = apiKeyMissing
       ? (settings.language === 'zh' ? '请先填写 DeepSeek API Key，并在勾选同意后保存。' : 'Add your DeepSeek API key, confirm consent, and save it first.')
       : !apiKeyValidation.valid
         ? (settings.language === 'zh' ? 'API Key 格式不正确，请检查后重新保存。' : 'The API key format is invalid. Check it and save again.')
       : missingConsent
         ? (settings.language === 'zh' ? '使用 AI 功能前，请先确认 AI 数据传输同意。' : 'Confirm AI data transfer consent before using AI features.')
-        : null)
+        : null
+
+    setApiKeyConsentError(configurationError)
+    if (!configurationError) return
 
     requestAnimationFrame(() => {
       const target = missingConsent ? aiConsentRef.current : apiKeyInputRef.current
       target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       target?.focus()
     })
-  }, [focusApiConfigurationRequest, settings.aiDataConsent, settings.apiKey, settings.language])
+  }, [focusApiConfigurationRequest, settings.aiDataConsent, settings.apiKey, settings.language, settingsLoaded])
 
   // P0 新增：加载 IndexedDB 信息
   async function loadDbInfo() {
@@ -287,6 +316,7 @@ export default function Settings({
 
   const handleSave = async () => {
     if (settingsSaveInFlightRef.current) return
+    setApiActionStatus(null)
     const trimmedApiKey = settings.apiKey.trim()
     if (!trimmedApiKey) {
       const message = settings.language === 'zh'
@@ -334,11 +364,21 @@ export default function Settings({
       await validateDeepSeekApiKey(trimmedApiKey)
     } catch (error) {
       const invalidKey = error instanceof Error && error.message === DEEPSEEK_API_KEY_INVALID
+      const cancelled = error instanceof Error && error.message === AI_REQUEST_CANCELLED
+      const busy = error instanceof Error && error.message === AI_TASK_BUSY
       const message = settings.language === 'zh'
-        ? (invalidKey
+        ? (cancelled
+            ? '已取消 API Key 验证，设置未保存。'
+            : busy
+            ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。'
+            : invalidKey
             ? 'API Key 无效，请检查是否复制正确或已被停用。'
             : '暂时无法验证 API Key，请检查网络后重试。')
-        : (invalidKey
+        : (cancelled
+            ? 'API key validation was cancelled. Settings were not saved.'
+            : busy
+            ? 'Another AI task is running. Wait for it to finish or cancel it first.'
+            : invalidKey
             ? 'The API key is invalid. Check that it was copied correctly and is still active.'
             : 'The API key could not be verified. Check your network and try again.')
       logger.warn(invalidKey ? 'DeepSeek rejected the API key.' : 'DeepSeek API key verification failed.')
@@ -384,6 +424,7 @@ export default function Settings({
     setSettings(newSettings)
     if (key === 'apiKey' || key === 'aiDataConsent') {
       setApiKeyConsentError(null)
+      setApiActionStatus(null)
       setSaved(false)
     }
     if (key === 'theme') {
@@ -424,6 +465,49 @@ export default function Settings({
 
   const handleLanguageChange = (newLang: Language) => {
     void persistQuickSetting('language', newLang)
+  }
+
+  const persistAiPrivacySettings = async (
+    updates: Partial<Pick<AppSettings, 'apiKey' | 'aiDataConsent' | 'hideApiKeyAlert'>>,
+    successMessage: string
+  ): Promise<boolean> => {
+    if (settingsSaveInFlightRef.current) return false
+
+    settingsSaveInFlightRef.current = true
+    setUpdatingAiPrivacy(true)
+    setSaved(false)
+    setApiActionStatus(null)
+    setApiKeyConsentError(null)
+
+    try {
+      await flushPendingStoreWrites()
+      const persistedSettings = { ...getSettings(), ...updates }
+      saveSettings(persistedSettings)
+      await flushPendingStoreWrites()
+      setSettings(current => ({ ...current, ...updates }))
+      onSettingsChange(persistedSettings)
+      setApiActionStatus(successMessage)
+      return true
+    } catch (error) {
+      logger.error('Failed to update AI privacy settings:', error)
+      const restored = await reloadSettingsFromPersistence().catch(() => getSettings())
+      setSettings(current => ({
+        ...current,
+        apiKey: restored.apiKey,
+        aiDataConsent: restored.aiDataConsent,
+        hideApiKeyAlert: restored.hideApiKeyAlert
+      }))
+      onSettingsChange(restored)
+      setApiKeyConsentError(
+        settings.language === 'zh'
+          ? '操作保存失败，已恢复到上次保存状态。'
+          : 'The change could not be saved and was reverted.'
+      )
+      return false
+    } finally {
+      settingsSaveInFlightRef.current = false
+      setUpdatingAiPrivacy(false)
+    }
   }
 
   const addQuote = () => {
@@ -486,7 +570,7 @@ export default function Settings({
     try {
       localStorage.setItem(LAST_BACKUP_AT_KEY, String(backupAt))
       setLastBackupAt(backupAt)
-      setAwaitingBackupConfirmation(false)
+      setPendingBackupDownload(null)
       onBackupCompleted?.()
       setDataOperationStatus({
         message: settings.language === 'zh' ? '备份已成功保存，备份时间已更新。' : 'Backup saved successfully. The backup time was updated.',
@@ -508,14 +592,14 @@ export default function Settings({
     if (dataOperationInFlightRef.current) return
     dataOperationInFlightRef.current = true
     setExporting(true)
-    setAwaitingBackupConfirmation(false)
+    setPendingBackupDownload(null)
     setDataOperationStatus(null)
     try {
       const result = await downloadDataBackup()
-      if (result === 'saved') {
+      if (result.status === 'saved') {
         recordBackupCompleted()
       } else {
-        setAwaitingBackupConfirmation(true)
+        setPendingBackupDownload({ fileCount: result.fileCount, format: result.format })
       }
       try {
         setDataStats(getDataStats())
@@ -543,44 +627,25 @@ export default function Settings({
   }
 
   // 数据导入 - 选择文件
-  const handleImportFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleImportFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
     const readToken = ++importReadTokenRef.current
 
-    setImportFile(file)
+    setImportFiles(files)
     setImportError(null)
+    setImportPreview(null)
+    setReadingImport(true)
 
-    if (file.size > MAX_BACKUP_FILE_BYTES) {
-      setImportError(`备份文件不能超过 ${MAX_BACKUP_FILE_BYTES / 1024 / 1024} MB`)
-      setImportPreview(null)
-      return
-    }
+    const result = await previewImportBackupFiles(files)
+    if (readToken !== importReadTokenRef.current) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      if (readToken !== importReadTokenRef.current) return
-      try {
-        const content = event.target?.result as string
-        const result = previewImportData(content)
-
-        if (result.valid && result.data) {
-          setImportPreview(result.data)
-        } else {
-          setImportError(result.error || '文件格式错误')
-          setImportPreview(null)
-        }
-      } catch (e) {
-        setImportError('无法解析文件')
-        setImportPreview(null)
-      }
+    if (result.valid && result.data) {
+      setImportPreview(result.data)
+    } else {
+      setImportError(result.error || (settings.language === 'zh' ? '文件格式错误' : 'Invalid backup format'))
     }
-    reader.onerror = () => {
-      if (readToken !== importReadTokenRef.current) return
-      setImportError('无法读取备份文件')
-      setImportPreview(null)
-    }
-    reader.readAsText(file)
+    setReadingImport(false)
   }
 
   // 数据导入 - 确认导入
@@ -595,6 +660,7 @@ export default function Settings({
     dataOperationInFlightRef.current = true
     const previousSettings = getSettings()
     const previousBooks = getBooks()
+    const previousAIUsageRecords = getAIUsageRecords()
     setImporting(true)
     try {
       await flushPendingStoreWrites()
@@ -612,7 +678,7 @@ export default function Settings({
       // 关闭模态框
       setShowImportModal(false)
       setImportPreview(null)
-      setImportFile(null)
+      setImportFiles([])
       setImportError(null)
       setDataOperationStatus({
         message: reloaded.language === 'zh' ? '数据导入成功。' : 'Data imported successfully.',
@@ -624,6 +690,7 @@ export default function Settings({
       try {
         saveSettings(previousSettings)
         saveBooks(previousBooks)
+        replaceAIUsageRecords(previousAIUsageRecords)
         await flushPendingStoreWrites()
         rollbackSucceeded = true
       } catch (rollbackError) {
@@ -655,9 +722,15 @@ export default function Settings({
   const handleClearData = async () => {
     if (dataOperationInFlightRef.current) return
     dataOperationInFlightRef.current = true
-    const confirmed = confirm(settings.language === 'zh'
-      ? '确定要清除所有数据吗？此操作不可撤销，平台也无法恢复。强烈建议先取消并导出备份。'
-      : 'Clear all data? This cannot be undone or recovered by the platform. We strongly recommend cancelling and exporting a backup first.')
+    const confirmed = await showAppConfirm({
+      title: settings.language === 'zh' ? '确认清空全部数据' : 'Confirm data deletion',
+      message: settings.language === 'zh'
+        ? '此操作不可撤销，平台也无法恢复。强烈建议先取消并导出备份。'
+        : 'This cannot be undone or recovered by the platform. We strongly recommend cancelling and exporting a backup first.',
+      confirmText: settings.language === 'zh' ? '确认清空' : 'Clear data',
+      cancelText: settings.language === 'zh' ? '取消' : 'Cancel',
+      tone: 'danger'
+    })
     if (!confirmed) {
       dataOperationInFlightRef.current = false
       return
@@ -704,7 +777,7 @@ export default function Settings({
   const closeDataManagement = () => {
     if (dataOperationInFlightRef.current) return
     setShowDataManagement(false)
-    setAwaitingBackupConfirmation(false)
+    setPendingBackupDownload(null)
     setDataOperationStatus(null)
   }
 
@@ -714,10 +787,13 @@ export default function Settings({
     setShowImportModal(false)
     setImportPreview(null)
     setImportError(null)
-    setImportFile(null)
+    setImportFiles([])
+    setReadingImport(false)
   }
 
   const openConsentPolicy = () => {
+    setApiKeyConsentError(null)
+    setApiActionStatus(null)
     setHasReadConsentPolicy(false)
     setShowConsentPolicy(true)
     requestAnimationFrame(() => {
@@ -731,7 +807,12 @@ export default function Settings({
 
   const handleConsentChange = (checked: boolean) => {
     if (!checked) {
-      updateSetting('aiDataConsent', false)
+      void persistAiPrivacySettings(
+        { aiDataConsent: false },
+        settings.language === 'zh'
+          ? 'AI 数据传输同意已撤回，后续 AI 功能已停用。'
+          : 'AI data transfer consent was withdrawn. AI features are now disabled.'
+      )
       return
     }
 
@@ -745,12 +826,45 @@ export default function Settings({
     )
   }
 
-  const acceptConsentPolicy = () => {
-    updateSetting('aiDataConsent', true)
-    setShowConsentPolicy(false)
+  const acceptConsentPolicy = async () => {
+    const savedConsent = await persistAiPrivacySettings(
+      { aiDataConsent: true },
+      settings.language === 'zh'
+        ? 'AI 数据传输同意已保存。'
+        : 'AI data transfer consent was saved.'
+    )
+    if (savedConsent) setShowConsentPolicy(false)
+  }
+
+  const handleDeleteApiKey = async () => {
+    if (confirmingApiKeyDeletion || updatingAiPrivacy || saving) return
+    setConfirmingApiKeyDeletion(true)
+    try {
+      const confirmed = await showAppConfirm({
+        title: settings.language === 'zh' ? '确认删除 API Key' : 'Confirm API key deletion',
+        message: settings.language === 'zh'
+          ? '删除后 AI 功能将停用，并同步撤回 AI 数据传输同意。'
+          : 'AI features will be disabled and AI data transfer consent will also be withdrawn.',
+        confirmText: settings.language === 'zh' ? '确认删除' : 'Delete',
+        cancelText: settings.language === 'zh' ? '取消' : 'Cancel',
+        tone: 'danger'
+      })
+      if (!confirmed) return
+
+      setShowKey(false)
+      await persistAiPrivacySettings(
+        { apiKey: '', aiDataConsent: false, hideApiKeyAlert: false },
+        settings.language === 'zh'
+          ? 'API Key 已删除，AI 数据传输同意已同步撤回。'
+          : 'The API key was deleted and AI data transfer consent was withdrawn.'
+      )
+    } finally {
+      setConfirmingApiKeyDeletion(false)
+    }
   }
 
   const lang = settings.language
+  const hasSavedApiKey = getSettings().apiKey.trim().length > 0
   const consentPolicy = privacyPolicyContent[lang]
   const presetCount = settings.quotes.filter(q => q.isPreset).length
   const customCount = settings.quotes.filter(q => !q.isPreset).length
@@ -763,7 +877,7 @@ export default function Settings({
           <button
             type="button"
             onClick={() => handleLanguageChange(lang === 'zh' ? 'en' : 'zh')}
-            disabled={savingQuickSetting || saving}
+            disabled={savingQuickSetting || saving || updatingAiPrivacy}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
             aria-label={lang === 'zh' ? 'Switch to English' : '切换至中文'}
             title={lang === 'zh' ? 'Switch to English' : '切换至中文'}
@@ -773,7 +887,7 @@ export default function Settings({
           <button
             type="button"
             onClick={() => void persistQuickSetting('theme', settings.theme === 'dark' ? 'light' : 'dark')}
-            disabled={savingQuickSetting || saving}
+            disabled={savingQuickSetting || saving || updatingAiPrivacy}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-amber-500 hover:bg-[var(--bg-secondary)]"
             aria-label={settings.theme === 'dark'
               ? (lang === 'zh' ? '切换至浅色主题' : 'Switch to light theme')
@@ -805,6 +919,7 @@ export default function Settings({
               type={showKey ? 'text' : 'password'}
               value={settings.apiKey}
               onChange={(e) => updateSetting('apiKey', e.target.value)}
+              disabled={updatingAiPrivacy}
               placeholder={t(lang, 'settings.apiKeyPlaceholder')}
               aria-describedby={apiKeyConsentError ? 'api-key-consent-error' : undefined}
               className="input-field pr-24"
@@ -825,6 +940,7 @@ export default function Settings({
               type="checkbox"
               checked={settings.aiDataConsent ?? false}
               onChange={(event) => handleConsentChange(event.target.checked)}
+              disabled={updatingAiPrivacy || saving}
               className="mt-1 h-4 w-4"
             />
             <span>
@@ -833,9 +949,15 @@ export default function Settings({
                 : 'I understand that AI features send relevant learning content directly to DeepSeek, and I consent to that transfer.'}
             </span>
           </label>
-          {apiKeyConsentError && (
+          {apiKeyConsentError && !showConsentPolicy && (
             <p id="api-key-consent-error" role="alert" className="mt-3 text-sm text-red-400">
               {apiKeyConsentError}
+            </p>
+          )}
+          {apiActionStatus && (
+            <p role="status" className="mt-3 flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400">
+              <Check size={16} aria-hidden="true" />
+              {apiActionStatus}
             </p>
           )}
           {saved && (
@@ -844,15 +966,28 @@ export default function Settings({
               {lang === 'zh' ? 'API Key 验证并保存成功。' : 'API key verified and saved.'}
             </p>
           )}
-          <a
-            href="https://platform.deepseek.com/api_keys"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-[var(--accent)] hover:underline"
-          >
-            {t(lang, 'settings.getApiKey')}
-            <ArrowUpRight size={15} className="shrink-0" aria-hidden="true" />
-          </a>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <a
+              href="https://platform.deepseek.com/api_keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-[var(--accent)] hover:underline"
+            >
+              {t(lang, 'settings.getApiKey')}
+              <ArrowUpRight size={15} className="shrink-0" aria-hidden="true" />
+            </a>
+            {hasSavedApiKey && (
+              <button
+                type="button"
+                onClick={handleDeleteApiKey}
+                disabled={confirmingApiKeyDeletion || updatingAiPrivacy || saving}
+                className="inline-flex items-center gap-1.5 text-sm text-red-500 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400"
+              >
+                <Trash2 size={15} aria-hidden="true" />
+                {lang === 'zh' ? '删除 API Key' : 'Delete API key'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -861,6 +996,7 @@ export default function Settings({
           <button
             onClick={() => {
               setDataStats(getDataStats())
+              setAIUsageSummary(getAIUsageSummary())
               void loadDbInfo()
               setShowDataManagement(true)
             }}
@@ -910,7 +1046,7 @@ export default function Settings({
         {/* Save Button */}
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || updatingAiPrivacy}
           className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {saved && <Check size={18} aria-hidden="true" />}
@@ -1112,8 +1248,16 @@ export default function Settings({
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     {lang === 'zh'
-                      ? '当已有学习数据且距离上次成功备份满 7 天时，系统会再次提醒。提醒不会自动保存数据，仍需由你手动导出。'
-                      : 'When learning data exists and 7 days have passed since the last successful backup, the system will remind you again. Reminders do not save data automatically.'}
+                      ? '当已有学习数据且距离上次成功备份满 7 天时，系统会再次提醒。提醒不会自动保存数据，仍需由你手动导出；数据较大时会自动分卷，导入时需一次选择全部分卷。只有确认文件保存成功后才会记录备份时间。'
+                      : 'When learning data exists and 7 days have passed since the last successful backup, the system will remind you again. Reminders do not save data automatically. Large backups are split automatically; select every part together when importing. Backup time is recorded only after the files are confirmed saved.'}
+                  </p>
+                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                    <strong className="text-amber-700 dark:text-amber-300">
+                      {lang === 'zh' ? '备份文件未加密：' : 'Backups are not encrypted: '}
+                    </strong>
+                    {lang === 'zh'
+                      ? '其中包含完整书籍原文、笔记、教学实践、角色问答和 AI Token 用量记录，请只保存在可信设备或存储介质中；API Key 不会被导出。'
+                      : 'They contain full book text, notes, teaching practice, persona Q&A, and AI token usage records. Store them only on trusted devices or media. The API key is excluded.'}
                   </p>
                   <p className="mt-2 text-xs font-medium">
                     {lastBackupAt
@@ -1174,6 +1318,28 @@ export default function Settings({
               </div>
             </div>}
 
+            <div className="mb-3 rounded-lg border border-sky-500/30 bg-sky-500/10 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Gauge size={18} className="text-sky-500" aria-hidden="true" />
+                <span className="text-sm font-medium">{lang === 'zh' ? 'AI Token 实际用量' : 'Actual AI Token Usage'}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
+                <span>{lang === 'zh' ? '已记录请求' : 'Recorded requests'}</span>
+                <strong className="text-right text-[var(--text-primary)]">{aiUsageSummary.requestCount.toLocaleString()}</strong>
+                <span>{lang === 'zh' ? '输入 Token' : 'Input tokens'}</span>
+                <strong className="text-right text-[var(--text-primary)]">{aiUsageSummary.promptTokens.toLocaleString()}</strong>
+                <span>{lang === 'zh' ? '输出 Token' : 'Output tokens'}</span>
+                <strong className="text-right text-[var(--text-primary)]">{aiUsageSummary.completionTokens.toLocaleString()}</strong>
+                <span>{lang === 'zh' ? '合计 Token' : 'Total tokens'}</span>
+                <strong className="text-right text-sky-600 dark:text-sky-300">{aiUsageSummary.totalTokens.toLocaleString()}</strong>
+              </div>
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                {lang === 'zh'
+                  ? '这里记录接口实际返回的 Token 数；API 不返回扣费金额，实际费用请以 DeepSeek 官方价格和控制台账单为准。'
+                  : 'These are token counts returned by the API. The API does not return the billed amount; use official DeepSeek pricing and your console bill as the source of truth.'}
+              </p>
+            </div>
+
             <div className="flex gap-2">
               <button onClick={handleExport} disabled={migrating || importing || clearingData || exporting} className="btn-secondary flex flex-1 items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                 <Download size={16} className="text-emerald-500" aria-hidden="true" />
@@ -1185,7 +1351,8 @@ export default function Settings({
                 onClick={() => {
                   setImportError(null)
                   setImportPreview(null)
-                  setImportFile(null)
+                  setImportFiles([])
+                  if (fileInputRef.current) fileInputRef.current.value = ''
                   setShowImportModal(true)
                 }}
                 disabled={migrating || importing || clearingData}
@@ -1219,32 +1386,27 @@ export default function Settings({
               </div>
             )}
 
-            {awaitingBackupConfirmation && (
+            {pendingBackupDownload && (
               <div role="status" className="mt-3 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm">
                 <p className="font-medium text-sky-700 dark:text-sky-300">
                   {lang === 'zh' ? '请确认备份文件是否已保存' : 'Confirm that the backup file was saved'}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                   {lang === 'zh'
-                    ? '下载已经发起，但当前浏览器无法确认文件是否真正保存到本地。请先在下载列表中确认 JSON 文件保存成功，再登记本次备份。'
-                    : 'The download started, but this browser cannot confirm that the file was saved locally. Check the JSON file in your downloads before recording this backup.'}
+                    ? `下载已经发起，但当前浏览器无法确认文件是否真正保存到本地。请先在下载列表中确认 ${pendingBackupDownload.fileCount} 个${pendingBackupDownload.format === 'multipart' ? '分卷' : '备份'}文件全部保存成功，再登记本次备份。`
+                    : `The download started, but this browser cannot confirm it was saved. Confirm that all ${pendingBackupDownload.fileCount} ${pendingBackupDownload.format === 'multipart' ? 'backup parts' : 'backup file'} were saved before recording this backup.`}
                 </p>
                 <div className="mt-3 flex gap-2">
                   <button type="button" onClick={recordBackupCompleted} className="btn-primary flex-1 text-sm py-2">
                     {lang === 'zh' ? '确认已保存' : 'Confirm saved'}
                   </button>
-                  <button type="button" onClick={() => setAwaitingBackupConfirmation(false)} className="btn-secondary text-sm py-2">
+                  <button type="button" onClick={() => setPendingBackupDownload(null)} className="btn-secondary text-sm py-2">
                     {lang === 'zh' ? '未保存' : 'Not saved'}
                   </button>
                 </div>
               </div>
             )}
 
-            <p className="mt-3 text-xs text-[var(--text-secondary)] text-center">
-              {lang === 'zh'
-                ? '只有文件成功保存后才会更新备份时间。API Key 不会被导出。'
-                : 'The backup time updates only after the file is saved. Your API key is not exported.'}
-            </p>
           </div>
         </div>
       )}
@@ -1265,16 +1427,25 @@ export default function Settings({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json"
+                accept=".json,.feynman-part,application/json,application/octet-stream"
+                multiple
                 onChange={handleImportFileSelect}
                 className="hidden"
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
+                disabled={readingImport}
                 className="btn-secondary w-full"
               >
-                {lang === 'zh' ? '选择备份文件 (.json)' : 'Select backup file (.json)'}
+                {readingImport
+                  ? (lang === 'zh' ? '正在校验备份...' : 'Validating backup...')
+                  : (lang === 'zh' ? '选择 JSON 或全部分卷文件' : 'Select JSON or all backup parts')}
               </button>
+              {importFiles.length > 0 && (
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  {lang === 'zh' ? `已选择 ${importFiles.length} 个文件` : `${importFiles.length} file(s) selected`}
+                </p>
+              )}
             </div>
 
             {/* 错误提示 */}
@@ -1292,6 +1463,7 @@ export default function Settings({
                 </div>
                 <div className="text-sm text-[var(--text-secondary)] space-y-1">
                   <div>• {importPreview.books.length} {lang === 'zh' ? '本书' : 'books'}</div>
+                  <div>• {importPreview.aiUsageRecords.length.toLocaleString()} {lang === 'zh' ? '条 AI Token 用量记录' : 'AI token usage records'}</div>
                   <div>• {new Date(importPreview.exportDate).toLocaleString()}</div>
                   <div>• {lang === 'zh' ? '数据版本' : 'Version'} v{importPreview.version}</div>
                 </div>
@@ -1338,14 +1510,14 @@ export default function Settings({
               <button
                 onClick={closeImportModal}
                 className="btn-secondary flex-1"
-                disabled={importing}
+                disabled={importing || readingImport}
               >
                 {lang === 'zh' ? '取消' : 'Cancel'}
               </button>
               <button
                 onClick={handleConfirmImport}
                 className="btn-primary flex-1"
-                disabled={!importPreview || importing || (!importOptions.importSettings && !importOptions.importBooks)}
+                disabled={!importPreview || importing || readingImport || (!importOptions.importSettings && !importOptions.importBooks)}
               >
                 {importing ? (lang === 'zh' ? '导入中...' : 'Importing...') : (lang === 'zh' ? '导入' : 'Import')}
               </button>
@@ -1386,14 +1558,21 @@ export default function Settings({
             </div>
 
             <div className="shrink-0 border-t border-[var(--border)] px-6 py-4">
+              {apiKeyConsentError && (
+                <p role="alert" className="mb-3 text-sm text-red-500">
+                  {apiKeyConsentError}
+                </p>
+              )}
               <button
                 type="button"
-                onClick={acceptConsentPolicy}
-                disabled={!hasReadConsentPolicy}
+                onClick={() => void acceptConsentPolicy()}
+                disabled={!hasReadConsentPolicy || updatingAiPrivacy}
                 className="btn-primary w-full flex items-center justify-center gap-2"
               >
                 <Check size={18} aria-hidden="true" />
-                {hasReadConsentPolicy
+                {updatingAiPrivacy
+                  ? (lang === 'zh' ? '正在保存...' : 'Saving...')
+                  : hasReadConsentPolicy
                   ? (lang === 'zh' ? '已阅读并同意' : 'I have read and agree')
                   : (lang === 'zh' ? '请阅读至政策末尾' : 'Read to the end to continue')}
               </button>

@@ -19,6 +19,7 @@ import {
   fontSizes
 } from '@/lib/personalization'
 import AppIcon from './AppIcon'
+import { showAppAlert, showAppConfirm } from '@/lib/appDialog'
 
 interface PersonalizationPanelProps {
   lang: Language
@@ -208,17 +209,32 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
       highContrast: config.highContrast,
       fontSize: config.fontSize
     })
-    alert(text.saved)
+    void showAppAlert({
+      title: text.saved,
+      message: lang === 'zh' ? '个性化设置已应用到当前浏览器。' : 'Personalization settings were applied in this browser.',
+      tone: 'success'
+    })
     onClose?.()
   }
 
-  const handleReset = () => {
-    if (confirm(lang === 'zh' ? '确定要重置所有设置吗？' : 'Reset all settings?')) {
-      resetPersonalization()
-      setConfig(defaultPersonalizationConfig)
-      setPreviewTheme('cyber')
-      alert(text.resetConfirm)
-    }
+  const handleReset = async () => {
+    const confirmed = await showAppConfirm({
+      title: lang === 'zh' ? '确认重置个性化设置' : 'Confirm personalization reset',
+      message: lang === 'zh' ? '主题、布局和学习偏好将恢复默认值。' : 'Theme, layout, and learning preferences will return to their defaults.',
+      confirmText: lang === 'zh' ? '确认重置' : 'Reset',
+      cancelText: lang === 'zh' ? '取消' : 'Cancel',
+      tone: 'warning'
+    })
+    if (!confirmed) return
+
+    resetPersonalization()
+    setConfig(defaultPersonalizationConfig)
+    setPreviewTheme('cyber')
+    await showAppAlert({
+      title: text.resetConfirm,
+      message: lang === 'zh' ? '个性化设置已恢复默认值。' : 'Personalization settings were restored to their defaults.',
+      tone: 'success'
+    })
   }
 
   const handleThemeChange = (theme: Theme) => {
@@ -228,7 +244,11 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
 
   const handleCustomThemeApply = () => {
     if (!validateThemeColor(customAccent)) {
-      alert(lang === 'zh' ? '颜色格式不正确' : 'Invalid color format')
+      void showAppAlert({
+        title: lang === 'zh' ? '颜色格式不正确' : 'Invalid color format',
+        message: lang === 'zh' ? '请输入完整的十六进制颜色值，例如 #2563eb。' : 'Enter a complete hexadecimal color value, such as #2563eb.',
+        tone: 'warning'
+      })
       return
     }
 

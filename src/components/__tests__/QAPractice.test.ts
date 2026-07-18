@@ -1,6 +1,6 @@
 import {
   appendQuestionAttempt,
-  getBestPassedTeachingContent,
+  getBestPassedTeachingRecord,
   getQuestionAttempts,
   haveAnswersForUnpassedQuestions,
   matchEvaluationsToQuestions,
@@ -181,14 +181,14 @@ describe('Q&A teaching prerequisite', () => {
   })
 
   it('uses the highest scoring passed teaching record', () => {
-    expect(getBestPassedTeachingContent([
+    expect(getBestPassedTeachingRecord([
       practice('failed', 59),
       practice('passed', 70),
       practice('best', 85)
-    ])).toBe('best')
+    ])?.content).toBe('best')
   })
 
   it('blocks question generation when no teaching record passed', () => {
-    expect(getBestPassedTeachingContent([practice('failed', 59)])).toBeUndefined()
+    expect(getBestPassedTeachingRecord([practice('failed', 59)])).toBeUndefined()
   })
 })

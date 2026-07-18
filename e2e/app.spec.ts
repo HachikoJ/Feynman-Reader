@@ -1,9 +1,14 @@
 import { test, expect } from '@playwright/test'
+import { addBookForE2E, prepareAppForE2E } from './testState'
 
 /**
  * 费曼读书助手 - E2E 测试
  * 覆盖关键用户流程
  */
+
+test.beforeEach(async ({ page }) => {
+  await prepareAppForE2E(page)
+})
 
 test.describe('应用启动和导航', () => {
   test('应该正常加载首页', async ({ page }) => {
@@ -14,8 +19,8 @@ test.describe('应用启动和导航', () => {
 
     // 检查导航栏
     await expect(page.locator('nav')).toBeVisible()
-    await expect(page.locator('text=/书架/')).toBeVisible()
-    await expect(page.locator('text=/设置/')).toBeVisible()
+    await expect(page.getByRole('button', { name: '书架', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
   })
 
   test('应该显示书架视图', async ({ page }) => {
@@ -30,10 +35,10 @@ test.describe('应用启动和导航', () => {
     await page.goto('/')
 
     // 点击设置按钮
-    await page.click('button:has-text("设置"), button:has-text("⚙️")')
+    await page.getByRole('button', { name: '设置', exact: true }).click()
 
     // 检查设置页面加载
-    await expect(page.locator('text=/API Key|语言|主题/').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
   })
 })
 
@@ -44,11 +49,11 @@ test.describe('书籍管理', () => {
 
   test('应该能够打开添加书籍对话框', async ({ page }) => {
     // 点击添加书籍按钮
-    const addButton = page.locator('button:has-text("添加"), button:has-text("新建"), button[aria-label*="add"], button[aria-label*="add" i]').first()
+    const addButton = page.getByRole('button', { name: '添加书籍', exact: true }).first()
     await addButton.click()
 
     // 检查对话框出现
-    await expect(page.locator('dialog, [role="dialog"], .modal, [class*="dialog" i], [class*="modal" i]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '添加书籍', exact: true })).toBeVisible()
   })
 
   test('应该能够搜索书籍', async ({ page }) => {
@@ -68,55 +73,43 @@ test.describe('书籍管理', () => {
 })
 
 test.describe('阅读视图', () => {
+  const bookName = '阅读视图测试书'
+
+  test.beforeEach(async ({ page }) => {
+    await addBookForE2E(page, bookName)
+  })
+
   test('应该能够打开书籍进行阅读', async ({ page }) => {
-    await page.goto('/')
-
-    // 查找第一本书的卡片
-    const bookCard = page.locator('[class*="book"], article').first()
-
-    const isVisible = await bookCard.isVisible().catch(() => false)
-    if (isVisible) {
-      await bookCard.click()
-
-      // 检查是否进入阅读视图
-      await expect(page.locator('text=/阶段|笔记|费曼/').or(page.locator('[class*="reading"], [class*="phase"] i'))).toBeVisible({ timeout: 5000 })
-    }
+    await page.getByRole('button', { name: '列表视图', exact: true }).click()
+    await page.getByRole('button', { name: '开始阅读', exact: true }).click()
+    await expect(page.getByRole('heading', { name: `《${bookName}》`, exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '阶段学习', exact: true })).toBeVisible()
   })
 })
 
 test.describe('设置页面', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.click('button:has-text("设置"), button:has-text("⚙️")')
+    await page.getByRole('button', { name: '设置', exact: true }).click()
   })
 
   test('应该能够显示存储类型信息', async ({ page }) => {
-    // 检查 IndexedDB 或 LocalStorage 相关信息
-    await expect(page.locator('text=/IndexedDB|LocalStorage|存储/i')).toBeVisible({ timeout: 5000 })
+    await page.getByRole('button', { name: /数据管理/ }).click()
+    const dialog = page.getByRole('dialog', { name: '数据管理', exact: true })
+    await expect(dialog.getByRole('heading', { name: '数据管理', exact: true })).toBeVisible()
+    await expect(dialog.getByText('IndexedDB（浏览器本地存储）')).toBeVisible()
   })
 
   test('应该能够更改语言设置', async ({ page }) => {
-    // 查找语言选择器
-    const langSelector = page.locator('select[name="language"], [data-testid="language-selector"], button:has-text("中文"), button:has-text("English")').first()
-
-    const isVisible = await langSelector.isVisible().catch(() => false)
-    if (isVisible) {
-      await langSelector.click()
-
-      // 等待可能的下拉菜单
-      await page.waitForTimeout(500)
-    }
+    await page.getByRole('button', { name: 'Switch to English' }).click()
+    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '切换至中文' })).toBeVisible()
   })
 
   test('应该能够更改主题', async ({ page }) => {
-    // 查找主题选择器
-    const themeSelector = page.locator('[data-testid="theme-selector"], button:has-text("深色"), button:has-text("浅色"), button:has-text("赛博")').first()
-
-    const isVisible = await themeSelector.isVisible().catch(() => false)
-    if (isVisible) {
-      // 检查主题选项存在
-      await expect(themeSelector.or(page.locator('text=/主题/'))).toBeVisible()
-    }
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await page.getByRole('button', { name: '切换至深色主题' }).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   })
 })
 

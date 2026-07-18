@@ -1,34 +1,178 @@
 #!/bin/bash
-set -euo pipefail
+set -Eeuo pipefail
 
 PROJECT_DIR="/root/.openclaw/workspace/Feynman-Reader"
 WEB_ROOT="/var/www/feynman-reader"
+DEPLOY_ROOT="/var/www/feynman-reader-deploy"
+RELEASES_DIR="$DEPLOY_ROOT/releases"
 NGINX_CONFIG="/etc/nginx/conf.d/deline.top.conf"
-
-echo "=========================================="
-echo "费曼读书助手静态部署"
-echo "=========================================="
+NGINX_SECURITY_CONFIG="/etc/nginx/conf.d/00-feynman-security-headers.conf"
+RELEASES_TO_KEEP=5
+CHUNK_RETENTION_DAYS=14
 
 cd "$PROJECT_DIR"
+
+RELEASE_ID="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short=12 HEAD)"
+RELEASE_DIR="$RELEASES_DIR/$RELEASE_ID"
+NEXT_LINK="/var/www/.feynman-reader-next-${RELEASE_ID}-$$"
+CONFIG_BACKUP_DIR="$DEPLOY_ROOT/config-backup-$RELEASE_ID"
+PREVIOUS_RELEASE=""
+OLD_CHUNK_URL=""
+SWITCHED=0
+CONFIGS_INSTALLED=0
+
+atomic_switch() {
+  local target="$1"
+  rm -f "$NEXT_LINK"
+  ln -s "$target" "$NEXT_LINK"
+  mv -Tf "$NEXT_LINK" "$WEB_ROOT"
+}
+
+restore_nginx_configs() {
+  if [[ -f "$CONFIG_BACKUP_DIR/deline.top.conf" ]]; then
+    install -m 644 "$CONFIG_BACKUP_DIR/deline.top.conf" "$NGINX_CONFIG"
+  else
+    rm -f "$NGINX_CONFIG"
+  fi
+
+  if [[ -f "$CONFIG_BACKUP_DIR/00-feynman-security-headers.conf" ]]; then
+    install -m 644 "$CONFIG_BACKUP_DIR/00-feynman-security-headers.conf" "$NGINX_SECURITY_CONFIG"
+  else
+    rm -f "$NGINX_SECURITY_CONFIG"
+  fi
+}
+
+rollback_on_error() {
+  local status=$?
+  trap - EXIT
+  rm -f "$NEXT_LINK"
+
+  if [[ $status -ne 0 ]]; then
+    echo "部署失败，正在恢复上一版本..." >&2
+    if [[ -n "$PREVIOUS_RELEASE" && ( $SWITCHED -eq 1 || ! -e "$WEB_ROOT" ) ]]; then
+      atomic_switch "$PREVIOUS_RELEASE" || true
+    elif [[ $SWITCHED -eq 1 && -L "$WEB_ROOT" ]]; then
+      rm -f "$WEB_ROOT"
+    fi
+
+    if [[ $CONFIGS_INSTALLED -eq 1 ]]; then
+      restore_nginx_configs || true
+    fi
+    /usr/sbin/nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+  fi
+
+  exit "$status"
+}
+
+trap rollback_on_error EXIT
+
+echo "=========================================="
+echo "费曼读书助手原子部署：$RELEASE_ID"
+echo "=========================================="
 
 echo "1. 安装锁定依赖..."
 npm ci
 
-echo "2. 构建静态站点..."
+echo "2. 构建并检查静态站点..."
 NODE_ENV=production npm run build
+if find "$PROJECT_DIR/out" -name '.DS_Store' -print -quit | grep -q .; then
+  echo "部署失败：静态产物中仍存在 .DS_Store" >&2
+  exit 1
+fi
 
-echo "3. 发布静态文件..."
-install -d -m 755 "$WEB_ROOT"
-rsync -a --delete "$PROJECT_DIR/out/" "$WEB_ROOT/"
+echo "3. 创建不可变发布目录并保留旧 Chunk..."
+install -d -m 755 "$RELEASES_DIR" "$CONFIG_BACKUP_DIR"
+if [[ -e "$RELEASE_DIR" ]]; then
+  echo "部署失败：发布目录已存在 $RELEASE_DIR" >&2
+  exit 1
+fi
+install -d -m 755 "$RELEASE_DIR"
+
+if [[ -d "$WEB_ROOT/_next/static" ]]; then
+  old_chunk="$(find "$WEB_ROOT/_next/static" -type f -name '*.js' -mtime "-$CHUNK_RETENTION_DAYS" -print -quit)"
+  if [[ -n "$old_chunk" ]]; then
+    OLD_CHUNK_URL="/${old_chunk#"$WEB_ROOT"/}"
+  fi
+  install -d -m 755 "$RELEASE_DIR/_next/static"
+  rsync -a "$WEB_ROOT/_next/static/" "$RELEASE_DIR/_next/static/"
+fi
+
+rsync -a "$PROJECT_DIR/out/" "$RELEASE_DIR/"
+find "$RELEASE_DIR/_next/static" -type f -mtime "+$CHUNK_RETENTION_DAYS" -delete 2>/dev/null || true
+if find "$RELEASE_DIR" -name '.DS_Store' -print -quit | grep -q .; then
+  echo "部署失败：发布目录中仍存在 .DS_Store" >&2
+  exit 1
+fi
 
 echo "4. 停止旧的 Node 服务（如存在）..."
 pm2 delete feynman-reader 2>/dev/null || true
 pm2 save --force >/dev/null 2>&1 || true
 
-echo "5. 更新并校验 Nginx 配置..."
-install -m 644 "$PROJECT_DIR/deline.top.conf" "$NGINX_CONFIG"
+echo "5. 原子更新并校验 Nginx 配置..."
+[[ -f "$NGINX_CONFIG" ]] && cp -a "$NGINX_CONFIG" "$CONFIG_BACKUP_DIR/deline.top.conf"
+[[ -f "$NGINX_SECURITY_CONFIG" ]] && cp -a "$NGINX_SECURITY_CONFIG" "$CONFIG_BACKUP_DIR/00-feynman-security-headers.conf"
+install -m 644 "$PROJECT_DIR/00-feynman-security-headers.conf" "$NGINX_SECURITY_CONFIG.new"
+install -m 644 "$PROJECT_DIR/deline.top.conf" "$NGINX_CONFIG.new"
+mv -f "$NGINX_SECURITY_CONFIG.new" "$NGINX_SECURITY_CONFIG"
+mv -f "$NGINX_CONFIG.new" "$NGINX_CONFIG"
+CONFIGS_INSTALLED=1
 /usr/sbin/nginx -t
+
+echo "6. 原子切换站点目录..."
+if [[ -L "$WEB_ROOT" ]]; then
+  PREVIOUS_RELEASE="$(readlink -f "$WEB_ROOT")"
+elif [[ -d "$WEB_ROOT" ]]; then
+  PREVIOUS_RELEASE="$RELEASES_DIR/legacy-$RELEASE_ID"
+  mv "$WEB_ROOT" "$PREVIOUS_RELEASE"
+elif [[ -e "$WEB_ROOT" ]]; then
+  echo "部署失败：$WEB_ROOT 既不是目录也不是符号链接" >&2
+  exit 1
+fi
+
+atomic_switch "$RELEASE_DIR"
+SWITCHED=1
 systemctl reload nginx
+
+echo "7. 验证公网首页、新旧 Chunk 与 HTTPS 安全响应头..."
+RESPONSE_HEADERS="$(curl -fsSI --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 20 "https://www.deline.top/?release=$RELEASE_ID")"
+REQUIRED_HEADERS=(
+  "Content-Security-Policy"
+  "X-Frame-Options"
+  "X-Content-Type-Options"
+  "Referrer-Policy"
+  "Permissions-Policy"
+  "Cross-Origin-Opener-Policy"
+  "Strict-Transport-Security"
+)
+
+for header in "${REQUIRED_HEADERS[@]}"; do
+  if ! grep -qi "^${header}:" <<< "$RESPONSE_HEADERS"; then
+    echo "部署失败：公网 HTTPS 响应缺少 ${header}" >&2
+    exit 1
+  fi
+done
+
+new_chunk="$(find "$PROJECT_DIR/out/_next/static" -type f -name '*.js' -print -quit)"
+if [[ -z "$new_chunk" ]]; then
+  echo "部署失败：构建产物中没有可验证的 JavaScript Chunk" >&2
+  exit 1
+fi
+NEW_CHUNK_URL="/${new_chunk#"$PROJECT_DIR/out"/}"
+curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://www.deline.top$NEW_CHUNK_URL?release=$RELEASE_ID" >/dev/null
+if [[ -n "$OLD_CHUNK_URL" ]]; then
+  curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://www.deline.top$OLD_CHUNK_URL?release=$RELEASE_ID" >/dev/null
+fi
+
+echo "8. 保留最近 $RELEASES_TO_KEEP 个可回滚版本..."
+mapfile -t releases < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2-)
+for old_release in "${releases[@]:$RELEASES_TO_KEEP}"; do
+  [[ "$old_release" == "$RELEASE_DIR" ]] || rm -rf -- "$old_release"
+done
+
+rm -rf "$CONFIG_BACKUP_DIR"
+SWITCHED=0
+CONFIGS_INSTALLED=0
+trap - EXIT
 
 echo "=========================================="
 echo "部署完成：https://www.deline.top"

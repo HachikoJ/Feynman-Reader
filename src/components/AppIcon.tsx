@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   BarChart3,
   BookMarked,
   BookOpen,
@@ -62,7 +63,7 @@ import {
 } from 'lucide-react'
 
 export type AppIconName =
-  | 'alert' | 'arrowLeft' | 'arrowRight' | 'barChart' | 'bookMarked' | 'bookOpen'
+  | 'alert' | 'arrowLeft' | 'arrowRight' | 'arrowUp' | 'barChart' | 'bookMarked' | 'bookOpen'
   | 'brain' | 'briefcase' | 'building' | 'camera' | 'chart' | 'check' | 'success'
   | 'chevronDown' | 'chevronLeft' | 'chevronRight' | 'chevronUp' | 'circle' | 'help'
   | 'clipboard' | 'download' | 'eye' | 'file' | 'flame' | 'folder' | 'graduation'
@@ -77,6 +78,7 @@ const icons: Record<AppIconName, LucideIcon> = {
   alert: AlertTriangle,
   arrowLeft: ArrowLeft,
   arrowRight: ArrowRight,
+  arrowUp: ArrowUp,
   barChart: BarChart3,
   bookMarked: BookMarked,
   bookOpen: BookOpen,

@@ -1,11 +1,30 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Book, BookStatus, BookTag, getBooks, addBook, updateBook, deleteBook, restoreBook, getAllTags, getAllCategories, getSettings, flushPendingStoreWrites, reloadBookFromPersistence, reloadBooksFromPersistence } from '@/lib/store'
+import {
+  Book,
+  BookStatus,
+  BookTag,
+  addBook,
+  deleteBook,
+  flushPendingStoreWrites,
+  getAllCategories,
+  getAllTags,
+  getBookOrganizationSnapshot,
+  getBooks,
+  getSettings,
+  reloadBookFromPersistence,
+  reloadBookOrganizationFromPersistence,
+  reloadBooksFromPersistence,
+  restoreBook,
+  restoreBookOrganizationSnapshot,
+  updateBook
+} from '@/lib/store'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES } from '@/lib/feynman-prompts'
-import { createDeepSeekClient, generateBookTags } from '@/lib/deepseek'
+import { AI_OUTPUT_INCOMPLETE, createDeepSeekClient, generateBookTags } from '@/lib/deepseek'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { AlertCircle, ChartNoAxesCombined, ChevronDown, ChevronRight, Tag, X } from 'lucide-react'
 import DocumentUpload from './DocumentUpload'
 import { validateBookName, validateAuthorName, validateContent, sanitizeTextInput, detectMaliciousContent } from '@/lib/validation'
@@ -13,6 +32,11 @@ import { undoRedoManager, createDeleteBookAction, createBatchDeleteBooksAction }
 import { getSafeImageSrc } from '@/lib/safeUrl'
 import { MAX_TAG_LENGTH } from '@/lib/dataLimits'
 import AppIcon from './AppIcon'
+import BookListManager from './BookListManager'
+import { LibraryAnalytics } from './Charts'
+import MobileSwipeCard from './MobileSwipeCard'
+import { VirtualList } from './VirtualList'
+import { showAppAlert } from '@/lib/appDialog'
 
 interface Props {
   lang: Language
@@ -22,19 +46,7 @@ interface Props {
 type TabFilter = 'all' | BookStatus
 type ViewMode = 'grid' | 'list'
 
-// 简单的进度条组件
-function MiniProgressBar({ value, max, color }: { value: number; max: number; color: string }) {
-  const pct = max > 0 ? (value / max) * 100 : 0
-  return (
-    <div className="h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
-      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
-    </div>
-  )
-}
-
-export function getBookshelfProgressPercentage(book: Pick<Book, 'status' | 'currentPhase'>): number {
-  if (book.status === 'finished') return 100
-
+export function getBookshelfProgressPercentage(book: Pick<Book, 'currentPhase'>): number {
   return Math.min(100, Math.max(0, (book.currentPhase / LEARNING_PHASES.length) * 100))
 }
 
@@ -52,6 +64,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
   const [newBookDesc, setNewBookDesc] = useState('')
   const [newBookCover, setNewBookCover] = useState('')
   const [showCharts, setShowCharts] = useState(false)
+  const [showBookLists, setShowBookLists] = useState(false)
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [generatingTags, setGeneratingTags] = useState(false)
@@ -85,6 +98,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
   const [savingBook, setSavingBook] = useState(false)
   const bookSaveInFlightRef = useRef(false)
   const [tagToDelete, setTagToDelete] = useState<BookTag | null>(null)
+  const [virtualListMetrics, setVirtualListMetrics] = useState({ itemHeight: 210, height: 640 })
   
   const descTextareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -103,6 +117,19 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
   useEffect(() => {
     setBooks(getBooks())
+  }, [])
+
+  useEffect(() => {
+    const updateVirtualListMetrics = () => {
+      const mobile = window.innerWidth < 640
+      setVirtualListMetrics({
+        itemHeight: mobile ? 270 : 210,
+        height: Math.max(420, Math.min(mobile ? 620 : 720, Math.round(window.innerHeight * 0.68)))
+      })
+    }
+    updateVirtualListMetrics()
+    window.addEventListener('resize', updateVirtualListMetrics)
+    return () => window.removeEventListener('resize', updateVirtualListMetrics)
   }, [])
 
   // 当组件重新显示时，刷新书籍数据（确保显示最新的 bestScore）
@@ -179,7 +206,13 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     let tagsGenerated = false
     try {
       const client = await createDeepSeekClient(settings.apiKey)
-      const tags = await generateBookTags(client, bookName, author, description)
+      const tags = await generateBookTags(
+        client,
+        bookName,
+        author,
+        description,
+        { task: 'book-tags', bookId }
+      )
       tagsGenerated = true
       if (tags.length > 0) {
         await flushPendingStoreWrites()
@@ -199,13 +232,20 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         if (editingBook?.id === bookId) setEditingTags(persistedBook.tags || [])
       }
       logger.error('生成标签失败:', error)
-      setTagGenerationError(tagsGenerated
+      const requestMessage = error instanceof Error && error.message === AI_REQUEST_CANCELLED
+        ? (lang === 'zh' ? '已取消 AI 标签生成，书籍和原有标签不受影响。' : 'AI tag generation was cancelled. The book and existing tags were kept.')
+        : error instanceof Error && error.message === AI_TASK_BUSY
+          ? (lang === 'zh' ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。' : 'Another AI task is running. Wait for it to finish or cancel it first.')
+          : error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE
+            ? (lang === 'zh' ? 'AI 返回的标签不完整，系统已拦截，请稍后重试。' : 'The AI returned incomplete tags. Please try again later.')
+            : null
+      setTagGenerationError(requestMessage || (tagsGenerated
         ? (lang === 'zh'
             ? 'AI 标签已生成，但未能保存到本地，原标签已恢复。请检查浏览器存储后重试。'
             : 'AI tags were generated but could not be saved locally. The original tags were restored.')
         : (lang === 'zh'
             ? '书籍已保存，但 AI 标签生成失败。你可以稍后重试，或在编辑书籍时手动添加标签。'
-            : 'The book was saved, but AI tag generation failed. Retry later or add tags manually while editing the book.'))
+            : 'The book was saved, but AI tag generation failed. Retry later or add tags manually while editing the book.')))
     } finally {
       setGeneratingTags(false)
     }
@@ -216,25 +256,25 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     // P0 新增：输入验证
     const nameValidation = validateBookName(newBookName)
     if (!nameValidation.valid) {
-      alert(nameValidation.error || '书名无效')
+      await showBookFormError(nameValidation.error || (lang === 'zh' ? '书名无效' : 'Invalid book title'))
       return
     }
 
     const authorValidation = validateAuthorName(newBookAuthor)
     if (!authorValidation.valid) {
-      alert(authorValidation.error || '作者名无效')
+      await showBookFormError(authorValidation.error || (lang === 'zh' ? '作者名无效' : 'Invalid author name'))
       return
     }
 
     const descValidation = validateContent(newBookDesc, 500)
     if (!descValidation.valid) {
-      alert(descValidation.error || '描述过长')
+      await showBookFormError(descValidation.error || (lang === 'zh' ? '描述过长' : 'The description is too long'))
       return
     }
 
     // 检测恶意内容
     if (detectMaliciousContent(newBookName) || detectMaliciousContent(newBookAuthor) || detectMaliciousContent(newBookDesc)) {
-      alert('输入包含不安全的内容')
+      await showBookFormError(lang === 'zh' ? '输入包含不安全的内容，请修改后重试。' : 'The input contains unsafe content. Edit it and try again.')
       return
     }
 
@@ -256,7 +296,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     } catch (error) {
       if (book) await reloadBookFromPersistence(book.id).catch(() => undefined)
       logger.error('Book save failed:', error)
-      alert(lang === 'zh' ? '书籍保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving failed. Your form content was kept; check browser storage and try again.')
+      await showBookFormError(lang === 'zh' ? '书籍保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving failed. Your form content was kept; check browser storage and try again.')
       return
     } finally {
       bookSaveInFlightRef.current = false
@@ -276,25 +316,25 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     // P0 新增：输入验证
     const nameValidation = validateBookName(newBookName)
     if (!nameValidation.valid) {
-      alert(nameValidation.error || '书名无效')
+      await showBookFormError(nameValidation.error || (lang === 'zh' ? '书名无效' : 'Invalid book title'))
       return
     }
 
     const authorValidation = validateAuthorName(newBookAuthor)
     if (!authorValidation.valid) {
-      alert(authorValidation.error || '作者名无效')
+      await showBookFormError(authorValidation.error || (lang === 'zh' ? '作者名无效' : 'Invalid author name'))
       return
     }
 
     const descValidation = validateContent(newBookDesc, 500)
     if (!descValidation.valid) {
-      alert(descValidation.error || '描述过长')
+      await showBookFormError(descValidation.error || (lang === 'zh' ? '描述过长' : 'The description is too long'))
       return
     }
 
     // 检测恶意内容
     if (detectMaliciousContent(newBookName) || detectMaliciousContent(newBookAuthor) || detectMaliciousContent(newBookDesc)) {
-      alert('输入包含不安全的内容')
+      await showBookFormError(lang === 'zh' ? '输入包含不安全的内容，请修改后重试。' : 'The input contains unsafe content. Edit it and try again.')
       return
     }
 
@@ -319,7 +359,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
       const persistedBooks = await reloadBooksFromPersistence().catch(() => getBooks())
       setBooks(persistedBooks)
       logger.error('Book update failed:', error)
-      alert(lang === 'zh' ? '修改保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving changes failed. Your form content was kept; check browser storage and try again.')
+      await showBookFormError(lang === 'zh' ? '修改保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving changes failed. Your form content was kept; check browser storage and try again.')
     } finally {
       bookSaveInFlightRef.current = false
       setSavingBook(false)
@@ -383,6 +423,12 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     ))
   }
 
+  const showBookFormError = (message: string) => showAppAlert({
+    title: lang === 'zh' ? '无法保存书籍' : 'Unable to save book',
+    message,
+    tone: 'warning'
+  })
+
   const persistBookMutation = async (mutation: () => void) => {
     try {
       await flushPendingStoreWrites()
@@ -391,6 +437,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
       setBooks(getBooks())
     } catch (error) {
       const persistedBooks = await reloadBooksFromPersistence().catch(() => getBooks())
+      await reloadBookOrganizationFromPersistence().catch(() => undefined)
       setBooks(persistedBooks)
       throw error
     }
@@ -493,12 +540,16 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
   const confirmDelete = async () => {
     if (deleteConfirmBook && !bookMutationInFlightRef.current) {
+      const organizationSnapshot = getBookOrganizationSnapshot(deleteConfirmBook.id)
       // P1 新增：使用撤销/重做管理器
       const action = createDeleteBookAction(
         deleteConfirmBook.id,
         deleteConfirmBook,
         (id) => persistBookMutation(() => deleteBook(id)),
-        (book) => persistBookMutation(() => restoreBook(book))
+        (book) => persistBookMutation(() => {
+          restoreBook(book)
+          restoreBookOrganizationSnapshot(book.id, organizationSnapshot)
+        })
       )
       bookMutationInFlightRef.current = true
       setMutatingBooks(true)
@@ -564,10 +615,20 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     // P1 新增：使用撤销/重做管理器
     const booksToDelete = books.filter(b => selectedBooks.has(b.id))
     if (booksToDelete.length === 0) return
+    const organizationSnapshots = new Map(booksToDelete.map(book => [
+      book.id,
+      getBookOrganizationSnapshot(book.id)
+    ]))
     const action = createBatchDeleteBooksAction(
       booksToDelete.map(b => ({ id: b.id, data: b })),
       (ids) => persistBookMutation(() => ids.forEach(id => deleteBook(id))),
-      (restoredBooks) => persistBookMutation(() => restoredBooks.forEach(book => restoreBook(book)))
+      (restoredBooks) => persistBookMutation(() => {
+        restoredBooks.forEach(book => restoreBook(book))
+        restoredBooks.forEach(book => {
+          const snapshot = organizationSnapshots.get(book.id)
+          if (snapshot) restoreBookOrganizationSnapshot(book.id, snapshot)
+        })
+      })
     )
     bookMutationInFlightRef.current = true
     setMutatingBooks(true)
@@ -625,6 +686,145 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     { key: 'finished', label: t(lang, 'bookshelf.tabs.finished'), count: stats.finished }
   ]
 
+  const renderBookListRow = (book: Book, virtualized = false) => (
+    <MobileSwipeCard
+      key={book.id}
+      disabled={batchMode}
+      leftAction={{
+        icon: 'bookOpen',
+        label: lang === 'zh' ? '打开' : 'Open',
+        color: 'bg-emerald-600',
+        onAction: () => handleSelectBook(book)
+      }}
+      rightAction={{
+        icon: 'edit',
+        label: lang === 'zh' ? '编辑' : 'Edit',
+        color: 'bg-amber-600',
+        onAction: () => openEditModal(book)
+      }}
+      className={virtualized ? 'h-[258px] pb-3 sm:h-[198px]' : ''}
+    >
+      <div className={`card card-hover relative flex gap-3 sm:gap-4 ${virtualized ? 'h-full overflow-hidden' : ''}`}>
+        {batchMode && (
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              checked={selectedBooks.has(book.id)}
+              onChange={() => toggleBookSelection(book.id)}
+              className="h-5 w-5 cursor-pointer accent-[var(--accent)]"
+              onClick={event => event.stopPropagation()}
+            />
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
+          onClick={() => handleSelectBook(book)}
+          aria-label={lang === 'zh' ? `打开《${book.name}》` : `Open ${book.name}`}
+        >
+          {getSafeImageSrc(book.cover) ? (
+            <img src={getSafeImageSrc(book.cover)!} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center">{getStatusIcon(book.status, 30)}</span>
+          )}
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-semibold sm:text-lg">{book.name}</h3>
+              {book.author && <p className="truncate text-sm text-[var(--text-secondary)]">{book.author}</p>}
+            </div>
+            <span className={`inline-flex flex-shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold ${
+              book.status === 'unread'
+                ? 'border-gray-500/45 bg-gray-500/15 text-gray-600 dark:text-gray-300'
+                : book.status === 'reading'
+                  ? 'border-amber-500/45 bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                  : 'border-emerald-500/45 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+            }`}>
+              {getStatusIcon(book.status, 14)}
+              {t(lang, `bookshelf.status.${book.status}`)}
+            </span>
+          </div>
+
+          {book.description && <p className="mt-1 line-clamp-1 text-sm text-[var(--text-secondary)]">{book.description}</p>}
+
+          <div className="mt-2 flex max-h-6 flex-wrap items-center gap-1 overflow-hidden">
+            {book.tags?.length ? (
+              <>
+                {book.tags.slice(0, 3).map(tag => (
+                  <span key={`${tag.category}:${tag.name}`} className="rounded bg-[var(--accent)]/10 px-2 py-0.5 text-xs text-[var(--accent)]">
+                    {tag.name}
+                  </span>
+                ))}
+                {book.tags.length > 3 && <span className="text-xs text-[var(--text-secondary)]">+{book.tags.length - 3}</span>}
+                <button
+                  type="button"
+                  onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
+                  className="ml-1 text-[var(--text-secondary)] hover:text-[var(--accent)]"
+                  disabled={generatingTags}
+                  title={t(lang, 'bookshelf.tags.regenerate')}
+                >
+                  <AppIcon name="refresh" size={14} />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
+                className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
+                disabled={generatingTags}
+              >
+                <AppIcon name="tag" size={14} />
+                {generatingTags ? t(lang, 'bookshelf.tags.generating') : (lang === 'zh' ? '生成标签' : 'Generate tags')}
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-[var(--text-secondary)]">{t(lang, 'bookshelf.progress')}</span>
+                <span>{book.currentPhase}/{LEARNING_PHASES.length}</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${getBookshelfProgressPercentage(book)}%` }} />
+              </div>
+            </div>
+            {book.bestScore > 0 && (
+              <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold ${
+                book.bestScore >= 60
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+              }`}>
+                <AppIcon name="target" size={14} />
+                {book.bestScore}{lang === 'zh' ? '分' : ''}
+              </span>
+            )}
+          </div>
+
+          {!batchMode && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => handleSelectBook(book)} className="btn-primary py-1.5 text-sm">
+                <AppIcon name="bookOpen" size={15} />
+                {book.status === 'unread' ? t(lang, 'bookshelf.startReading') : t(lang, 'bookshelf.continueReading')}
+              </button>
+              <button type="button" onClick={() => openEditModal(book)} className="btn-secondary py-1.5 text-sm">
+                <AppIcon name="edit" tone="amber" size={14} />
+                {lang === 'zh' ? '编辑' : 'Edit'}
+              </button>
+              <button type="button" onClick={() => handleDeleteBook(book)} className="btn-secondary border-red-400/30 py-1.5 text-sm text-red-500 hover:border-red-400">
+                <AppIcon name="trash" size={14} />
+                {lang === 'zh' ? '删除' : 'Delete'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </MobileSwipeCard>
+  )
+
   return (
     <div className="max-w-6xl mx-auto">
       {tagGenerationError && (
@@ -661,9 +861,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onFocus={() => setShowSearchHistory(searchHistory.length > 0 && !searchQuery)}
                 placeholder={lang === 'zh' ? '搜索书名、作者、标签...' : 'Search books, authors, tags...'}
-                className="input-field w-full pl-10 pr-10"
+                className="input-field w-full !pr-10"
               />
-              <AppIcon name="search" tone="muted" size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
               {searchQuery && (
                 <button
                   onClick={clearSearch}
@@ -699,7 +898,11 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
             </div>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          <button onClick={() => setShowBookLists(true)} className="btn-secondary flex items-center gap-2">
+            <AppIcon name="bookMarked" tone="violet" size={17} />
+            {lang === 'zh' ? '书单' : 'Lists'}
+          </button>
           {books.length > 0 && (
             <button
               onClick={toggleBatchMode}
@@ -712,7 +915,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary flex items-center gap-2">
             <AppIcon name="upload" tone="blue" size={17} />{lang === 'zh' ? '上传文档' : 'Upload Doc'}
           </button>
-          <button onClick={() => setShowAddModal(true)} className="btn-primary">
+          <button data-testid="add-book-button" onClick={() => setShowAddModal(true)} className="btn-primary">
             <AppIcon name="plus" size={17} />
             {t(lang, 'bookshelf.addBook')}
           </button>
@@ -756,79 +959,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               {lang === 'zh' ? '查看详细分析' : 'View Analytics'}
             </button>
             
-            {showCharts && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 animate-fade-in">
-                {/* 阅读状态分布 */}
-                <div className="card p-4">
-                  <h4 className="flex items-center gap-2 font-semibold mb-3 text-sm"><AppIcon name="chart" tone="blue" size={16} />{lang === 'zh' ? '阅读状态分布' : 'Reading Status'}</h4>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>{lang === 'zh' ? '未读' : 'Unread'}</span>
-                        <span>{stats.unread}</span>
-                      </div>
-                      <MiniProgressBar value={stats.unread} max={stats.total} color="#94a3b8" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>{lang === 'zh' ? '在读' : 'Reading'}</span>
-                        <span>{stats.reading}</span>
-                      </div>
-                      <MiniProgressBar value={stats.reading} max={stats.total} color="#eab308" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>{lang === 'zh' ? '已读' : 'Finished'}</span>
-                        <span>{stats.finished}</span>
-                      </div>
-                      <MiniProgressBar value={stats.finished} max={stats.total} color="#22c55e" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 得分分布 */}
-                <div className="card p-4">
-                  <h4 className="flex items-center gap-2 font-semibold mb-3 text-sm"><AppIcon name="target" tone="violet" size={16} />{lang === 'zh' ? '得分分布' : 'Score Distribution'}</h4>
-                  {(() => {
-                    const scoredBooks = books.filter(b => b.bestScore > 0)
-                    const excellent = scoredBooks.filter(b => b.bestScore >= 80).length
-                    const good = scoredBooks.filter(b => b.bestScore >= 60 && b.bestScore < 80).length
-                    const needsWork = scoredBooks.filter(b => b.bestScore < 60).length
-                    const total = scoredBooks.length || 1
-                    
-                    return scoredBooks.length > 0 ? (
-                      <div className="space-y-3">
-                        <div>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="flex items-center gap-1"><AppIcon name="sparkles" tone="green" size={14} />{lang === 'zh' ? '优秀 (≥80)' : 'Excellent (≥80)'}</span>
-                            <span>{excellent}</span>
-                          </div>
-                          <MiniProgressBar value={excellent} max={total} color="#22c55e" />
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="flex items-center gap-1"><AppIcon name="check" tone="blue" size={14} />{lang === 'zh' ? '合格 (60-79)' : 'Passed (60-79)'}</span>
-                            <span>{good}</span>
-                          </div>
-                          <MiniProgressBar value={good} max={total} color="#3b82f6" />
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="flex items-center gap-1"><AppIcon name="note" tone="amber" size={14} />{lang === 'zh' ? '待提升 (<60)' : 'Needs Work (<60)'}</span>
-                            <span>{needsWork}</span>
-                          </div>
-                          <MiniProgressBar value={needsWork} max={total} color="#f97316" />
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-[var(--text-secondary)] text-center py-4">
-                        {lang === 'zh' ? '暂无得分数据' : 'No score data yet'}
-                      </p>
-                    )
-                  })()}
-                </div>
-              </div>
-            )}
+            {showCharts && <LibraryAnalytics books={books} lang={lang} />}
           </div>
         </>
       )}
@@ -1000,7 +1131,24 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         // Grid View
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredBooks.map(book => (
-            <div key={book.id} className="card card-hover p-0 overflow-hidden group relative">
+            <MobileSwipeCard
+              key={book.id}
+              disabled={batchMode}
+              leftAction={{
+                icon: 'bookOpen',
+                label: lang === 'zh' ? '打开' : 'Open',
+                color: 'bg-emerald-600',
+                onAction: () => handleSelectBook(book)
+              }}
+              rightAction={{
+                icon: 'edit',
+                label: lang === 'zh' ? '编辑' : 'Edit',
+                color: 'bg-amber-600',
+                onAction: () => openEditModal(book)
+              }}
+              className="h-full"
+            >
+            <div className="card card-hover h-full p-0 overflow-hidden group relative">
               {/* 批量选择复选框 */}
               {batchMode && (
                 <div className="absolute top-2 left-2 z-10">
@@ -1111,144 +1259,56 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                 </div>
               </div>
             </div>
+            </MobileSwipeCard>
           ))}
         </div>
       ) : (
         // List View
-        <div className="space-y-3">
-          {filteredBooks.map(book => (
-            <div key={book.id} className="card card-hover flex gap-4 relative">
-              {/* 批量选择复选框 */}
-              {batchMode && (
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={selectedBooks.has(book.id)}
-                    onChange={() => toggleBookSelection(book.id)}
-                    className="w-5 h-5 cursor-pointer accent-[var(--accent)]"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-              )}
-              
-              {/* Cover Thumbnail */}
-              <div 
-                className="w-20 h-28 flex-shrink-0 rounded-lg overflow-hidden bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20 cursor-pointer"
-                onClick={() => handleSelectBook(book)}
-              >
-                {getSafeImageSrc(book.cover) ? (
-                  <img src={getSafeImageSrc(book.cover)!} alt={book.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    {getStatusIcon(book.status, 30)}
-                  </div>
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-semibold text-lg">{book.name}</h3>
-                    {book.author && <p className="text-sm text-[var(--text-secondary)]">{book.author}</p>}
-                  </div>
-                  <span className={`inline-flex flex-shrink-0 items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold shadow-md border-2 ${
-                    book.status === 'unread' 
-                      ? 'bg-gray-500 text-white border-gray-600' 
-                      : book.status === 'reading'
-                        ? 'bg-yellow-500 text-white border-yellow-600'
-                        : 'bg-green-500 text-white border-green-600'
-                  }`}>
-                    {getStatusIcon(book.status, 14, true)}
-                    {t(lang, `bookshelf.status.${book.status}`)}
-                  </span>
-                </div>
-                
-                {book.description && (
-                  <p className="text-sm text-[var(--text-secondary)] mt-1 line-clamp-1">{book.description}</p>
-                )}
-
-                {/* Tags */}
-                <div className="flex flex-wrap items-center gap-1 mt-2">
-                  {book.tags && book.tags.length > 0 ? (
-                    <>
-                      {book.tags.map(tag => (
-                        <span 
-                          key={`${tag.category}:${tag.name}`}
-                          className="px-2 py-0.5 bg-[var(--accent)]/10 text-[var(--accent)] rounded text-xs"
-                        >
-                          {tag.name}
-                        </span>
-                      ))}
-                      <button
-                        onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
-                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent)] ml-1"
-                        disabled={generatingTags}
-                        title={t(lang, 'bookshelf.tags.regenerate')}
-                      >
-                        <AppIcon name="refresh" size={15} />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
-                      className="text-xs text-[var(--accent)] hover:underline"
-                      disabled={generatingTags}
-                    >
-                      <AppIcon name="tag" size={14} />{generatingTags ? t(lang, 'bookshelf.tags.generating') : (lang === 'zh' ? '生成标签' : 'Generate Tags')}
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-4 mt-3">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-[var(--text-secondary)]">{t(lang, 'bookshelf.progress')}</span>
-                      <span>{book.status === 'finished' ? LEARNING_PHASES.length : book.currentPhase}/{LEARNING_PHASES.length}</span>
-                    </div>
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${getBookshelfProgressPercentage(book)}%` }} />
-                    </div>
-                  </div>
-                  
-                  {book.bestScore > 0 && (
-                    <div className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold ${
-                      book.bestScore >= 60
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                    }`}>
-                      <AppIcon name="target" size={14} />
-                      {book.bestScore}{lang === 'zh' ? '分' : ''}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex gap-2 mt-3">
-                  {!batchMode && (
-                    <>
-                      <button onClick={() => handleSelectBook(book)} className="btn-primary text-sm py-1.5">
-                        <AppIcon name="bookOpen" size={15} />{book.status === 'unread' ? t(lang, 'bookshelf.startReading') : t(lang, 'bookshelf.continueReading')}
-                      </button>
-                      <button onClick={() => openEditModal(book)} className="btn-secondary text-sm py-1.5">
-                        <AppIcon name="edit" tone="amber" size={14} />
-                        {lang === 'zh' ? '编辑' : 'Edit'}
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteBook(book)}
-                        className="btn-secondary text-sm py-1.5 text-red-400 border-red-400/30 hover:border-red-400"
-                      >
-                        <AppIcon name="trash" size={14} />{lang === 'zh' ? '删除' : 'Del'}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        filteredBooks.length > 30 ? (
+          <VirtualList
+            key={`${activeTab}-${selectedCategory || ''}-${selectedTag || ''}-${searchQuery}`}
+            items={filteredBooks}
+            itemHeight={virtualListMetrics.itemHeight}
+            height={virtualListMetrics.height}
+            overscan={4}
+            getItemKey={book => book.id}
+            renderItem={book => renderBookListRow(book, true)}
+            testId="bookshelf-virtual-list"
+            className="pr-1"
+          />
+        ) : (
+          <div className="space-y-3">
+            {filteredBooks.map(book => renderBookListRow(book))}
+          </div>
+        )
       )}
 
       {/* Add/Edit Book Modal */}
+      {showBookLists && (
+        <div className="modal-overlay" onClick={() => setShowBookLists(false)}>
+          <div className="modal-content max-h-[90vh] max-w-5xl overflow-y-auto" onClick={event => event.stopPropagation()}>
+            <div className="mb-1 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBookLists(false)}
+                className="icon-button"
+                aria-label={lang === 'zh' ? '关闭书单管理' : 'Close list manager'}
+                title={lang === 'zh' ? '关闭' : 'Close'}
+              >
+                <AppIcon name="close" size={20} />
+              </button>
+            </div>
+            <BookListManager
+              lang={lang}
+              onOpenBook={selected => {
+                setShowBookLists(false)
+                handleSelectBook(selected)
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {(showAddModal || editingBook) && (
         <div className="modal-overlay" onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}>
           <div className="modal-content max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>

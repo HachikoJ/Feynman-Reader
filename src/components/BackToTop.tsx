@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import AppIcon from './AppIcon'
 
 export default function BackToTop() {
   const [show, setShow] = useState(false)
@@ -23,12 +24,10 @@ export default function BackToTop() {
   return (
     <button
       onClick={scrollToTop}
-      className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-secondary)] text-white shadow-lg shadow-[var(--accent)]/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform z-50"
+      className="fixed bottom-6 right-6 z-50 hidden h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-secondary)] text-white shadow-lg shadow-[var(--accent)]/30 transition-transform hover:scale-110 active:scale-95 sm:flex"
       aria-label="Back to top"
     >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-      </svg>
+      <AppIcon name="arrowUp" size={20} strokeWidth={2.5} />
     </button>
   )
 }

@@ -12,6 +12,8 @@
 
 import { logger } from './logger'
 import { normalizeBooks, normalizeSettings } from './backupValidation'
+import type { AIUsageRecord } from './aiUsage'
+import type { BookList, BookRelation } from './bookRelations'
 
 // ============================================================================
 // 类型定义
@@ -33,6 +35,7 @@ export interface NoteRecord {
 export interface PracticeRecord {
   id: string
   bookId: string
+  sessionId?: string
   content: string
   aiReview: string
   scores: {
@@ -72,6 +75,7 @@ export interface PersonaQuestion {
 export interface QAPracticeRecord {
   id: string
   bookId: string
+  sessionId?: string
   questions: PersonaQuestion[]
   allPassed: boolean
   createdAt: number
@@ -131,6 +135,9 @@ export interface ExportData {
   exportDate: number
   settings: AppSettings
   books: Book[]
+  aiUsageRecords: AIUsageRecord[]
+  bookLists: BookList[]
+  bookRelations: BookRelation[]
 }
 
 // ============================================================================
@@ -542,7 +549,7 @@ class IndexedDBHelper {
 
     try {
       const store = await this.getStore(storeName, 'readwrite')
-      return new Promise((resolve, reject) => {
+      return new Promise(resolve => {
         let count = 0
         let completed = 0
 
@@ -577,7 +584,7 @@ class IndexedDBHelper {
 
     try {
       const store = await this.getStore(storeName, 'readwrite')
-      return new Promise((resolve, reject) => {
+      return new Promise(resolve => {
         let count = 0
         let completed = 0
 
@@ -684,7 +691,7 @@ class IndexedDBHelper {
    */
   async getEstimatedSize(): Promise<{ bytes: number; formatted: string }> {
     try {
-      const db = await this.init()
+      await this.init()
       // 注意：实际获取大小需要复杂的计算，这里返回估算值
       const booksCount = await this.count(STORE_BOOKS)
       const settingsSize = JSON.stringify(await this.get(STORE_SETTINGS, 'app')).length || 0
@@ -827,38 +834,6 @@ export async function needsMigration(): Promise<boolean> {
   const migrated = localStorage.getItem('feynman-indexedb-migrated') === 'true'
 
   return hasLocalStorageData && !migrated
-}
-
-/**
- * 回滚到 LocalStorage
- */
-export async function rollbackToLocalStorage(): Promise<boolean> {
-  try {
-    logger.info('[Migration] 开始回滚到 LocalStorage')
-
-    // 从 IndexedDB 读取数据
-    const settingsData = await indexedDB.get<{ id: string } & AppSettings>(STORE_SETTINGS, 'app')
-    const booksData = await indexedDB.getAll<Book>(STORE_BOOKS)
-
-    // 写入 LocalStorage
-    if (settingsData) {
-      const { id, ...settings } = settingsData
-      localStorage.setItem('feynman-settings', JSON.stringify(settings))
-    }
-
-    if (booksData.length > 0) {
-      localStorage.setItem('feynman-books', JSON.stringify(booksData))
-    }
-
-    // 清除迁移标记
-    localStorage.removeItem('feynman-indexedb-migrated')
-
-    logger.info('[Migration] 回滚完成')
-    return true
-  } catch (error) {
-    logger.error('[Migration] 回滚失败:', error)
-    return false
-  }
 }
 
 // ============================================================================

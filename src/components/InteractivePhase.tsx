@@ -4,13 +4,15 @@ import { useState, useRef, useEffect } from 'react'
 import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
-import { AI_CONTEXT_LIMIT_EXCEEDED, chat, createDeepSeekClient } from '@/lib/deepseek'
+import { AI_CONTEXT_LIMIT_EXCEEDED, AI_OUTPUT_INCOMPLETE, chat, createDeepSeekClient } from '@/lib/deepseek'
+import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import {
   generateInteractiveQuestionPrompts,
   generateInteractiveRegeneratePrompts,
   RegenerateTone
 } from '@/lib/feynman-prompts'
 import MarkdownRenderer from './MarkdownRenderer'
+import SourceEvidence from './SourceEvidence'
 import { getThinkingQuestionsForPhase, ThinkingQuestion } from '@/lib/learningModes'
 import AppIcon from './AppIcon'
 
@@ -24,6 +26,19 @@ interface Props {
   lang: Language
   documentContent?: string
   onContentChange?: (newContent: string) => void
+}
+
+function interactiveAIError(error: unknown, lang: Language, fallbackZh: string, fallbackEn: string): string {
+  if (error instanceof Error && error.message === AI_REQUEST_CANCELLED) {
+    return lang === 'zh' ? '已取消本次 AI 请求，当前内容已保留。' : 'The AI request was cancelled. Current content was kept.'
+  }
+  if (error instanceof Error && error.message === AI_TASK_BUSY) {
+    return lang === 'zh' ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。' : 'Another AI task is running. Wait for it to finish or cancel it first.'
+  }
+  if (error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE) {
+    return lang === 'zh' ? 'AI 输出未通过完整性或原文引用校验，请重试。' : 'The AI output failed completeness or source-citation validation. Try again.'
+  }
+  return lang === 'zh' ? fallbackZh : fallbackEn
 }
 
 export default function InteractivePhase({
@@ -107,7 +122,12 @@ export default function InteractivePhase({
         regenerateTone
       )
 
-      const response = await chat(client, systemPrompt, userPrompt, documentContent)
+      const requiredHeadings = [...content.matchAll(/^##\s+(.+)$/gm)].map(match => match[1].trim())
+      const response = await chat(client, systemPrompt, userPrompt, documentContent, {
+        requiredHeadings,
+        requireSourceCitations: Boolean(documentContent),
+        requestContext: { task: `phase-regenerate-${phaseId}`, bookId }
+      })
       setContent(response)
       setEditedContent(response)
       onContentChange?.(response)
@@ -117,7 +137,7 @@ export default function InteractivePhase({
         ? (lang === 'zh'
             ? '文档上下文过长，系统自动缩减后仍未能重新生成。当前阶段内容已保留，请拆分文档后重试。'
             : 'The document context is too long even after automatic reduction. The current phase content was kept; split the document and try again.')
-        : (lang === 'zh' ? '重新生成失败，请检查网络和 API Key 后重试。' : 'Regeneration failed. Check your network and API key, then try again.'))
+        : interactiveAIError(error, lang, '重新生成失败，请检查网络和 API Key 后重试。', 'Regeneration failed. Check your network and API key, then try again.'))
     }
 
     setRegenerating(false)
@@ -138,7 +158,10 @@ export default function InteractivePhase({
         phaseTitle,
         userQuestion
       )
-      const response = await chat(client, systemPrompt, userPrompt, documentContent)
+      const response = await chat(client, systemPrompt, userPrompt, documentContent, {
+        requireSourceCitations: Boolean(documentContent),
+        requestContext: { task: `phase-question-${phaseId}`, bookId }
+      })
 
       setQaHistory(prev => [...prev, {
         q: userQuestion,
@@ -152,7 +175,7 @@ export default function InteractivePhase({
         ? (lang === 'zh'
             ? '文档上下文过长，系统自动缩减后仍未完成回答。你的问题已保留，请拆分文档后重试。'
             : 'The document context is too long even after automatic reduction. Your question was kept; split the document and try again.')
-        : (lang === 'zh' ? '提问失败，请检查网络和 API Key 后重试。' : 'The question failed. Check your network and API key, then try again.'))
+        : interactiveAIError(error, lang, '提问失败，请检查网络和 API Key 后重试。', 'The question failed. Check your network and API key, then try again.'))
     }
 
     setAsking(false)
@@ -298,6 +321,7 @@ export default function InteractivePhase({
           /* 显示内容 */
           <div className="prose prose-invert max-w-none">
             <MarkdownRenderer content={content} />
+            <SourceEvidence content={content} documentContent={documentContent} lang={lang} />
           </div>
         )}
       </div>
@@ -364,6 +388,7 @@ export default function InteractivePhase({
                 </div>
                 <div className="bg-[var(--bg-secondary)] rounded-xl p-3">
                   <MarkdownRenderer content={item.a} />
+                  <SourceEvidence content={item.a} documentContent={documentContent} lang={lang} />
                 </div>
               </div>
             ))}

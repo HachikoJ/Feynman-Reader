@@ -2,6 +2,7 @@ import {
   BACKUP_REMINDER_INTERVAL_MS,
   DATA_RISK_NOTICE_VERSION,
   hasAcknowledgedCurrentDataRisk,
+  isBackupReminderDue,
   shouldShowBackupWarning
 } from '../backupReminder'
 
@@ -36,6 +37,23 @@ describe('shouldShowBackupWarning', () => {
       lastBackupAt: now - BACKUP_REMINDER_INTERVAL_MS + 1,
       now
     })).toBe(false)
+  })
+})
+
+describe('isBackupReminderDue', () => {
+  const now = 1_800_000_000_000
+
+  it('never marks an empty library as needing a backup', () => {
+    expect(isBackupReminderDue({ bookCount: 0, lastBackupAt: null, now })).toBe(false)
+    expect(isBackupReminderDue({
+      bookCount: 0,
+      lastBackupAt: now - BACKUP_REMINDER_INTERVAL_MS,
+      now
+    })).toBe(false)
+  })
+
+  it('marks existing unbacked-up learning data as due', () => {
+    expect(isBackupReminderDue({ bookCount: 1, lastBackupAt: null, now })).toBe(true)
   })
 })
 

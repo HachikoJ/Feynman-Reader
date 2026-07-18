@@ -50,6 +50,7 @@ nul
 # Local exports and conversation artifacts
 output/
 *.zip
+docs/product/submission/video/*.mp4
 FeynmanReader_AI_FinalProject*/
 结课作业-费曼学习法/
 project_conversation.json

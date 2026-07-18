@@ -10,9 +10,21 @@ import type {
   PracticeRecord,
   QAPracticeRecord
 } from './store'
-import { MAX_BACKUP_FILE_BYTES, MAX_BOOK_TAGS, MAX_DOCUMENT_TEXT_LENGTH, MAX_TAG_LENGTH } from './dataLimits'
+import {
+  MAX_BOOK_LIST_DESCRIPTION_LENGTH,
+  MAX_BOOK_LIST_NAME_LENGTH,
+  MAX_BOOK_LISTS,
+  MAX_BOOK_RELATION_NOTE_LENGTH,
+  MAX_BOOK_RELATIONS,
+  MAX_BOOK_TAGS,
+  MAX_BOOKS_PER_LIST,
+  MAX_DOCUMENT_TEXT_LENGTH,
+  MAX_TAG_LENGTH
+} from './dataLimits'
+import { AIUsageRecord, MAX_AI_USAGE_RECORDS } from './aiUsage'
+import { getBookRelationIdentity, type BookList, type BookRelation, type BookRelationType } from './bookRelations'
 
-export const BACKUP_DATA_VERSION = 3
+export const BACKUP_DATA_VERSION = 5
 export { MAX_BACKUP_FILE_BYTES } from './dataLimits'
 
 const MAX_BOOKS = 1000
@@ -24,6 +36,7 @@ const MAX_TAGS = MAX_BOOK_TAGS
 const MAX_RESPONSES = 50
 const MAX_QUESTIONS_PER_RECORD = 10
 const MAX_ATTEMPTS_PER_QUESTION = 50
+const BOOK_RELATION_TYPES = new Set<BookRelationType>(['series', 'related', 'prerequisite', 'sequel', 'prequel'])
 
 const BOOK_STATUSES = new Set<BookStatus>(['unread', 'reading', 'finished'])
 const NOTE_TYPES = new Set<NoteRecord['type']>(['note', 'teaching'])
@@ -40,6 +53,9 @@ export interface ValidatedExportData {
   exportDate: number
   settings: AppSettings
   books: Book[]
+  aiUsageRecords: AIUsageRecord[]
+  bookLists: BookList[]
+  bookRelations: BookRelation[]
 }
 
 class ImportValidationError extends Error {}
@@ -166,6 +182,9 @@ function normalizePractice(value: unknown, path: string, bookId: string): Practi
   return {
     id: identifier(item.id, `${path}.id`),
     bookId,
+    sessionId: item.sessionId === undefined
+      ? `legacy:${bookId}`
+      : identifier(item.sessionId, `${path}.sessionId`),
     content: stringValue(item.content, `${path}.content`, 200_000)!,
     aiReview: stringValue(item.aiReview, `${path}.aiReview`, 100_000)!,
     scores: normalizedScores,
@@ -231,6 +250,9 @@ function normalizeQARecord(value: unknown, path: string, bookId: string): QAPrac
   return {
     id: identifier(item.id, `${path}.id`),
     bookId,
+    sessionId: item.sessionId === undefined
+      ? `legacy:${bookId}`
+      : identifier(item.sessionId, `${path}.sessionId`),
     questions,
     allPassed: questions.length === 3 && questions.every(question => question.passed === true),
     createdAt: timestamp(item.createdAt, `${path}.createdAt`),
@@ -273,15 +295,20 @@ function normalizeBook(value: unknown, path: string): Book {
   const normalizedResponses = normalizeResponses(item.responses, `${path}.responses`)
   normalizeScore(item.bestScore, `${path}.bestScore`)
 
-  const teachingMaxScore = normalizedPractices.reduce((max, practice) => Math.max(max, practice.scores.overall), 0)
-  const qaMaxAvgScore = normalizedQARecords
-    .filter(qa => qa.allPassed)
-    .reduce((max, qa) => {
-      const average = qa.questions.reduce((sum, question) => sum + (question.score || 0), 0) / qa.questions.length
-      return Math.max(max, average)
-    }, 0)
-  const completed = teachingMaxScore >= 60 && qaMaxAvgScore >= 60
-  const bestScore = completed ? Math.round((teachingMaxScore + qaMaxAvgScore) / 2) : 0
+  const teachingScores = new Map<string, number>()
+  normalizedPractices.forEach(practice => {
+    if (practice.scores.overall < 60) return
+    const sessionId = practice.sessionId || `legacy:${id}`
+    teachingScores.set(sessionId, Math.max(teachingScores.get(sessionId) || 0, practice.scores.overall))
+  })
+  const bestScore = normalizedQARecords.filter(qa => qa.allPassed).reduce((best, qa) => {
+    const teachingScore = teachingScores.get(qa.sessionId || `legacy:${id}`) || 0
+    if (teachingScore < 60) return best
+    const qaScore = qa.questions.reduce((sum, question) => sum + (question.score || 0), 0) / qa.questions.length
+    return Math.max(best, Math.round((teachingScore + qaScore) / 2))
+  }, 0)
+  const practiceCompleted = bestScore >= 60
+  const completed = currentPhase === 6 && practiceCompleted
   const hasLearningActivity = currentPhase > 0
     || normalizedNotes.length > 0
     || Object.keys(normalizedResponses).length > 0
@@ -371,6 +398,119 @@ export function normalizeStoredBooks(value: unknown): { books: Book[]; errors: s
   return { books, errors }
 }
 
+function normalizeAIUsageRecord(value: unknown, path: string): AIUsageRecord {
+  const item = record(value, path)
+  const promptTokens = finiteNumber(item.promptTokens, `${path}.promptTokens`, 0, Number.MAX_SAFE_INTEGER, true)
+  const completionTokens = finiteNumber(item.completionTokens, `${path}.completionTokens`, 0, Number.MAX_SAFE_INTEGER, true)
+  const totalTokens = finiteNumber(item.totalTokens, `${path}.totalTokens`, 0, Number.MAX_SAFE_INTEGER, true)
+
+  return {
+    id: identifier(item.id, `${path}.id`),
+    task: stringValue(item.task, `${path}.task`, 100)!,
+    model: stringValue(item.model, `${path}.model`, 100)!,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    createdAt: timestamp(item.createdAt, `${path}.createdAt`),
+    ...(item.bookId !== undefined ? { bookId: identifier(item.bookId, `${path}.bookId`) } : {}),
+    ...(item.sessionId !== undefined ? { sessionId: identifier(item.sessionId, `${path}.sessionId`) } : {})
+  }
+}
+
+export function normalizeAIUsageRecords(value: unknown): ValidationResult<AIUsageRecord[]> {
+  try {
+    const records = value === undefined ? [] : value
+    if (!Array.isArray(records)) fail('AI 用量记录', '必须是数组')
+    if (records.length > MAX_AI_USAGE_RECORDS) fail('AI 用量记录', `最多允许 ${MAX_AI_USAGE_RECORDS} 条`)
+    const normalized = records.map((item, index) => normalizeAIUsageRecord(item, `AI 用量记录[${index}]`))
+    const ids = new Set<string>()
+    normalized.forEach(record => {
+      if (ids.has(record.id)) fail('AI 用量记录', `存在重复 ID：${record.id}`)
+      ids.add(record.id)
+    })
+    return { valid: true, data: normalized }
+  } catch (error) {
+    return { valid: false, error: error instanceof Error ? error.message : 'AI 用量记录无效' }
+  }
+}
+
+export function normalizeBookLists(value: unknown, validBookIds?: Set<string>): ValidationResult<BookList[]> {
+  try {
+    const lists = value === undefined ? [] : value
+    if (!Array.isArray(lists)) fail('书单数据', '必须是数组')
+    if (lists.length > MAX_BOOK_LISTS) fail('书单数据', `最多允许 ${MAX_BOOK_LISTS} 个书单`)
+
+    const normalized = lists.map((rawList, index) => {
+      const path = `书单[${index}]`
+      const item = record(rawList, path)
+      const bookIds = item.bookIds === undefined ? [] : item.bookIds
+      if (!Array.isArray(bookIds)) fail(`${path}.bookIds`, '必须是数组')
+      if (bookIds.length > MAX_BOOKS_PER_LIST) fail(`${path}.bookIds`, `最多允许 ${MAX_BOOKS_PER_LIST} 本书`)
+      const uniqueBookIds = Array.from(new Set(bookIds.map((bookId, bookIndex) => identifier(bookId, `${path}.bookIds[${bookIndex}]`))))
+
+      return {
+        id: identifier(item.id, `${path}.id`),
+        name: stringValue(item.name, `${path}.name`, MAX_BOOK_LIST_NAME_LENGTH)!.trim(),
+        ...(item.description !== undefined
+          ? { description: stringValue(item.description, `${path}.description`, MAX_BOOK_LIST_DESCRIPTION_LENGTH, false)?.trim() || undefined }
+          : {}),
+        bookIds: validBookIds ? uniqueBookIds.filter(bookId => validBookIds.has(bookId)) : uniqueBookIds,
+        createdAt: timestamp(item.createdAt, `${path}.createdAt`),
+        updatedAt: timestamp(item.updatedAt, `${path}.updatedAt`)
+      }
+    })
+
+    const ids = new Set<string>()
+    normalized.forEach(list => {
+      if (ids.has(list.id)) fail('书单数据', `存在重复 ID：${list.id}`)
+      ids.add(list.id)
+    })
+    return { valid: true, data: normalized }
+  } catch (error) {
+    return { valid: false, error: error instanceof Error ? error.message : '书单数据无效' }
+  }
+}
+
+export function normalizeBookRelations(value: unknown, validBookIds?: Set<string>): ValidationResult<BookRelation[]> {
+  try {
+    const relations = value === undefined ? [] : value
+    if (!Array.isArray(relations)) fail('书籍关系', '必须是数组')
+    if (relations.length > MAX_BOOK_RELATIONS) fail('书籍关系', `最多允许 ${MAX_BOOK_RELATIONS} 条`)
+
+    const normalized = relations.map((rawRelation, index) => {
+      const path = `书籍关系[${index}]`
+      const item = record(rawRelation, path)
+      if (!BOOK_RELATION_TYPES.has(item.type as BookRelationType)) fail(`${path}.type`, '取值无效')
+      const fromBookId = identifier(item.fromBookId, `${path}.fromBookId`)
+      const toBookId = identifier(item.toBookId, `${path}.toBookId`)
+      if (fromBookId === toBookId) fail(path, '不能关联书籍自身')
+      return {
+        id: identifier(item.id, `${path}.id`),
+        fromBookId,
+        toBookId,
+        type: item.type as BookRelationType,
+        ...(item.note !== undefined
+          ? { note: stringValue(item.note, `${path}.note`, MAX_BOOK_RELATION_NOTE_LENGTH, false)?.trim() || undefined }
+          : {}),
+        createdAt: timestamp(item.createdAt, `${path}.createdAt`)
+      }
+    }).filter(relation => !validBookIds || (validBookIds.has(relation.fromBookId) && validBookIds.has(relation.toBookId)))
+
+    const ids = new Set<string>()
+    const relationKeys = new Set<string>()
+    normalized.forEach(relation => {
+      if (ids.has(relation.id)) fail('书籍关系', `存在重复 ID：${relation.id}`)
+      ids.add(relation.id)
+      const relationKey = getBookRelationIdentity(relation.fromBookId, relation.toBookId, relation.type)
+      if (relationKeys.has(relationKey)) fail('书籍关系', '存在重复关系')
+      relationKeys.add(relationKey)
+    })
+    return { valid: true, data: normalized }
+  } catch (error) {
+    return { valid: false, error: error instanceof Error ? error.message : '书籍关系无效' }
+  }
+}
+
 export function normalizeImportData(value: unknown): ValidationResult<ValidatedExportData> {
   try {
     const item = record(value, '备份数据')
@@ -380,8 +520,26 @@ export function normalizeImportData(value: unknown): ValidationResult<ValidatedE
     if (!settings.valid) fail('设置：', settings.error)
     const books = normalizeBooks(item.books)
     if (!books.valid) fail('', books.error)
+    const aiUsageRecords = normalizeAIUsageRecords(item.aiUsageRecords)
+    if (!aiUsageRecords.valid) fail('', aiUsageRecords.error)
+    const bookIds = new Set(books.data.map(book => book.id))
+    const bookLists = normalizeBookLists(item.bookLists, bookIds)
+    if (!bookLists.valid) fail('', bookLists.error)
+    const bookRelations = normalizeBookRelations(item.bookRelations, bookIds)
+    if (!bookRelations.valid) fail('', bookRelations.error)
 
-    return { valid: true, data: { version, exportDate, settings: settings.data, books: books.data } }
+    return {
+      valid: true,
+      data: {
+        version,
+        exportDate,
+        settings: settings.data,
+        books: books.data,
+        aiUsageRecords: aiUsageRecords.data,
+        bookLists: bookLists.data,
+        bookRelations: bookRelations.data
+      }
+    }
   } catch (error) {
     return { valid: false, error: error instanceof Error ? error.message : '备份数据无效' }
   }
