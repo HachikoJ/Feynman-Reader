@@ -52,6 +52,7 @@ import { useServiceWorker } from '@/lib/useServiceWorker'
 import AITaskStatus from '@/components/AITaskStatus'
 import { LoadingState, Skeleton } from '@/components/Skeleton'
 import AppDialogHost from '@/components/AppDialogHost'
+import AssistantWorkspace from '@/components/AssistantWorkspace'
 
 type View = 'bookshelf' | 'reading' | 'settings'
 
@@ -292,6 +293,7 @@ export default function Home() {
         <div className="min-h-screen">
           <AppDialogHost lang={lang} />
           <AITaskStatus lang={lang} />
+          <AssistantWorkspace lang={lang} settings={settings} books={getBooks()} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} />
           {storageWriteError && (
             <div role="alert" className="sticky top-0 z-50 border-b border-red-500/50 bg-red-950 px-4 py-3 text-sm text-red-100">
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
