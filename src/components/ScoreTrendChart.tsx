@@ -9,14 +9,15 @@ interface Props {
   records: ProgressRecord[]
   lang: Language
   compact?: boolean
+  embedded?: boolean
 }
 
-export default function ScoreTrendChart({ records, lang, compact = false }: Props) {
+export default function ScoreTrendChart({ records, lang, compact = false, embedded = false }: Props) {
   const trend = useMemo(() => calculateScoreTrend(records), [records])
 
   if (records.length === 0) {
     return (
-      <div className={`bg-[var(--bg-secondary)] rounded-xl p-4 text-center ${compact ? '' : 'card'}`}>
+      <div className={`bg-[var(--bg-secondary)] rounded-xl p-4 text-center ${compact || embedded ? '' : 'card'}`}>
         <AppIcon name="chart" tone="blue" size={36} className="mx-auto mb-2" />
         <p className="text-[var(--text-secondary)]">
           {lang === 'zh' ? '暂无练习记录' : 'No practice records yet'}
@@ -134,7 +135,7 @@ export default function ScoreTrendChart({ records, lang, compact = false }: Prop
   }
 
   return (
-    <div className="card">
+    <div className={embedded ? '' : 'card'}>
       <h3 className="flex items-center gap-2 text-xl font-bold mb-4">
         <AppIcon name="chart" tone="blue" size={22} />
         {lang === 'zh' ? '进步追踪' : 'Progress Tracking'}

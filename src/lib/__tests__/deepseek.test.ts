@@ -11,7 +11,9 @@ import {
   AI_CONTEXT_LIMIT_EXCEEDED,
   AI_OUTPUT_INCOMPLETE,
   chat,
+  createDeepSeekClient,
   DEEPSEEK_API_KEY_INVALID,
+  DEEPSEEK_OFFICIAL_CHANNEL_SUNSET,
   DEEPSEEK_MODEL,
   evaluatePersonaAnswers,
   generateBookMetadata,
@@ -24,6 +26,7 @@ import {
   validateDeepSeekApiKey,
   withDeepSeekDefaults
 } from '../deepseek'
+import { getTokendanceRecoveryAction } from '../tokendance'
 import { getSettings } from '../store'
 import { addAIUsageRecord } from '../store'
 
@@ -34,9 +37,43 @@ describe('DeepSeek V4 Flash request defaults', () => {
       temperature: 0.5
     })
 
-    expect(request.model).toBe('deepseek-v4-flash')
+    expect(request.model).toBe('deepseek-v4-flash-0731')
     expect(request.model).toBe(DEEPSEEK_MODEL)
     expect(request.thinking).toEqual({ type: 'disabled' })
+  })
+})
+
+describe('TokenDance recovery headers', () => {
+  it('reads the recovery action from OpenAI SDK response-header objects', () => {
+    expect(getTokendanceRecoveryAction({ headers: { 'tokendance-recovery-action': 'reauthorize_api_key' } }))
+      .toBe('reauthorize_api_key')
+  })
+
+  it('strips SDK-only headers while preserving app attribution', async () => {
+    const originalFetch = global.fetch
+    const fetchMock = jest.fn(async (_input: RequestInfo, init?: RequestInit) => new Response(JSON.stringify({
+      id: 'completion-test',
+      model: DEEPSEEK_MODEL,
+      choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    global.fetch = fetchMock as typeof fetch
+    ;(getSettings as jest.MockedFunction<typeof getSettings>).mockReturnValueOnce({
+      aiDataConsent: true,
+      aiProvider: 'tokendance'
+    } as ReturnType<typeof getSettings>)
+
+    try {
+      const client = await createDeepSeekClient('sk-test')
+      await client.chat.completions.create(withDeepSeekDefaults({
+        messages: [{ role: 'user', content: 'test' }]
+      }))
+
+      const headers = new Headers(fetchMock.mock.calls[0][1]?.headers)
+      expect(headers.get('X-App-URL')).toBe('https://www.deline.top')
+      expect(Array.from(headers.keys()).some(name => name.startsWith('x-stainless-'))).toBe(false)
+    } finally {
+      global.fetch = originalFetch
+    }
   })
 })
 
@@ -203,6 +240,36 @@ describe('AI data consent', () => {
 
     const { createDeepSeekClient, AI_DATA_CONSENT_REQUIRED } = await import('../deepseek')
     await expect(createDeepSeekClient('sk-test')).rejects.toThrow(AI_DATA_CONSENT_REQUIRED)
+  })
+})
+
+describe('official DeepSeek channel sunset', () => {
+  const realDate = Date
+
+  beforeEach(() => {
+    global.Date = class extends realDate {
+      constructor(value?: string | number | Date) {
+        super(value ?? '2026-10-01T00:00:00+08:00')
+      }
+      static now() {
+        return new realDate('2026-10-01T00:00:00+08:00').getTime()
+      }
+    } as DateConstructor
+  })
+
+  afterEach(() => {
+    global.Date = realDate
+  })
+
+  it('rejects an official DeepSeek key after the cutoff before creating a client', async () => {
+    const mockedSettings = getSettings as jest.MockedFunction<typeof getSettings>
+    mockedSettings.mockReturnValue({ aiDataConsent: true, aiProvider: 'deepseek' } as ReturnType<typeof getSettings>)
+    const { createDeepSeekClient } = await import('../deepseek')
+    await expect(createDeepSeekClient('sk-test')).rejects.toThrow(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
+  })
+
+  it('rejects official DeepSeek validation after the cutoff', async () => {
+    await expect(validateDeepSeekApiKey('sk-test', undefined, 'deepseek')).rejects.toThrow(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
   })
 })
 

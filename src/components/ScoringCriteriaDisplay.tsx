@@ -9,9 +9,10 @@ import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 interface Props {
   lang: Language
   compact?: boolean
+  embedded?: boolean
 }
 
-export default function ScoringCriteriaDisplay({ lang, compact = false }: Props) {
+export default function ScoringCriteriaDisplay({ lang, compact = false, embedded = false }: Props) {
   const [expandedDimension, setExpandedDimension] = useState<string | null>(null)
   const [showFullGuide, setShowFullGuide] = useState(false)
 
@@ -85,7 +86,7 @@ export default function ScoringCriteriaDisplay({ lang, compact = false }: Props)
   }
 
   return (
-    <div className="card">
+    <div className={embedded ? '' : 'card'}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="flex items-center gap-2 text-xl font-bold">
           <AppIcon name="chart" tone="blue" size={22} />

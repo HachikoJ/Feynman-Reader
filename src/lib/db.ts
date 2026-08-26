@@ -33,6 +33,7 @@ async function ensureInit(): Promise<void> {
 
 const defaultSettings: AppSettings = {
   apiKey: '',
+  aiProvider: 'tokendance',
   language: 'zh',
   theme: 'light',
   hideApiKeyAlert: false,
@@ -53,6 +54,9 @@ export async function getSettings(): Promise<AppSettings> {
       quotes: data.quotes || (data as { customQuotes?: AppSettings['quotes'] }).customQuotes || []
     }, { preserveApiKey: true })
     if (!normalized.valid) throw new Error(`Stored settings are invalid: ${normalized.error}`)
+    if (normalized.data.aiProvider !== data.aiProvider || normalized.data.apiKey !== data.apiKey || normalized.data.aiDataConsent !== data.aiDataConsent) {
+      await indexedDB.put('settings', { id: 'app', ...normalized.data })
+    }
     return normalized.data
   } catch (error) {
     logger.error('Failed to get settings from IndexedDB:', error)

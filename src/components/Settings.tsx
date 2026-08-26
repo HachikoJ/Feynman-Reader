@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
+import QRCode from 'qrcode'
 import {
   ArrowUpRight,
   AlertTriangle,
@@ -19,7 +21,10 @@ import {
   Sun,
   Trash2,
   Upload,
-  X
+  X,
+  Wallet,
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react'
 import {
   AppSettings,
@@ -47,13 +52,17 @@ import {
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { privacyPolicyContent } from '@/lib/privacyPolicy'
-import { defaultQuotesZh, defaultQuotesEn } from './LoadingQuotes'
+import { defaultQuotesZh, defaultQuotesEn, localizePresetQuotes } from './LoadingQuotes'
 import MarkdownRenderer from './MarkdownRenderer'
 import { LAST_BACKUP_AT_KEY } from '@/lib/backupReminder'
 import { validateApiKey } from '@/lib/validation'
 import { DEEPSEEK_API_KEY_INVALID, validateDeepSeekApiKey } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { showAppConfirm } from '@/lib/appDialog'
+import { createTokendanceAuthorizationUrl, exchangeTokendanceCode, fetchTokendanceBalance, createTokendancePaymentSession, getTokendancePaymentSession, type TokendanceBalance, type TokendancePaymentSession } from '@/lib/tokendance'
+import { deepSeekSunsetMessage, isTokenDanceOnly } from '@/lib/aiProviderPolicy'
+import { DEEPSEEK_OFFICIAL_CHANNEL_SUNSET } from '@/lib/deepseek'
+import { isAIConfigurationComplete } from '@/lib/startupPrompt'
 
 // P0 新增：IndexedDB 支持
 import {
@@ -76,6 +85,7 @@ export default function Settings({
 }: Props) {
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
+    aiProvider: 'tokendance',
     language: 'zh',
     theme: 'light',
     hideApiKeyAlert: false,
@@ -91,7 +101,15 @@ export default function Settings({
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [apiKeyConsentError, setApiKeyConsentError] = useState<string | null>(null)
   const [apiActionStatus, setApiActionStatus] = useState<string | null>(null)
+  const [tokendanceBalance, setTokendanceBalance] = useState<TokendanceBalance | null>(null)
+  const [loadingTokendanceBalance, setLoadingTokendanceBalance] = useState(false)
+  const [tokendancePayment, setTokendancePayment] = useState<TokendancePaymentSession | null>(null)
+  const [tokendancePaymentQr, setTokendancePaymentQr] = useState<string | null>(null)
+  const [creatingTokendancePayment, setCreatingTokendancePayment] = useState(false)
+  const [tokendanceAmount, setTokendanceAmount] = useState('10')
+  const [tokendanceOAuthLoading, setTokendanceOAuthLoading] = useState(false)
   const [confirmingApiKeyDeletion, setConfirmingApiKeyDeletion] = useState(false)
+  const [showAiConfiguration, setShowAiConfiguration] = useState(true)
   const [showConsentPolicy, setShowConsentPolicy] = useState(false)
   const [hasReadConsentPolicy, setHasReadConsentPolicy] = useState(false)
   const [newQuoteText, setNewQuoteText] = useState('')
@@ -164,18 +182,30 @@ export default function Settings({
     let cancelled = false
     let loaded = getSettings()
 
-    // 始终使用中文金句作为默认
     if (!loaded.quotesInitialized || loaded.quotes.length === 0) {
-      loaded = { ...loaded, quotes: [...defaultQuotesZh], quotesInitialized: true }
+      const defaultQuotes = loaded.language === 'zh' ? defaultQuotesZh : defaultQuotesEn
+      loaded = { ...loaded, quotes: [...defaultQuotes], quotesInitialized: true }
       saveSettings(loaded)
       void flushPendingStoreWrites().catch(async error => {
         logger.error('Failed to initialize default quotes:', error)
         const restored = await reloadSettingsFromPersistence().catch(() => null)
         if (!cancelled && restored) setSettings(restored)
       })
+    } else {
+      const localizedQuotes = localizePresetQuotes(loaded.quotes, loaded.language)
+      if (localizedQuotes !== loaded.quotes) {
+        loaded = { ...loaded, quotes: localizedQuotes }
+        saveSettings(loaded)
+        void flushPendingStoreWrites().catch(async error => {
+          logger.error('Failed to localize default quotes:', error)
+          const restored = await reloadSettingsFromPersistence().catch(() => null)
+          if (!cancelled && restored) setSettings(restored)
+        })
+      }
     }
 
     setSettings(loaded)
+    setShowAiConfiguration(!isAIConfigurationComplete(loaded))
     setSettingsLoaded(true)
 
     // 获取数据统计
@@ -198,6 +228,26 @@ export default function Settings({
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || !settingsLoaded) return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    if (!code || params.get('tokendance_callback') !== '1') return
+    setShowAiConfiguration(true)
+    setTokendanceOAuthLoading(true)
+    void exchangeTokendanceCode(code, params.get('state'))
+      .then(async key => {
+        const next = { ...getSettings(), ...settings, apiKey: key, aiProvider: 'tokendance' as const }
+        setSettings(next)
+        setSaved(false)
+        setApiKeyConsentError(null)
+        setApiActionStatus(lang === 'zh' ? 'TokenDance 授权成功。请确认数据传输同意，然后点击“保存设置”。' : 'TokenDance authorization succeeded. Confirm data consent, then click Save Settings.')
+        window.history.replaceState({}, '', window.location.pathname)
+      })
+      .catch(error => setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance OAuth failed.'))
+      .finally(() => setTokendanceOAuthLoading(false))
+  }, [settingsLoaded])
+
   useEffect(() => subscribeToAIUsage(() => {
     setAIUsageSummary(getAIUsageSummary())
     try {
@@ -206,6 +256,26 @@ export default function Settings({
       logger.warn('Failed to refresh data size after AI usage update:', error)
     }
   }), [])
+
+  useEffect(() => {
+    let cancelled = false
+    setTokendancePaymentQr(null)
+    if (!tokendancePayment?.payment_url) return
+
+    void QRCode.toDataURL(tokendancePayment.payment_url, {
+      width: 220,
+      margin: 2,
+      errorCorrectionLevel: 'M'
+    }).then(dataUrl => {
+      if (!cancelled) setTokendancePaymentQr(dataUrl)
+    }).catch(error => {
+      logger.warn('Unable to render TokenDance payment QR code.', error)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [tokendancePayment?.payment_url])
 
   useEffect(() => {
     if (openDataManagement) {
@@ -220,12 +290,14 @@ export default function Settings({
       handledApiConfigurationRequestRef.current === focusApiConfigurationRequest
     ) return
     handledApiConfigurationRequestRef.current = focusApiConfigurationRequest
+    setShowAiConfiguration(true)
 
     const apiKeyMissing = settings.apiKey.trim().length === 0
+    const configuredProvider = isTokenDanceOnly() ? 'tokendance' : (settings.aiProvider ?? 'deepseek')
     const apiKeyValidation = validateApiKey(settings.apiKey)
     const missingConsent = settings.apiKey.trim().length > 0 && !settings.aiDataConsent
     const configurationError = apiKeyMissing
-      ? (settings.language === 'zh' ? '请先填写 DeepSeek API Key，并在勾选同意后保存。' : 'Add your DeepSeek API key, confirm consent, and save it first.')
+      ? (settings.language === 'zh' ? `请先填写 ${configuredProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'} API Key，并在勾选同意后保存。` : `Add your ${configuredProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'} API key, confirm consent, and save it first.`)
       : !apiKeyValidation.valid
         ? (settings.language === 'zh' ? 'API Key 格式不正确，请检查后重新保存。' : 'The API key format is invalid. Check it and save again.')
       : missingConsent
@@ -320,8 +392,8 @@ export default function Settings({
     const trimmedApiKey = settings.apiKey.trim()
     if (!trimmedApiKey) {
       const message = settings.language === 'zh'
-        ? '保存失败：请先填写 DeepSeek API Key。'
-        : 'Save failed: enter your DeepSeek API key first.'
+        ? `保存失败：请先填写 ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'} API Key。`
+        : `Save failed: enter your ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'} API key first.`
       setApiKeyConsentError(message)
       setSaved(false)
       requestAnimationFrame(() => {
@@ -361,9 +433,10 @@ export default function Settings({
     setSaving(true)
     const settingsToSave = { ...settings, apiKey: trimmedApiKey }
     try {
-      await validateDeepSeekApiKey(trimmedApiKey)
+      await validateDeepSeekApiKey(trimmedApiKey, undefined, activeProvider)
     } catch (error) {
       const invalidKey = error instanceof Error && error.message === DEEPSEEK_API_KEY_INVALID
+      const sunset = error instanceof Error && error.message === DEEPSEEK_OFFICIAL_CHANNEL_SUNSET
       const cancelled = error instanceof Error && error.message === AI_REQUEST_CANCELLED
       const busy = error instanceof Error && error.message === AI_TASK_BUSY
       const message = settings.language === 'zh'
@@ -371,6 +444,8 @@ export default function Settings({
             ? '已取消 API Key 验证，设置未保存。'
             : busy
             ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。'
+            : sunset
+            ? deepSeekSunsetMessage('zh')
             : invalidKey
             ? 'API Key 无效，请检查是否复制正确或已被停用。'
             : '暂时无法验证 API Key，请检查网络后重试。')
@@ -378,10 +453,12 @@ export default function Settings({
             ? 'API key validation was cancelled. Settings were not saved.'
             : busy
             ? 'Another AI task is running. Wait for it to finish or cancel it first.'
+            : sunset
+            ? deepSeekSunsetMessage('en')
             : invalidKey
             ? 'The API key is invalid. Check that it was copied correctly and is still active.'
             : 'The API key could not be verified. Check your network and try again.')
-      logger.warn(invalidKey ? 'DeepSeek rejected the API key.' : 'DeepSeek API key verification failed.')
+      logger.warn(sunset ? 'Official DeepSeek channel has ended.' : invalidKey ? 'AI provider rejected the API key.' : 'AI provider API key verification failed.')
       setApiKeyConsentError(message)
       setSaved(false)
       requestAnimationFrame(() => {
@@ -416,6 +493,59 @@ export default function Settings({
     } finally {
       settingsSaveInFlightRef.current = false
       setSaving(false)
+    }
+  }
+
+  const handleTokendanceAuthorize = async () => {
+    try {
+      setTokendanceOAuthLoading(true)
+      window.location.href = await createTokendanceAuthorizationUrl()
+    } catch (error) {
+      setTokendanceOAuthLoading(false)
+      setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance OAuth failed.')
+    }
+  }
+
+  const handleTokendanceBalance = async () => {
+    if (!settings.apiKey) return
+    setLoadingTokendanceBalance(true)
+    try {
+      setTokendanceBalance(await fetchTokendanceBalance(settings.apiKey))
+    } catch (error) {
+      setApiKeyConsentError(error instanceof Error ? error.message : 'Unable to load TokenDance balance.')
+    } finally {
+      setLoadingTokendanceBalance(false)
+    }
+  }
+
+  const handleTokendanceTopUp = async () => {
+    const amount = Number.parseInt(tokendanceAmount, 10)
+    if (!settings.apiKey || !Number.isInteger(amount) || amount < 1 || amount > 100000) {
+      setApiKeyConsentError(lang === 'zh' ? '充值金额须为 1 至 100000 元的整数。' : 'Top-up amount must be an integer from 1 to 100000.')
+      return
+    }
+    try {
+      setCreatingTokendancePayment(true)
+      setApiKeyConsentError(null)
+      const session = await createTokendancePaymentSession(settings.apiKey, amount)
+      setTokendancePayment(session)
+      const startedAt = Date.now()
+      const poll = async () => {
+        if (!session || Date.now() - startedAt > 10 * 60 * 1000) return
+        try {
+          const current = await getTokendancePaymentSession(settings.apiKey, session.status_url)
+          setTokendancePayment(current)
+          if (current.status === 'paid') await handleTokendanceBalance()
+          else if (current.status === 'pending') window.setTimeout(poll, 3000)
+        } catch (error) {
+          setApiKeyConsentError(error instanceof Error ? error.message : 'Unable to check payment status.')
+        }
+      }
+      window.setTimeout(poll, 3000)
+    } catch (error) {
+      setApiKeyConsentError(error instanceof Error ? error.message : 'Unable to create payment session.')
+    } finally {
+      setCreatingTokendancePayment(false)
     }
   }
 
@@ -463,8 +593,40 @@ export default function Settings({
     }
   }
 
-  const handleLanguageChange = (newLang: Language) => {
-    void persistQuickSetting('language', newLang)
+  const handleLanguageChange = async (newLang: Language) => {
+    if (settingsSaveInFlightRef.current) return
+
+    settingsSaveInFlightRef.current = true
+    setSavingQuickSetting(true)
+    setQuickSettingError(null)
+    const localizedDraftQuotes = localizePresetQuotes(settings.quotes, newLang)
+    setSettings(current => ({ ...current, language: newLang, quotes: localizedDraftQuotes }))
+
+    try {
+      await flushPendingStoreWrites()
+      const persisted = getSettings()
+      const persistedSettings = {
+        ...persisted,
+        language: newLang,
+        quotes: localizePresetQuotes(persisted.quotes, newLang)
+      }
+      saveSettings(persistedSettings)
+      await flushPendingStoreWrites()
+      onSettingsChange(persistedSettings)
+    } catch (error) {
+      logger.error('Failed to persist language:', error)
+      const restored = await reloadSettingsFromPersistence().catch(() => getSettings())
+      setSettings(current => ({ ...current, language: restored.language, quotes: restored.quotes }))
+      onSettingsChange(restored)
+      setQuickSettingError(
+        settings.language === 'zh'
+          ? '语言切换保存失败，已恢复原设置。'
+          : 'The language change could not be saved and was reverted.'
+      )
+    } finally {
+      settingsSaveInFlightRef.current = false
+      setSavingQuickSetting(false)
+    }
   }
 
   const persistAiPrivacySettings = async (
@@ -827,13 +989,16 @@ export default function Settings({
   }
 
   const acceptConsentPolicy = async () => {
-    const savedConsent = await persistAiPrivacySettings(
-      { aiDataConsent: true },
+    if (updatingAiPrivacy || !hasReadConsentPolicy) return
+    setSettings(current => ({ ...current, aiDataConsent: true }))
+    setSaved(false)
+    setApiKeyConsentError(null)
+    setApiActionStatus(
       settings.language === 'zh'
-        ? 'AI 数据传输同意已保存。'
-        : 'AI data transfer consent was saved.'
+        ? '已勾选 AI 数据传输同意，请点击“保存设置”完成配置。'
+        : 'AI data transfer consent selected. Click Save Settings to complete configuration.'
     )
-    if (savedConsent) setShowConsentPolicy(false)
+    setShowConsentPolicy(false)
   }
 
   const handleDeleteApiKey = async () => {
@@ -864,7 +1029,11 @@ export default function Settings({
   }
 
   const lang = settings.language
-  const hasSavedApiKey = getSettings().apiKey.trim().length > 0
+  const tokenDanceOnly = isTokenDanceOnly()
+  const activeProvider = tokenDanceOnly ? 'tokendance' : (settings.aiProvider ?? 'deepseek')
+  const persistedSettings = getSettings()
+  const hasSavedApiKey = persistedSettings.apiKey.trim().length > 0
+  const aiConfigurationComplete = isAIConfigurationComplete(persistedSettings)
   const consentPolicy = privacyPolicyContent[lang]
   const presetCount = settings.quotes.filter(q => q.isPreset).length
   const customCount = settings.quotes.filter(q => !q.isPreset).length
@@ -912,7 +1081,97 @@ export default function Settings({
       <div className="space-y-4">
         {/* API Key */}
         <div className="card p-4">
-          <label className="block text-sm font-medium mb-2">{t(lang, 'settings.apiKey')}</label>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <label className="block text-sm font-medium">{lang === 'zh' ? 'AI 接入渠道' : 'AI provider'}</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${aiConfigurationComplete ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
+                {aiConfigurationComplete ? <Check size={14} aria-hidden="true" /> : <AlertTriangle size={14} aria-hidden="true" />}
+              {aiConfigurationComplete
+                  ? (activeProvider === 'tokendance'
+                      ? (lang === 'zh' ? 'TokenDance 已连接，AI 可用' : 'TokenDance connected, AI ready')
+                      : (lang === 'zh' ? 'DeepSeek 官方 API 已连接' : 'DeepSeek Official API connected'))
+                  : (lang === 'zh' ? '完成 3 步后启用 AI' : 'Complete 3 steps to enable AI')}
+              </span>
+              {aiConfigurationComplete && (
+                <button type="button" onClick={() => setShowAiConfiguration(current => !current)} className="text-sm text-[var(--accent)] hover:underline">
+                  {showAiConfiguration ? (lang === 'zh' ? '收起' : 'Collapse') : (lang === 'zh' ? '管理连接' : 'Manage connection')}
+                </button>
+              )}
+            </div>
+          </div>
+          {aiConfigurationComplete && !showAiConfiguration && (
+            <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                {activeProvider === 'tokendance' ? (
+                  <img src="https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg" alt="TokenDance" className="h-7 w-auto max-w-[150px] object-contain" />
+                ) : (
+                  <span className="font-semibold">{lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API'}</span>
+                )}
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {lang === 'zh' ? 'DeepSeek V4 Flash 已就绪，可直接返回书籍继续分析。' : 'DeepSeek V4 Flash is ready. Return to a book to continue analyzing.'}
+                </p>
+              </div>
+            </div>
+          )}
+          {(!aiConfigurationComplete || showAiConfiguration) && (
+            <>
+          {!tokenDanceOnly && (
+            <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300" role="note">
+              {lang === 'zh' ? '迁移提醒：官方 DeepSeek 配置渠道将在 2026 年 10 月 1 日下线。到期后已配置的旧 Key 也不再支持，请提前保存相关配置并改用 TokenDance API Key。' : 'Migration notice: the official DeepSeek configuration channel ends on October 1, 2026. Existing keys will also stop working; save your configuration and set up a TokenDance API key before then.'}
+            </div>
+          )}
+          {tokenDanceOnly && (
+            <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300" role="alert">
+              {deepSeekSunsetMessage(lang)}
+            </div>
+          )}
+          <div className={`mb-4 grid gap-2 ${tokenDanceOnly ? '' : 'sm:grid-cols-2'}`} role="radiogroup" aria-label={lang === 'zh' ? 'AI 接入渠道' : 'AI provider'}>
+            {(['tokendance', ...(tokenDanceOnly ? [] : ['deepseek' as const])] as const).map(provider => (
+              <button
+                key={provider}
+                type="button"
+                role="radio"
+                aria-checked={activeProvider === provider}
+                onClick={() => updateSetting('aiProvider', provider)}
+                className={`rounded-lg border p-3 text-left transition ${activeProvider === provider ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:bg-[var(--bg-secondary)]'}`}
+              >
+                {provider === 'tokendance' && <img src="https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg" alt="TokenDance" className="mb-2 h-7 w-auto max-w-[150px] object-contain object-left" />}
+                <span className="block font-medium">{provider === 'tokendance' ? 'TokenDance / TokenPay' : (lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API')}</span>
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{provider === 'tokendance' ? (lang === 'zh' ? 'OAuth 授权、余额和充值；调用会计入应用归因。' : 'OAuth, balance and top-up with app attribution.') : (lang === 'zh' ? '使用 DeepSeek 官方控制台和账单。' : 'Use the official DeepSeek console and billing.')}</span>
+              </button>
+            ))}
+          </div>
+          {!aiConfigurationComplete && activeProvider === 'tokendance' && (
+            <ol className="mb-4 grid gap-2 text-sm sm:grid-cols-3" aria-label={lang === 'zh' ? 'TokenDance 配置步骤' : 'TokenDance setup steps'}>
+              {[
+                { done: settings.apiKey.trim().length > 0, zh: '授权或填写 Key', en: 'Authorize or add key' },
+                { done: settings.aiDataConsent === true, zh: '确认数据传输', en: 'Confirm data transfer' },
+                { done: aiConfigurationComplete, zh: '验证并启用 AI', en: 'Verify and enable AI' }
+              ].map((step, index) => (
+                <li key={step.en} className="flex items-center gap-2 rounded-lg bg-[var(--bg-secondary)] px-3 py-2">
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${step.done ? 'bg-emerald-600 text-white' : 'border border-[var(--border)]'}`}>
+                    {step.done ? <Check size={14} aria-hidden="true" /> : index + 1}
+                  </span>
+                  <span>{lang === 'zh' ? step.zh : step.en}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {activeProvider === 'tokendance' && (
+            <div className="mb-4 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium">TokenDance OAuth</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '在 TokenDance 确认后自动返回，不需要复制 Key。' : 'Confirm on TokenDance and return automatically; no copy-paste required.'}</p>
+                </div>
+                <button type="button" onClick={() => void handleTokendanceAuthorize()} disabled={tokendanceOAuthLoading || updatingAiPrivacy || saving} className="btn-primary inline-flex items-center gap-1.5">
+                  {tokendanceOAuthLoading ? <RefreshCw size={15} className="animate-spin" aria-hidden="true" /> : <ExternalLink size={15} aria-hidden="true" />}
+                  {tokendanceOAuthLoading ? (lang === 'zh' ? '跳转中...' : 'Opening...') : (lang === 'zh' ? '授权 TokenDance' : 'Authorize TokenDance')}
+                </button>
+              </div>
+            </div>
+          )}
+          <label className="block text-sm font-medium mb-2">{activeProvider === 'tokendance' ? 'TokenDance API Key' : t(lang, 'settings.apiKey')}</label>
           <div className="relative mb-2">
             <input
               ref={apiKeyInputRef}
@@ -920,7 +1179,7 @@ export default function Settings({
               value={settings.apiKey}
               onChange={(e) => updateSetting('apiKey', e.target.value)}
               disabled={updatingAiPrivacy}
-              placeholder={t(lang, 'settings.apiKeyPlaceholder')}
+              placeholder={activeProvider === 'tokendance' ? 'TokenDance API Key' : t(lang, 'settings.apiKeyPlaceholder')}
               aria-describedby={apiKeyConsentError ? 'api-key-consent-error' : undefined}
               className="input-field pr-24"
             />
@@ -933,7 +1192,13 @@ export default function Settings({
               {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          <p className="text-xs text-[var(--text-secondary)] mb-2">{t(lang, 'settings.apiKeyHelp')}</p>
+          <p className="text-xs text-[var(--text-secondary)] mb-2">{activeProvider === 'tokendance' ? (lang === 'zh' ? '仅保存在当前浏览器网站数据中；完整 Key 只在授权交换时返回。价格以 TokenDance 官方实时计费标准及后续通知为准。' : 'Stored only in this browser site data; the full key is returned once during OAuth exchange. Pricing follows TokenDance official real-time billing and subsequent notices.') : t(lang, 'settings.apiKeyHelp')}</p>
+          {activeProvider === 'tokendance' && (
+            <ul className="mb-3 space-y-1 text-xs leading-5 text-[var(--text-secondary)]">
+              <li>• {lang === 'zh' ? '新分析所需的书籍信息、上传原文、问题与回答会由浏览器直接发送至 TokenDance。' : 'Book details, uploaded source text, questions, and answers needed for new AI work are sent directly from your browser to TokenDance.'}</li>
+              <li>• {lang === 'zh' ? 'TokenDance 按官方实时标准计费，本应用不代收费用；调用带有应用归因，TokenDance 可能向作者分润。' : 'TokenDance bills at its official real-time rates; this app does not collect payment. Calls carry app attribution and TokenDance may share revenue with the author.'}</li>
+            </ul>
+          )}
           <label className="mt-3 flex items-start gap-3 text-sm text-[var(--text-secondary)] cursor-pointer">
             <input
               ref={aiConsentRef}
@@ -945,8 +1210,8 @@ export default function Settings({
             />
             <span>
               {lang === 'zh'
-                ? '我理解使用 AI 功能会将相关学习内容直接发送至 DeepSeek，并同意进行该传输。'
-                : 'I understand that AI features send relevant learning content directly to DeepSeek, and I consent to that transfer.'}
+                ? `我理解使用 AI 功能会将相关学习内容直接发送至 ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}，并同意进行该传输。`
+                : `I understand that AI features send relevant learning content directly to ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}, and I consent to that transfer.`}
             </span>
           </label>
           {apiKeyConsentError && !showConsentPolicy && (
@@ -966,14 +1231,27 @@ export default function Settings({
               {lang === 'zh' ? 'API Key 验证并保存成功。' : 'API key verified and saved.'}
             </p>
           )}
+          {!aiConfigurationComplete && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || updatingAiPrivacy}
+              className="btn-primary mt-4 w-full py-3"
+            >
+              {saving ? <RefreshCw size={17} className="animate-spin" aria-hidden="true" /> : <Check size={17} aria-hidden="true" />}
+              {saving
+                ? (lang === 'zh' ? '正在验证...' : 'Verifying...')
+                : (lang === 'zh' ? '验证并启用 AI' : 'Verify and enable AI')}
+            </button>
+          )}
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <a
-              href="https://platform.deepseek.com/api_keys"
+              href={activeProvider === 'tokendance' ? 'https://tokendance.space/docs/api-key-oauth' : 'https://platform.deepseek.com/api_keys'}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-[var(--accent)] hover:underline"
             >
-              {t(lang, 'settings.getApiKey')}
+              {activeProvider === 'tokendance' ? (lang === 'zh' ? '查看 TokenDance 授权文档' : 'View TokenDance OAuth docs') : t(lang, 'settings.getApiKey')}
               <ArrowUpRight size={15} className="shrink-0" aria-hidden="true" />
             </a>
             {hasSavedApiKey && (
@@ -988,6 +1266,54 @@ export default function Settings({
               </button>
             )}
           </div>
+          {activeProvider === 'tokendance' && aiConfigurationComplete && (
+            <div className="mt-4 border-t border-[var(--border)] pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2"><Wallet size={17} className="text-sky-500" aria-hidden="true" /><span className="font-medium">{lang === 'zh' ? 'TokenDance 账户' : 'TokenDance account'}</span></div>
+                <button type="button" onClick={() => void handleTokendanceBalance()} disabled={loadingTokendanceBalance} className="btn-secondary inline-flex items-center gap-1.5 text-sm"><RefreshCw size={14} className={loadingTokendanceBalance ? 'animate-spin' : ''} aria-hidden="true" />{lang === 'zh' ? '刷新余额' : 'Refresh balance'}</button>
+              </div>
+              {tokendanceBalance && <p className="mt-2 text-sm">{lang === 'zh' ? `可用余额：${(tokendanceBalance.balance / 1_000_000).toFixed(2)} 元` : `Available balance: ¥${(tokendanceBalance.balance / 1_000_000).toFixed(2)}`}</p>}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <label htmlFor="tokendance-amount" className="text-sm">{lang === 'zh' ? '充值金额（元）' : 'Top-up amount (CNY)'}</label>
+                <input id="tokendance-amount" inputMode="numeric" pattern="[0-9]*" value={tokendanceAmount} onChange={event => setTokendanceAmount(event.target.value)} className="input-field w-28" />
+                <button type="button" onClick={() => void handleTokendanceTopUp()} disabled={creatingTokendancePayment} className="btn-secondary inline-flex items-center gap-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50">
+                  {creatingTokendancePayment ? <RefreshCw size={14} className="animate-spin" aria-hidden="true" /> : <Wallet size={14} aria-hidden="true" />}
+                  {creatingTokendancePayment ? (lang === 'zh' ? '正在创建...' : 'Creating...') : (lang === 'zh' ? '创建充值会话' : 'Create top-up')}
+                </button>
+              </div>
+              {tokendancePayment && (
+                <div className="mt-3 border-t border-[var(--border)] pt-3" role="status">
+                  <p className="text-sm font-medium">
+                    {lang === 'zh'
+                      ? `充值状态：${tokendancePayment.status === 'paid' ? '已到账' : tokendancePayment.status === 'pending' ? '等待支付' : '未完成'}`
+                      : `Payment status: ${tokendancePayment.status}`}
+                  </p>
+                  {tokendancePayment.status === 'pending' && (
+                    <div className="mt-3">
+                      <div className="hidden sm:block">
+                        <p className="mb-2 text-xs text-[var(--text-secondary)]">
+                          {lang === 'zh' ? '请使用手机扫描二维码完成支付，本页面会自动刷新到账状态。' : 'Scan with your phone to pay. This page will refresh the balance automatically.'}
+                        </p>
+                        {tokendancePaymentQr ? (
+                          <Image src={tokendancePaymentQr} alt={lang === 'zh' ? 'TokenDance 充值支付二维码' : 'TokenDance top-up payment QR code'} width={220} height={220} unoptimized className="rounded-lg border border-[var(--border)] bg-white p-2" />
+                        ) : (
+                          <div className="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-[var(--border)] bg-white text-sm text-gray-600">
+                            {lang === 'zh' ? '正在生成支付二维码...' : 'Generating payment QR code...'}
+                          </div>
+                        )}
+                      </div>
+                      <a href={tokendancePayment.payment_url} target="_blank" rel="noopener noreferrer" className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 sm:hidden">
+                        <ExternalLink size={16} aria-hidden="true" />
+                        {lang === 'zh' ? '打开支付页' : 'Open payment page'}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+            </>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -1043,14 +1369,14 @@ export default function Settings({
         </div>
         </div>
 
-        {/* Save Button */}
+        {/* Save non-AI settings; AI setup has its own adjacent action above. */}
         <button
           onClick={handleSave}
           disabled={saving || updatingAiPrivacy}
           className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {saved && <Check size={18} aria-hidden="true" />}
-          {saving ? (lang === 'zh' ? '保存中...' : 'Saving...') : saved ? t(lang, 'settings.saved') : t(lang, 'settings.save')}
+          {saving ? (lang === 'zh' ? '保存中...' : 'Saving...') : saved ? t(lang, 'settings.saved') : (aiConfigurationComplete ? (lang === 'zh' ? '保存其他设置' : 'Save other settings') : t(lang, 'settings.save'))}
         </button>
 
         {/* P0 新增：隐私政策链接 */}

@@ -9,6 +9,8 @@ import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, chat, chatJson, createDeepSeekClient, generateBookMetadata, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
+import { tokendanceRecoveryMessage } from '@/lib/tokendance'
+import { deepSeekSunsetMessage, isTokenDanceOnly } from '@/lib/aiProviderPolicy'
 import LoadingQuotes from './LoadingQuotes'
 import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
@@ -59,6 +61,12 @@ const phaseIconTones: Record<string, AppIconTone> = {
 
 function aiTaskErrorMessage(error: unknown, lang: Language): string | null {
   if (!(error instanceof Error)) return null
+  if (error.message === 'Failed to fetch' || error.message.toLowerCase().includes('networkerror')) {
+    return lang === 'zh'
+      ? '无法连接 AI 服务。请检查网络、浏览器扩展拦截和 TokenDance API Key，然后重试。'
+      : 'Unable to reach the AI service. Check your network, browser extensions, and TokenDance API key, then retry.'
+  }
+  if (error.message === 'DEEPSEEK_OFFICIAL_CHANNEL_SUNSET') return deepSeekSunsetMessage(lang)
   if (error.message === AI_REQUEST_CANCELLED) {
     return lang === 'zh' ? '已取消本次 AI 请求，尚未完成的内容不会保存。' : 'The AI request was cancelled. Incomplete content was not saved.'
   }
@@ -68,6 +76,8 @@ function aiTaskErrorMessage(error: unknown, lang: Language): string | null {
   if (error.message === AI_OUTPUT_INCOMPLETE) {
     return lang === 'zh' ? 'AI 输出未通过完整性或原文引用校验，请重试。' : 'The AI output failed completeness or source-citation validation. Try again.'
   }
+  const recovery = tokendanceRecoveryMessage(error, lang)
+  if (recovery) return recovery
   return null
 }
 
@@ -110,8 +120,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const metadataEnrichmentAttemptsRef = useRef(new Set<string>())
   const currentBookIdRef = useRef(book.id)
   const missingApiKey = apiKey.trim().length === 0
+  const needsAiConfiguration = missingApiKey || aiConsentRequired || apiKeyInvalid
   
   // 用于滚动定位的ref
+  const readingTabsRef = useRef<HTMLDivElement>(null)
+  const phaseProgressRef = useRef<HTMLDivElement>(null)
+  const phaseContentRef = useRef<HTMLDivElement>(null)
   const practiceHistoryRef = useRef<HTMLDivElement>(null)
   const qaHistoryRef = useRef<HTMLDivElement>(null)
 
@@ -190,9 +204,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const handleAnalyzeAll = async () => {
     if (analysisInFlightRef.current) return
     if (missingApiKey) {
+      const providerName = isTokenDanceOnly() ? 'TokenDance' : 'DeepSeek'
       setAnalysisError(lang === 'zh'
-        ? '使用 AI 深度分析前，请先前往设置填写并保存 DeepSeek API Key。'
-        : 'Add and save your DeepSeek API key in Settings before using AI analysis.')
+        ? `使用 AI 深度分析前，请先前往设置填写并保存 ${providerName} API Key。`
+        : `Add and save your ${providerName} API key in Settings before using AI analysis.`)
       return
     }
     if (!client) {
@@ -296,8 +311,33 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     }
   }
 
+  const scrollToReadingAnchor = (target: React.RefObject<HTMLDivElement | null>) => {
+    const scroll = () => target.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start'
+    })
+
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(scroll)
+    else window.setTimeout(scroll, 0)
+  }
+
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab)
+    scrollToReadingAnchor(readingTabsRef)
+  }
+
   const handlePhaseChange = (idx: number) => {
     setCurrentPhase(idx)
+    scrollToReadingAnchor(phaseContentRef)
+  }
+
+  const handleNextPhase = () => {
+    if (currentPhase < LEARNING_PHASES.length - 1) {
+      handlePhaseChange(currentPhase + 1)
+      return
+    }
+
+    handleTabChange('practice')
   }
 
   const handleCompletePhase = async () => {
@@ -316,9 +356,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       if (persistedBook) setBook(persistedBook)
 
       if (currentPhase === LEARNING_PHASES.length - 1) {
-        setActiveTab('practice')
+        handleTabChange('practice')
       } else {
-        setCurrentPhase(currentPhase + 1)
+        handlePhaseChange(currentPhase + 1)
       }
     } catch (error) {
       const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
@@ -347,7 +387,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     }
     if (!client) {
       setPracticeError(missingApiKey
-        ? (lang === 'zh' ? '提交 AI 评估前，请先在设置中填写并保存 DeepSeek API Key。' : 'Add and save your DeepSeek API key in Settings before AI review.')
+        ? (lang === 'zh' ? '提交 AI 评估前，请先在设置中连接并保存 TokenDance API Key。' : 'Connect and save your TokenDance API key in Settings before AI review.')
         : aiConsentRequired
           ? (lang === 'zh' ? '请先在设置中同意 AI 数据传输后再提交。' : 'Please consent to AI data transfer in Settings before submitting.')
           : (lang === 'zh' ? 'AI 尚未就绪，请检查 API Key 后重试。' : 'AI is not ready. Check your API key and try again.'))
@@ -561,6 +601,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         <div>
           <p className="text-[var(--text-secondary)] text-sm">{t(lang, 'reading.currentBook')}</p>
           <h1 className="text-2xl font-bold">《{book.name}》</h1>
+          {book.isSample && (
+            <p className="mt-1 text-xs text-[var(--accent)]">
+              {lang === 'zh' ? '示例学习档案 · 内容保存在本地，可随时删除或替换' : 'Sample learning record · stored locally and removable at any time'}
+            </p>
+          )}
           {metadataEnrichmentStatus === 'loading' && (
             <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
               <AppIcon name="refresh" tone="blue" size={13} className="animate-spin" />
@@ -591,7 +636,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 p-1 bg-[var(--bg-secondary)] rounded-xl">
+      <div ref={readingTabsRef} className="scroll-mt-24 flex gap-2 mb-6 p-1 bg-[var(--bg-secondary)] rounded-xl">
         {[
           { key: 'phase' as TabType, label: lang === 'zh' ? '阶段学习' : 'Learning', icon: 'library' as AppIconName, tone: 'blue' as const },
           { key: 'practice' as TabType, label: lang === 'zh' ? '费曼实践' : 'Practice', icon: 'graduation' as AppIconName, tone: 'green' as const },
@@ -600,7 +645,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         ].map(tab => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => handleTabChange(tab.key)}
             className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg transition-all ${
               activeTab === tab.key 
                 ? 'bg-[var(--accent)] text-white' 
@@ -629,13 +674,22 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                   : 'AI will analyze this book from 6 dimensions'}
               </p>
               <button
-                onClick={handleAnalyzeAll}
-                disabled={loading}
+                onClick={needsAiConfiguration ? onOpenSettings : handleAnalyzeAll}
+                disabled={loading || (!needsAiConfiguration && !client)}
                 className="btn-primary inline-flex items-center justify-center gap-2 text-lg px-8 py-4"
               >
-                <AppIcon name="sparkles" size={20} />
-                {lang === 'zh' ? '开始 AI 深度分析' : 'Start AI Analysis'}
+                <AppIcon name={needsAiConfiguration ? 'key' : 'sparkles'} size={20} />
+                {needsAiConfiguration
+                  ? (lang === 'zh' ? '配置 TokenDance，开始分析' : 'Set up TokenDance to analyze')
+                  : client
+                    ? (lang === 'zh' ? '开始 AI 深度分析' : 'Start AI Analysis')
+                    : (lang === 'zh' ? '正在准备 AI...' : 'Preparing AI...')}
               </button>
+              {needsAiConfiguration && (
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  {lang === 'zh' ? '只在生成新内容时需要；已保存的学习记录仍可直接查看。' : 'Only new AI work needs setup; saved learning records remain available.'}
+                </p>
+              )}
             </div>
           )}
 
@@ -643,7 +697,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
               <span>{analysisError}</span>
               <div className="flex gap-2">
-                {(missingApiKey || aiConsentRequired || apiKeyInvalid) && (
+                {(missingApiKey || aiConsentRequired || apiKeyInvalid || analysisError.includes('TokenDance')) && (
                   <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
                     {lang === 'zh' ? '前往设置' : 'Open Settings'}
                   </button>
@@ -687,7 +741,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           {Object.keys(responses).length > 0 && (
             <>
               {/* Phase Selector */}
-              <div className="card mb-6">
+              <div ref={phaseProgressRef} className="card mb-6 scroll-mt-24">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold">{lang === 'zh' ? '学习进度' : 'Learning Progress'}</h3>
                   <span className="text-sm text-[var(--text-secondary)]">
@@ -700,6 +754,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                       key={p.id}
                       onClick={() => handlePhaseChange(idx)}
                       disabled={!responses[p.id]}
+                      aria-label={lang === 'zh'
+                        ? `第 ${idx + 1} 阶段：${t(lang, `phases.${p.id}.title`)}`
+                        : `Phase ${idx + 1}: ${t(lang, `phases.${p.id}.title`)}`}
                       className={`flex flex-col items-center p-3 rounded-xl transition-all ${
                         idx === currentPhase 
                           ? 'bg-[var(--accent)] text-white scale-105' 
@@ -731,7 +788,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
               {/* Phase Content */}
               {phase && responses[phase.id] && (
-                <div className="card">
+                <div ref={phaseContentRef} className="card scroll-mt-24">
                   <div className="flex items-center gap-3 mb-2">
                     <AppIcon name={phaseIconNames[phase.id]} tone={phaseIconTones[phase.id]} size={28} />
                     <div>
@@ -749,13 +806,27 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                         content={responses[phase.id]}
                         documentContent={book.documentContent}
                         lang={lang}
+                        onExpandAll={() => scrollToReadingAnchor(phaseProgressRef)}
                       />
 
                       {/* 每个阶段都显示完成按钮 */}
                       {isPhaseCompleted(currentPhase, completedPhaseCount) ? (
-                        // 已完成的阶段，显示已完成标记
-                        <div className="mt-6 text-center py-3 bg-green-500/10 border border-green-500/30 rounded-xl">
-                          <span className="inline-flex items-center gap-2 text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={17} />{lang === 'zh' ? '已完成此阶段' : 'Phase Completed'}</span>
+                        <div className="mt-6 space-y-3">
+                          <div className="text-center py-3 bg-green-500/10 border border-green-500/30 rounded-xl">
+                            <span className="inline-flex items-center gap-2 text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={17} />{lang === 'zh' ? '已完成此阶段' : 'Phase Completed'}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleNextPhase}
+                            className="btn-primary flex min-h-11 w-full items-center justify-center gap-2"
+                          >
+                            <AppIcon name="arrowRight" size={18} />
+                            {currentPhase < LEARNING_PHASES.length - 1
+                              ? (lang === 'zh'
+                                  ? `下一阶段：${t(lang, `phases.${LEARNING_PHASES[currentPhase + 1].id}.title`)}`
+                                  : `Next phase: ${t(lang, `phases.${LEARNING_PHASES[currentPhase + 1].id}.title`)}`)
+                              : (lang === 'zh' ? '进入费曼实践' : 'Continue to Feynman Practice')}
+                          </button>
                         </div>
                       ) : (
                         // 当前进度的阶段，可以点击完成
@@ -1011,7 +1082,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 {practiceError && (
                   <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
                     <span>{practiceError}</span>
-                    {(missingApiKey || aiConsentRequired || apiKeyInvalid) && (
+                    {(missingApiKey || aiConsentRequired || apiKeyInvalid || practiceError.includes('TokenDance')) && (
                       <button type="button" onClick={onOpenSettings} className="btn-secondary py-1.5 text-xs">
                         {lang === 'zh' ? '前往设置' : 'Open Settings'}
                       </button>

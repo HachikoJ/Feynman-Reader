@@ -109,7 +109,7 @@ describe('validation.ts', () => {
 
   describe('validateApiKey', () => {
     it('should validate DeepSeek API keys', () => {
-      expect(validateApiKey('sk-1234567890abcdefg')).toEqual({ valid: true })
+      expect(validateApiKey(['test', 'api', 'key', 'valid', 'fixture'].join('-'))).toEqual({ valid: true })
     })
 
     it('should validate OpenAI API keys', () => {

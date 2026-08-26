@@ -4,10 +4,14 @@ import { secureSystemPrompt, secureUserMessage } from './promptSecurity'
 import { addAIUsageRecord, getSettings } from './store'
 import { buildDocumentContext, DEFAULT_DOCUMENT_CONTEXT_CHARS } from './documentContext'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY, AIRequestContext, aiRequestManager } from './aiRequestManager'
+import { getTokendanceRecoveryAction, TOKENDANCE_GATEWAY_URL, TOKENDANCE_APP_URL, tokendanceRecoveryError } from './tokendance'
+import { isDeepSeekOfficialSupported, isOfficialDeepSeekProvider } from './aiProviderPolicy'
 
-export const DEEPSEEK_MODEL = 'deepseek-v4-flash'
+// TokenDance currently lists the 0731 build as the official DeepSeek V4 Flash endpoint.
+export const DEEPSEEK_MODEL = 'deepseek-v4-flash-0731'
 export const AI_DATA_CONSENT_REQUIRED = 'AI_DATA_CONSENT_REQUIRED'
 export const DEEPSEEK_API_KEY_INVALID = 'DEEPSEEK_API_KEY_INVALID'
+export const DEEPSEEK_OFFICIAL_CHANNEL_SUNSET = 'DEEPSEEK_OFFICIAL_CHANNEL_SUNSET'
 export const AI_CONTEXT_LIMIT_EXCEEDED = 'AI_CONTEXT_LIMIT_EXCEEDED'
 export const AI_OUTPUT_INCOMPLETE = 'AI_OUTPUT_INCOMPLETE'
 
@@ -121,9 +125,18 @@ export async function requestDeepSeekCompletion(
   let requestParams = params
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await aiRequestManager.run(requestContext, signal => (
-      client.chat.completions.create(requestParams, { signal })
-    ))
+    let response: OpenAI.Chat.Completions.ChatCompletion
+    try {
+      response = await aiRequestManager.run(requestContext, signal => (
+        client.chat.completions.create(requestParams, { signal })
+      ))
+    } catch (error) {
+      const recoveryAction = getSettings().aiProvider === 'tokendance'
+        ? getTokendanceRecoveryAction(error)
+        : null
+      if (recoveryAction) throw tokendanceRecoveryError(recoveryAction, error)
+      throw error
+    }
 
     if (response.usage) {
       const promptTokens = response.usage.prompt_tokens
@@ -324,19 +337,104 @@ export function withDeepSeekDefaults<
   }
 }
 
+/**
+ * TokenDance exposes an OpenAI-compatible API, but its browser CORS contract
+ * intentionally does not include the OpenAI SDK's x-stainless-* headers.
+ * Strip those SDK-only headers before the browser sends the request so the
+ * preflight can succeed and the gateway's actionable recovery headers remain
+ * visible to the app. XHR is used in browsers because a privacy/inspector
+ * extension can wrap window.fetch and turn a normal CORS response into a
+ * misleading "Failed to fetch" connection error.
+ */
+function createTokendanceFetch(): NonNullable<ConstructorParameters<typeof OpenAI>[0]>['fetch'] {
+  return (async (input: RequestInfo, init?: RequestInit) => {
+    const headers = new Headers(init?.headers)
+    for (const name of Array.from(headers.keys())) {
+      if (name.toLowerCase().startsWith('x-stainless-')) headers.delete(name)
+    }
+
+    if (typeof XMLHttpRequest === 'undefined') {
+      return fetch(input, { ...init, headers })
+    }
+
+    const url = input instanceof Request ? input.url : String(input)
+    const method = init?.method || 'GET'
+    const body = init?.body ?? null
+    return await new Promise<Response>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      let settled = false
+      const finishReject = (error: Error) => {
+        if (settled) return
+        settled = true
+        reject(error)
+      }
+      const finishResolve = () => {
+        if (settled) return
+        settled = true
+        const responseHeaders = new Headers()
+        xhr.getAllResponseHeaders().trim().split(/[\r\n]+/).forEach(line => {
+          const separator = line.indexOf(':')
+          if (separator > 0) responseHeaders.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim())
+        })
+        resolve(new Response(xhr.responseText, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          headers: responseHeaders
+        }))
+      }
+
+      xhr.open(method, url, true)
+      headers.forEach((value, name) => {
+        // The browser forbids setting content-length through XHR.
+        if (name !== 'content-length') xhr.setRequestHeader(name, value)
+      })
+      xhr.onload = finishResolve
+      xhr.onerror = () => finishReject(new TypeError('Network request failed'))
+      xhr.ontimeout = () => finishReject(new TypeError('Network request timed out'))
+      xhr.onabort = () => finishReject(new DOMException('The operation was aborted.', 'AbortError'))
+
+      if (init?.signal) {
+        if (init.signal.aborted) {
+          xhr.abort()
+          return
+        }
+        init.signal.addEventListener('abort', () => xhr.abort(), { once: true })
+      }
+      xhr.send(body as XMLHttpRequestBodyInit | Document | null)
+    })
+  }) as unknown as NonNullable<ConstructorParameters<typeof OpenAI>[0]>['fetch']
+}
+
 export async function createDeepSeekClient(apiKey: string) {
-  if (!getSettings().aiDataConsent) {
+  const settings = getSettings()
+  if (!settings.aiDataConsent) {
     throw new Error(AI_DATA_CONSENT_REQUIRED)
   }
 
+  if (!isDeepSeekOfficialSupported() && isOfficialDeepSeekProvider(settings.aiProvider)) {
+    throw new Error(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
+  }
+
+  const useTokendance = settings.aiProvider === 'tokendance'
   return new OpenAI({
-    baseURL: 'https://api.deepseek.com',
+    baseURL: useTokendance ? TOKENDANCE_GATEWAY_URL : 'https://api.deepseek.com',
     apiKey: apiKey,
+    ...(useTokendance ? { defaultHeaders: { 'X-App-URL': TOKENDANCE_APP_URL } } : {}),
+    ...(useTokendance ? { fetch: createTokendanceFetch(), maxRetries: 0 } : {}),
     dangerouslyAllowBrowser: true
   })
 }
 
-export async function validateDeepSeekApiKey(apiKey: string, client?: OpenAI): Promise<void> {
+export async function validateDeepSeekApiKey(apiKey: string, client?: OpenAI, provider?: 'tokendance' | 'deepseek'): Promise<void> {
+  const resolvedProvider = provider ?? getSettings().aiProvider
+  if (!isDeepSeekOfficialSupported() && isOfficialDeepSeekProvider(resolvedProvider)) {
+    throw new Error(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
+  }
+  if (resolvedProvider === 'tokendance') {
+    const { fetchTokendanceBalance } = await import('./tokendance')
+    await aiRequestManager.run({ task: 'api-key-validation' }, () => fetchTokendanceBalance(apiKey))
+    return
+  }
   const validationClient = client ?? new OpenAI({
     baseURL: 'https://api.deepseek.com',
     apiKey,

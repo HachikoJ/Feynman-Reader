@@ -18,8 +18,8 @@ npm install
 npm run dev
 ```
 
-浏览器打开 `http://localhost:8080`。首次使用需在设置中配置自己的 DeepSeek API Key，并阅读、滚动到底部后同意隐私政策，才会启用 AI 功能。
+浏览器打开 `http://localhost:8080`。首次使用可先查看默认《追风筝的人》示例；需要调用 AI 时，在设置中优先使用 TokenDance / TokenPay OAuth 或 API Key，并阅读、滚动到底部后同意隐私政策。
 
 ## 代码仓库说明
 
-本提交材料与产品代码位于同一项目目录。产品前端采用 Next.js 14、TypeScript、Tailwind CSS 和 IndexedDB；AI 能力使用 DeepSeek V4 Flash。用户 API Key 和学习数据默认保存在本地浏览器，不随本作业包上传。当前产品的已实现能力与待验证能力已在产品方案中明确区分。
+本提交材料与产品代码位于同一项目目录。产品前端采用 Next.js 16、TypeScript、Tailwind CSS 和 IndexedDB；AI 能力使用 DeepSeek V4 Flash。用户 API Key 和学习数据默认保存在本地浏览器，不随本作业包上传。当前产品的已实现能力与待验证能力已在产品方案中明确区分。

@@ -112,6 +112,7 @@ export interface Book {
   bestScore: number
   createdAt: number
   updatedAt: number
+  isSample?: boolean
 }
 
 export interface CustomQuote {
@@ -122,6 +123,7 @@ export interface CustomQuote {
 
 export interface AppSettings {
   apiKey: string
+  aiProvider?: 'tokendance' | 'deepseek'
   language: Language
   theme: Theme
   hideApiKeyAlert: boolean

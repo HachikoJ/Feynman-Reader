@@ -1,0 +1,71 @@
+name: Bug report
+description: 报告可复现的功能、界面或兼容性问题
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先搜索现有 Issue，并移除 API Key、个人学习数据和其他敏感信息。安全漏洞请按 SECURITY.md 私密报告。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 问题描述
+      description: 简要说明发生了什么，以及它如何影响使用。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 点击……
+        3. 看到……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 可附去除敏感信息后的截图或控制台错误。
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本或提交
+      placeholder: 线上版本，或 commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 运行环境
+      placeholder: macOS 15 / Chrome 139 / Desktop
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: 界面语言
+      options:
+        - 中文
+        - English
+        - 两者都有
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已搜索现有 Issue，且报告中不含 API Key、个人数据或其他敏感信息。
+          required: true

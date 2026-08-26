@@ -43,6 +43,8 @@ import type {
   BookRelationType
 } from './bookRelations'
 import { getBookRelationIdentity } from './bookRelations'
+import { migrateToTokenDanceAfterSunset } from './aiProviderPolicy'
+import { createSampleBook, SAMPLE_BOOK_DATA_VERSION, SAMPLE_BOOK_SEEDED_KEY } from './sampleBook'
 
 export type Theme = 'dark' | 'light' | 'cyber'
 export type BookStatus = 'unread' | 'reading' | 'finished'
@@ -140,6 +142,10 @@ export interface Book {
   bestScore: number
   createdAt: number
   updatedAt: number
+  /** Marks the bundled first-visit example; users can delete it like any other book. */
+  isSample?: boolean
+  /** Allows bundled sample content to be refreshed without touching user books. */
+  sampleDataVersion?: number
 }
 
 export interface CustomQuote {
@@ -150,6 +156,7 @@ export interface CustomQuote {
 
 export interface AppSettings {
   apiKey: string
+  aiProvider?: 'tokendance' | 'deepseek'
   language: Language
   theme: Theme
   hideApiKeyAlert: boolean
@@ -160,6 +167,7 @@ export interface AppSettings {
 
 const DEFAULT_SETTINGS: AppSettings = {
   apiKey: '',
+  aiProvider: 'tokendance',
   language: 'zh',
   theme: 'light',
   hideApiKeyAlert: false,
@@ -293,18 +301,31 @@ export async function initializeStore(): Promise<void> {
 
     const quotes = settings.quotes || (settings as any).customQuotes || []
     const theme = settings.theme === 'cyber' ? 'light' : settings.theme
-    settingsCache = {
+    const migratedSettings = migrateToTokenDanceAfterSunset({
       ...DEFAULT_SETTINGS,
       ...settings,
       theme,
       quotes,
       quotesInitialized: settings.quotesInitialized || false
-    }
-    if (settings.theme === 'cyber') {
-      saveSettings(settingsCache)
+    })
+    settingsCache = migratedSettings
+    if (settings.theme === 'cyber' || migratedSettings !== settings) {
+      saveSettings(migratedSettings)
     }
     const loadedBooks = Array.isArray(books) ? books : []
     booksCache = loadedBooks.map(normalizeBookLearningState)
+    const legacySample = booksCache.find(book => book.isSample && book.id === 'sample-the-kite-runner')
+    if (legacySample && legacySample.sampleDataVersion !== SAMPLE_BOOK_DATA_VERSION) {
+      const refreshedSample = createSampleBook()
+      booksCache = booksCache.map(book => book.id === refreshedSample.id ? refreshedSample : book)
+      await saveIndexedDBBook(refreshedSample)
+    }
+    if (booksCache.length === 0 && process.env.NODE_ENV !== 'test' && typeof localStorage !== 'undefined' && !localStorage.getItem(SAMPLE_BOOK_SEEDED_KEY)) {
+      const sampleBook = createSampleBook()
+      booksCache = [sampleBook]
+      localStorage.setItem(SAMPLE_BOOK_SEEDED_KEY, 'true')
+      await saveIndexedDBBooks([sampleBook])
+    }
     aiUsageCache = Array.isArray(aiUsageRecords)
       ? aiUsageRecords.slice(-MAX_AI_USAGE_RECORDS)
       : []
@@ -356,19 +377,19 @@ export async function reloadSettingsFromPersistence(): Promise<AppSettings> {
   await settingsWriteQueue
   const storedSettings = await getIndexedDBSettings()
   const quotes = storedSettings.quotes || (storedSettings as any).customQuotes || []
-  settingsCache = {
+  settingsCache = migrateToTokenDanceAfterSunset({
     ...DEFAULT_SETTINGS,
     ...storedSettings,
     theme: storedSettings.theme === 'cyber' ? 'light' : storedSettings.theme,
     quotes,
     quotesInitialized: storedSettings.quotesInitialized || false
-  }
+  })
   return settingsCache
 }
 
 export function saveSettings(settings: AppSettings): void {
-  settingsCache = settings
-  const snapshot = cloneForStorage(settings)
+  settingsCache = migrateToTokenDanceAfterSunset(settings)
+  const snapshot = cloneForStorage(settingsCache)
   settingsWriteQueue = settingsWriteQueue
     .then(() => saveIndexedDBSettings(snapshot), () => saveIndexedDBSettings(snapshot))
     .catch(error => {

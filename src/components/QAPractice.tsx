@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 import { Book, PersonaAnswerAttempt, PersonaQuestion, PracticeRecord, QAPracticeRecord, getQAPracticeRecords, addQAPracticeRecord, updateQAPracticeRecord, deleteQAPracticeRecord, flushPendingStoreWrites, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, createDeepSeekClient, evaluatePersonaAnswers, generatePersonaQuestions, PERSONA_QUESTION_COUNT } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
+import { tokendanceRecoveryMessage } from '@/lib/tokendance'
 import MarkdownRenderer from './MarkdownRenderer'
 import SourceEvidence from './SourceEvidence'
 import LoadingQuotes from './LoadingQuotes'
@@ -207,6 +208,14 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
     if (error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE) {
       return lang === 'zh' ? 'AI 输出未通过完整性或原文引用校验，请重试。' : 'The AI output failed completeness or source-citation validation. Try again.'
     }
+
+  const recovery = tokendanceRecoveryMessage(error, lang)
+  if (recovery) return recovery
+  if (error instanceof Error && (error.message === 'Failed to fetch' || error.message.toLowerCase().includes('networkerror'))) {
+    return lang === 'zh'
+      ? '无法连接 AI 服务。请检查网络、浏览器扩展拦截和 TokenDance API Key，然后重试。'
+      : 'Unable to reach the AI service. Check your network, browser extensions, and TokenDance API key, then retry.'
+  }
 
     if (action === 'generate') {
       return lang === 'zh'
@@ -459,33 +468,29 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
     <div className="space-y-6">
       {/* 进步追踪图 */}
       {progressRecords.length > 0 && (
-        <details onToggle={event => setShowProgress(event.currentTarget.open)}>
-          <summary className="cursor-pointer card flex items-center justify-between p-4 hover:bg-[var(--bg-secondary)] rounded-xl transition-colors">
+        <details className="card overflow-hidden" onToggle={event => setShowProgress(event.currentTarget.open)}>
+          <summary className="cursor-pointer flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors">
             <h3 className="flex items-center gap-2 font-semibold">
               <AppIcon name="trendUp" tone="green" size={17} />{lang === 'zh' ? '进步追踪' : 'Progress Tracking'}
             </h3>
-            <span className="text-sm text-[var(--text-secondary)]">
-              {showProgress ? (lang === 'zh' ? '收起' : 'Hide') : (lang === 'zh' ? '展开' : 'Expand')}
-            </span>
+            <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showProgress ? 'rotate-180' : ''}`} />
           </summary>
-          <div className="mt-4">
-            <ScoreTrendChart records={progressRecords} lang={lang} compact={false} />
+          <div className="border-t border-[var(--border)] p-4">
+            <ScoreTrendChart records={progressRecords} lang={lang} compact={false} embedded />
           </div>
         </details>
       )}
 
       {/* 评分标准 */}
-      <details onToggle={event => setShowCriteria(event.currentTarget.open)}>
-        <summary className="cursor-pointer card flex items-center justify-between p-4 hover:bg-[var(--bg-secondary)] rounded-xl transition-colors">
+      <details className="card overflow-hidden" onToggle={event => setShowCriteria(event.currentTarget.open)}>
+        <summary className="cursor-pointer flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors">
           <h3 className="flex items-center gap-2 font-semibold">
             <AppIcon name="chart" tone="blue" size={17} />{lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
           </h3>
-          <span className="text-sm text-[var(--text-secondary)]">
-            {showCriteria ? (lang === 'zh' ? '收起' : 'Hide') : (lang === 'zh' ? '查看详情' : 'View Details')}
-          </span>
+          <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showCriteria ? 'rotate-180' : ''}`} />
         </summary>
-        <div className="mt-4">
-          <ScoringCriteriaDisplay lang={lang} compact={false} />
+        <div className="border-t border-[var(--border)] p-4">
+          <ScoringCriteriaDisplay lang={lang} compact={false} embedded />
         </div>
       </details>
 
@@ -503,7 +508,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         {errorMessage && (
           <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
             <span>{errorMessage}</span>
-            {errorMessage.includes(lang === 'zh' ? '设置' : 'Settings') && onOpenSettings && (
+            {(errorMessage.includes(lang === 'zh' ? '设置' : 'Settings') || errorMessage.includes('TokenDance')) && onOpenSettings && (
               <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
                 {lang === 'zh' ? '前往设置' : 'Open Settings'}
               </button>

@@ -1,0 +1,43 @@
+name: Feature request
+description: 提议与深度阅读、练习或复习有关的产品改进
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请从真实使用场景出发描述建议。项目由个人维护，提交建议不代表一定会实现。
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 谁会在什么情况下使用这个功能？
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 当前问题
+      description: 现有流程在哪里阻碍了目标？
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 期望结果
+      description: 描述用户完成后的结果，而不只是界面或技术实现。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 已尝试的替代方式
+      description: 可选。说明目前如何绕过或解决这个问题。
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已搜索现有 Issue，未发现相同建议。
+          required: true

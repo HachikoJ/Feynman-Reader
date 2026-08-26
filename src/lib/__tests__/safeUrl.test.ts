@@ -12,7 +12,9 @@ describe('safe URL helpers', () => {
 
   it('only allows web images and supported base64 image data', () => {
     expect(getSafeImageSrc('https://example.com/cover.jpg')).toBe('https://example.com/cover.jpg')
+    expect(getSafeImageSrc('/kite-runner-cover.png')).toBe('/kite-runner-cover.png')
     expect(getSafeImageSrc('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA')
+    expect(getSafeImageSrc('//evil.example/cover.png')).toBeNull()
     expect(getSafeImageSrc('data:text/html;base64,AAAA')).toBeNull()
     expect(getSafeImageSrc('javascript:alert(1)')).toBeNull()
     expect(getSafeImageSrc('file:///tmp/private.png')).toBeNull()

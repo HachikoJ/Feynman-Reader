@@ -64,7 +64,7 @@ export const translations = {
     },
     alert: {
       needApiKey: '需要配置 API Key',
-      needApiKeyDesc: '使用 AI 分析功能前，请先在设置中配置 DeepSeek API Key',
+      needApiKeyDesc: '使用 AI 分析功能前，请先在设置中配置 TokenDance API Key',
       goSettings: '去设置',
       later: '稍后',
       dontRemind: '不再提醒'
@@ -227,7 +227,7 @@ export const translations = {
     },
     alert: {
       needApiKey: 'API Key Required',
-      needApiKeyDesc: 'Please configure your DeepSeek API Key in settings before using AI features',
+      needApiKeyDesc: 'Please configure your TokenDance API Key in settings before using AI features',
       goSettings: 'Go to Settings',
       later: 'Later',
       dontRemind: 'Don\'t remind again'

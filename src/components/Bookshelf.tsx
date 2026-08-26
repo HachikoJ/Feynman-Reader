@@ -25,7 +25,7 @@ import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES } from '@/lib/feynman-prompts'
 import { AI_OUTPUT_INCOMPLETE, createDeepSeekClient, generateBookTags } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
-import { AlertCircle, ChartNoAxesCombined, ChevronDown, ChevronRight, Tag, X } from 'lucide-react'
+import { AlertCircle, ChartNoAxesCombined, ChevronDown, ChevronRight, LayoutGrid, List, Tag, X } from 'lucide-react'
 import DocumentUpload from './DocumentUpload'
 import { validateBookName, validateAuthorName, validateContent, sanitizeTextInput, detectMaliciousContent } from '@/lib/validation'
 import { undoRedoManager, createDeleteBookAction, createBatchDeleteBooksAction } from '@/lib/undoRedo'
@@ -37,6 +37,7 @@ import { LibraryAnalytics } from './Charts'
 import MobileSwipeCard from './MobileSwipeCard'
 import { VirtualList } from './VirtualList'
 import { showAppAlert } from '@/lib/appDialog'
+import { tokendanceRecoveryMessage } from '@/lib/tokendance'
 
 interface Props {
   lang: Language
@@ -45,6 +46,20 @@ interface Props {
 
 type TabFilter = 'all' | BookStatus
 type ViewMode = 'grid' | 'list'
+
+const categoryLabelsEn: Record<string, string> = {
+  '社科': 'Social Science',
+  '心理': 'Psychology',
+  '文学': 'Literature',
+  '科技': 'Technology',
+  '经管': 'Business',
+  '历史': 'History',
+  '哲学': 'Philosophy',
+  '艺术': 'Arts',
+  '生活': 'Lifestyle',
+  '教育': 'Education',
+  '其他': 'Other'
+}
 
 export function getBookshelfProgressPercentage(book: Pick<Book, 'currentPhase'>): number {
   return Math.min(100, Math.max(0, (book.currentPhase / LEARNING_PHASES.length) * 100))
@@ -99,6 +114,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
   const bookSaveInFlightRef = useRef(false)
   const [tagToDelete, setTagToDelete] = useState<BookTag | null>(null)
   const [virtualListMetrics, setVirtualListMetrics] = useState({ itemHeight: 210, height: 640 })
+  const getCategoryLabel = (category: string) => lang === 'zh' ? category : (categoryLabelsEn[category] || category)
   
   const descTextareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -238,7 +254,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           ? (lang === 'zh' ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。' : 'Another AI task is running. Wait for it to finish or cancel it first.')
           : error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE
             ? (lang === 'zh' ? 'AI 返回的标签不完整，系统已拦截，请稍后重试。' : 'The AI returned incomplete tags. Please try again later.')
-            : null
+            : tokendanceRecoveryMessage(error, lang)
       setTagGenerationError(requestMessage || (tagsGenerated
         ? (lang === 'zh'
             ? 'AI 标签已生成，但未能保存到本地，原标签已恢复。请检查浏览器存储后重试。'
@@ -686,6 +702,27 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     { key: 'finished', label: t(lang, 'bookshelf.tabs.finished'), count: stats.finished }
   ]
 
+  const priorityReviewBook = books
+    .filter(book => book.currentPhase < LEARNING_PHASES.length || book.bestScore < 80)
+    .sort((a, b) => {
+      const aNeedsReview = a.qaPracticeRecords?.some(record => record.questions.some(question => question.score !== undefined && question.score < 70)) ? 0 : 1
+      const bNeedsReview = b.qaPracticeRecords?.some(record => record.questions.some(question => question.score !== undefined && question.score < 70)) ? 0 : 1
+      return aNeedsReview - bNeedsReview || (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
+    })[0]
+  // Keep the review workbench useful even when every book is complete.
+  const reviewBook = priorityReviewBook || [...books]
+    .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))[0]
+
+  const reviewPrompt = reviewBook?.qaPracticeRecords
+    ?.flatMap(record => record.questions)
+    .find(question => question.score !== undefined && question.score < 70)?.question
+
+  const getNextLearningStep = (book: Book) => {
+    if (reviewPrompt && book.id === reviewBook?.id) return lang === 'zh' ? '重新回答一道薄弱追问' : 'Retry one weak question'
+    if (book.currentPhase < LEARNING_PHASES.length) return lang === 'zh' ? `完成第 ${book.currentPhase + 1} 阶段` : `Complete phase ${book.currentPhase + 1}`
+    return lang === 'zh' ? '复述一次核心观点' : 'Retell one core idea'
+  }
+
   const renderBookListRow = (book: Book, virtualized = false) => (
     <MobileSwipeCard
       key={book.id}
@@ -719,7 +756,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
 
         <button
           type="button"
-          className="h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
+          className="relative h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
           onClick={() => handleSelectBook(book)}
           aria-label={lang === 'zh' ? `打开《${book.name}》` : `Open ${book.name}`}
         >
@@ -728,12 +765,22 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           ) : (
             <span className="flex h-full w-full items-center justify-center">{getStatusIcon(book.status, 30)}</span>
           )}
+          {book.isSample && (
+            <span
+              className="absolute right-1.5 top-1.5 flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/90 bg-[var(--accent)] px-1 text-[10px] font-bold leading-none text-white shadow-lg"
+              aria-label={lang === 'zh' ? '示例书籍' : 'Sample book'}
+            >
+              {lang === 'zh' ? '示例' : 'Sample'}
+            </span>
+          )}
         </button>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h3 className="truncate text-base font-semibold sm:text-lg">{book.name}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="truncate text-base font-semibold sm:text-lg">{book.name}</h3>
+              </div>
               {book.author && <p className="truncate text-sm text-[var(--text-secondary)]">{book.author}</p>}
             </div>
             <span className={`inline-flex flex-shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold ${
@@ -842,9 +889,8 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         </div>
       )}
 
-      {/* Header with Stats */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div className="flex-1 w-full">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
           <h1 className="text-3xl font-bold">{t(lang, 'bookshelf.title')}</h1>
           <p className="text-[var(--text-secondary)] text-sm mt-1">
             {lang === 'zh'
@@ -852,9 +898,79 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               : `${stats.total} books, ${stats.finished} finished`}
           </p>
 
-          {/* P0 新增：搜索框 */}
-          {books.length > 0 && (
-            <div className="relative mt-3 max-w-md">
+        </div>
+        <button data-testid="add-book-button" onClick={() => setShowAddModal(true)} className="btn-primary shrink-0">
+          <AppIcon name="plus" size={17} />
+          <span className="hidden sm:inline">{t(lang, 'bookshelf.addBook')}</span>
+          <span className="sm:hidden">{lang === 'zh' ? '添加' : 'Add'}</span>
+        </button>
+      </div>
+
+      {reviewBook && (
+        <section className="mb-6 border-y border-[var(--border)] py-5" aria-labelledby="today-review-title">
+          <div className="grid items-center gap-4 sm:grid-cols-[88px_minmax(0,1fr)_auto]">
+            <button
+              type="button"
+              onClick={() => onSelectBook(reviewBook)}
+              className="relative hidden aspect-[3/4] w-[88px] overflow-hidden rounded-lg bg-[var(--bg-secondary)] sm:block"
+              aria-label={lang === 'zh' ? `打开《${reviewBook.name}》` : `Open ${reviewBook.name}`}
+            >
+              {getSafeImageSrc(reviewBook.cover) ? (
+                <img src={getSafeImageSrc(reviewBook.cover)!} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="flex h-full items-center justify-center">{getStatusIcon(reviewBook.status, 28)}</span>
+              )}
+            </button>
+            <div className="min-w-0">
+              <div className="mb-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-[var(--accent)]">
+                <AppIcon name="refresh" size={15} aria-hidden="true" />
+                <span>{lang === 'zh' ? '今日复习' : 'Today\'s review'}</span>
+                {reviewBook.isSample && (
+                  <span className="rounded-md bg-[var(--accent)]/10 px-2 py-0.5 text-xs">
+                    {lang === 'zh' ? '完整示例' : 'Complete sample'}
+                  </span>
+                )}
+              </div>
+              <h2 id="today-review-title" className="text-xl font-semibold">
+                {reviewPrompt || (lang === 'zh' ? `继续《${reviewBook.name}》的理解练习` : `Continue learning ${reviewBook.name}`)}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                {lang === 'zh' ? `${reviewBook.name} · ${getNextLearningStep(reviewBook)} · 预计 5 分钟` : `${reviewBook.name} · ${getNextLearningStep(reviewBook)} · about 5 min`}
+              </p>
+              {reviewBook.isSample && (
+                <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                  {lang === 'zh' ? '已备好六阶段分析、笔记、教学模拟与角色问答，无需配置即可查看。' : 'Six phases, notes, teaching practice, and persona Q&A are ready to explore without setup.'}
+                </p>
+              )}
+            </div>
+            <button type="button" onClick={() => onSelectBook(reviewBook)} className="btn-primary w-full shrink-0 sm:w-auto">
+              <AppIcon name="arrowRight" size={17} aria-hidden="true" />
+              {reviewBook.isSample
+                ? (lang === 'zh' ? '查看完整示例' : 'Explore sample')
+                : (lang === 'zh' ? '开始复习' : 'Start review')}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {books.length > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--border)] pb-4 text-sm">
+          <span><strong className="mr-1 text-base">{stats.total}</strong>{lang === 'zh' ? '本书' : 'books'}</span>
+          <span><strong className="mr-1 text-base text-amber-600 dark:text-amber-400">{stats.reading}</strong>{lang === 'zh' ? '在读' : 'reading'}</span>
+          <span><strong className="mr-1 text-base text-emerald-600 dark:text-emerald-400">{stats.finished}</strong>{lang === 'zh' ? '已读' : 'finished'}</span>
+          <span><strong className="mr-1 text-base">{Math.round(stats.avgScore) || '-'}</strong>{lang === 'zh' ? '平均分' : 'avg score'}</span>
+          <button onClick={() => setShowCharts(!showCharts)} className="ml-auto inline-flex min-h-11 items-center gap-1 text-[var(--accent)] hover:underline">
+            {showCharts ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+            <ChartNoAxesCombined size={16} aria-hidden="true" />
+            {lang === 'zh' ? '详细分析' : 'Analytics'}
+          </button>
+          {showCharts && <div className="w-full"><LibraryAnalytics books={books} lang={lang} /></div>}
+        </div>
+      )}
+
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        {books.length > 0 && (
+          <div className="relative w-full lg:max-w-sm">
               <input
                 type="text"
                 value={searchQuery}
@@ -895,10 +1011,9 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 lg:justify-end">
           <button onClick={() => setShowBookLists(true)} className="btn-secondary flex items-center gap-2">
             <AppIcon name="bookMarked" tone="violet" size={17} />
             {lang === 'zh' ? '书单' : 'Lists'}
@@ -915,58 +1030,12 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary flex items-center gap-2">
             <AppIcon name="upload" tone="blue" size={17} />{lang === 'zh' ? '上传文档' : 'Upload Doc'}
           </button>
-          <button data-testid="add-book-button" onClick={() => setShowAddModal(true)} className="btn-primary">
-            <AppIcon name="plus" size={17} />
-            {t(lang, 'bookshelf.addBook')}
-          </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      {books.length > 0 && (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div className="card p-4 text-center">
-              <AppIcon name="library" tone="accent" size={28} className="mx-auto mb-1" />
-              <div className="text-2xl font-bold text-[var(--accent)]">{stats.total}</div>
-              <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '总计' : 'Total'}</div>
-            </div>
-            <div className="card p-4 text-center">
-              <AppIcon name="bookOpen" tone="amber" size={28} className="mx-auto mb-1" />
-              <div className="text-2xl font-bold text-yellow-400">{stats.reading}</div>
-              <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '在读' : 'Reading'}</div>
-            </div>
-            <div className="card p-4 text-center">
-              <AppIcon name="success" tone="green" size={28} className="mx-auto mb-1" />
-              <div className="text-2xl font-bold text-green-400">{stats.finished}</div>
-              <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '已读' : 'Finished'}</div>
-            </div>
-            <div className="card p-4 text-center">
-              <AppIcon name="target" tone="violet" size={28} className="mx-auto mb-1" />
-              <div className="text-2xl font-bold text-[var(--accent)]">{Math.round(stats.avgScore) || '-'}</div>
-              <div className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '平均分' : 'Avg Score'}</div>
-            </div>
-          </div>
-
-          {/* Charts Toggle */}
-          <div className="mb-6">
-            <button
-              onClick={() => setShowCharts(!showCharts)}
-              className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
-            >
-              {showCharts ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
-              <ChartNoAxesCombined size={16} className="text-sky-500" aria-hidden="true" />
-              {lang === 'zh' ? '查看详细分析' : 'View Analytics'}
-            </button>
-            
-            {showCharts && <LibraryAnalytics books={books} lang={lang} />}
-          </div>
-        </>
-      )}
-
       {/* Tabs & View Toggle */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-2 p-1 bg-[var(--bg-secondary)] rounded-xl">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 gap-1 overflow-x-auto rounded-lg bg-[var(--bg-secondary)] p-1">
           {tabs.map(tab => (
             <button
               key={tab.key}
@@ -982,21 +1051,19 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         <div className="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-lg">
           <button
             onClick={() => setViewMode('grid')}
-            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-[var(--accent)] text-white' : ''}`}
+            className={`flex h-11 w-11 items-center justify-center rounded ${viewMode === 'grid' ? 'bg-[var(--accent)] text-white' : ''}`}
+            aria-label={lang === 'zh' ? '网格视图' : 'Grid view'}
             title={lang === 'zh' ? '网格视图' : 'Grid view'}
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3z"/>
-            </svg>
+            <LayoutGrid size={18} aria-hidden="true" />
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`p-2 rounded ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : ''}`}
+            className={`flex h-11 w-11 items-center justify-center rounded ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : ''}`}
+            aria-label={lang === 'zh' ? '列表视图' : 'List view'}
             title={lang === 'zh' ? '列表视图' : 'List view'}
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
-              <path fillRule="evenodd" d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z"/>
-            </svg>
+            <List size={18} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -1163,7 +1230,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               )}
               
               {/* Cover */}
-              <div 
+              <div
                 className="aspect-[3/4] bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20 relative cursor-pointer"
                 onClick={() => handleSelectBook(book)}
               >
@@ -1188,9 +1255,18 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   {t(lang, `bookshelf.status.${book.status}`)}
                 </div>
 
+                {book.isSample && (
+                  <div
+                    className="absolute right-2 top-2 z-10 flex h-14 w-14 items-center justify-center rounded-full border-2 border-white/90 bg-[var(--accent)] px-1 text-xs font-bold leading-none text-white shadow-lg"
+                    aria-label={lang === 'zh' ? '示例书籍' : 'Sample book'}
+                  >
+                    {lang === 'zh' ? '示例' : 'Sample'}
+                  </div>
+                )}
+
                 {/* Hover Actions - 右上角小图标 */}
                 {!batchMode && (
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                  <div className={`absolute right-2 ${book.isSample ? 'top-[4.5rem] flex-col' : 'top-2'} flex gap-1 opacity-0 transition-opacity group-hover:opacity-100`}>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleSelectBook(book) }}
                       className="w-8 h-8 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-sm hover:scale-110 transition-transform"
@@ -1219,7 +1295,9 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               {/* Info */}
               <div className="p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{book.name}</h3>
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <h3 className="truncate text-sm font-semibold">{book.name}</h3>
+                  </div>
                   {book.bestScore > 0 && (
                     <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold ${
                       book.bestScore >= 60
@@ -1448,7 +1526,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                         className="input-field w-full"
                       >
                         {categories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
+                          <option key={cat} value={cat}>{getCategoryLabel(cat)}</option>
                         ))}
                       </select>
                       {newTagCategory === '其他' && (
@@ -1648,7 +1726,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                   <div key={category} className="card p-4">
                     <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
                       <AppIcon name="folder" tone="accent" size={18} />
-                      {category}
+                      {getCategoryLabel(category)}
                       <span className="text-xs text-[var(--text-secondary)] font-normal">
                         ({categoryTags.length} {lang === 'zh' ? '个标签' : 'tags'})
                       </span>

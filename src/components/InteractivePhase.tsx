@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_OUTPUT_INCOMPLETE, chat, createDeepSeekClient } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
+import { tokendanceRecoveryMessage } from '@/lib/tokendance'
 import {
   generateInteractiveQuestionPrompts,
   generateInteractiveRegeneratePrompts,
@@ -38,6 +39,8 @@ function interactiveAIError(error: unknown, lang: Language, fallbackZh: string, 
   if (error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE) {
     return lang === 'zh' ? 'AI 输出未通过完整性或原文引用校验，请重试。' : 'The AI output failed completeness or source-citation validation. Try again.'
   }
+  const recovery = tokendanceRecoveryMessage(error, lang)
+  if (recovery) return recovery
   return lang === 'zh' ? fallbackZh : fallbackEn
 }
 

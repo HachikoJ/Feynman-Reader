@@ -1,4 +1,20 @@
-import { getActiveStartupPrompt } from '../../lib/startupPrompt'
+import { getActiveStartupPrompt, isAIConfigurationComplete, shouldShowOnboarding } from '../../lib/startupPrompt'
+
+describe('AI configuration readiness', () => {
+  it('requires both a saved key and data-transfer consent', () => {
+    expect(isAIConfigurationComplete({ apiKey: '', aiDataConsent: false })).toBe(false)
+    expect(isAIConfigurationComplete({ apiKey: 'sk-test', aiDataConsent: false })).toBe(false)
+    expect(isAIConfigurationComplete({ apiKey: '  sk-test  ', aiDataConsent: true })).toBe(true)
+  })
+})
+
+describe('onboarding visibility', () => {
+  it('shows onboarding until the current version is completed', () => {
+    expect(shouldShowOnboarding(null, '5')).toBe(true)
+    expect(shouldShowOnboarding('4', '5')).toBe(true)
+    expect(shouldShowOnboarding('5', '5')).toBe(false)
+  })
+})
 
 describe('startup prompt priority', () => {
   it('shows only the data-risk acknowledgement when every prompt is pending', () => {

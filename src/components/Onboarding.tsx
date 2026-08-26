@@ -7,22 +7,20 @@ import {
   BookOpen,
   BrainCircuit,
   Check,
-  GraduationCap,
-  NotebookPen,
-  ShieldCheck,
   Sparkles,
-  WalletCards,
   type LucideIcon
 } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 
 interface Props {
   lang: Language
+  aiConfigured: boolean
   onComplete: () => void
+  onConfigureApi?: () => void
 }
 
 export const ONBOARDING_COMPLETED_KEY = 'feynman-onboarding-completed'
-export const ONBOARDING_VERSION = '5'
+export const ONBOARDING_VERSION = '6'
 
 type TipTone = 'accent' | 'emerald' | 'amber' | 'sky'
 
@@ -40,183 +38,74 @@ interface OnboardingStep {
   tips: OnboardingTip[]
 }
 
-// 引导步骤数据
 const onboardingSteps: Record<Language, OnboardingStep[]> = {
   zh: [
     {
-      title: '欢迎使用费曼读书助手',
-      description: '从建立书架到完成费曼实践，把阅读、理解、输出和复盘集中在一个流程里。',
+      title: '先看一本完整示例',
+      description: '书架已备好《追风筝的人》的真实学习档案，不配置 API Key 也能立即看到产品效果。',
       icon: BookOpen,
       iconTone: 'accent',
       tips: [
-        { text: '手动添加书籍，或上传 PDF、DOCX、Markdown、TXT、JSON 文档自动解析', emphasis: '手动添加书籍', tone: 'accent' },
-        { text: '维护完整书籍信息，包括书名、作者、简介、封面和标签', emphasis: '完整书籍信息', tone: 'sky' },
-        { text: '支持搜索与多维筛选，可按书名、作者、标签、阅读状态和分类定位书籍', emphasis: '搜索与多维筛选', tone: 'emerald' },
-        { text: '书架会同步展示阶段进度和已完成的综合成绩', emphasis: '阶段进度和综合成绩', tone: 'amber' }
+        { text: '完整查看六阶段分析，快速理解阅读方法', emphasis: '六阶段分析', tone: 'accent' },
+        { text: '查看笔记、教学模拟和角色问答的真实记录', emphasis: '真实记录', tone: 'emerald' },
+        { text: '示例内容清晰标记，可随时删除或替换', emphasis: '清晰标记', tone: 'sky' }
       ]
     },
     {
-      title: '六阶段深度阅读',
-      description: 'DeepSeek V4 Flash 会从六个真实维度分析书籍，分析结果按阶段保存并支持折叠阅读。',
+      title: '每天用 5 分钟复习',
+      description: '书架先给出今天最值得继续的一步，再把搜索、统计和批量管理放在次要位置。',
       icon: BrainCircuit,
-      iconTone: 'sky',
-      tips: [
-        { text: '背景探索：了解作者、写作背景与时代环境', emphasis: '背景探索', tone: 'accent' },
-        { text: '全书概览：建立整本书的核心框架与整体认识', emphasis: '全书概览', tone: 'sky' },
-        { text: '深度拆解：拆解核心观点、概念、论证和实例', emphasis: '深度拆解', tone: 'emerald' },
-        { text: '辩证分析：识别观点边界、反例与可能的争议', emphasis: '辩证分析', tone: 'amber' },
-        { text: '众声回响：理解评价、影响和不同视角', emphasis: '众声回响', tone: 'accent' },
-        { text: '融会贯通：连接已有知识、现实经验与行动', emphasis: '融会贯通', tone: 'emerald' }
-      ]
-    },
-    {
-      title: '费曼实践与评分',
-      description: '先用自己的话讲清楚，再接受不同角色追问；只有两部分都通过，才会形成完整综合成绩。',
-      icon: GraduationCap,
       iconTone: 'emerald',
       tips: [
-        { text: '教学模拟从准确度、完整度、清晰度和综合表现四个维度评分', emphasis: '四个维度评分', tone: 'sky' },
-        { text: '教学模拟达到 60 分后，可生成 3 个不同角色的问题', emphasis: '60 分后', tone: 'emerald' },
-        { text: '角色问答逐题评分，未通过的回答会保留记录并支持继续重答', emphasis: '保留记录并支持继续重答', tone: 'amber' },
-        { text: '教学模拟与 3 道角色问题全部通过后，才显示完整综合成绩', emphasis: '全部通过后', tone: 'accent' }
+        { text: '今日复习优先提示薄弱问题或未完成阶段', emphasis: '今日复习', tone: 'accent' },
+        { text: '先用自己的话讲清楚，再通过角色追问检验理解', emphasis: '讲清楚', tone: 'emerald' },
+        { text: '学习结果保存在当前浏览器，请定期导出备份', emphasis: '当前浏览器', tone: 'amber' }
       ]
     },
     {
-      title: '记录、整理与延伸阅读',
-      description: '学习结果不只停留在一次分析中，还可以持续记录、整理并延伸到下一本书。',
-      icon: NotebookPen,
-      iconTone: 'amber',
-      tips: [
-        { text: '阅读笔记用于自主记录与回顾，不进行 AI 评分', emphasis: '不进行 AI 评分', tone: 'emerald' },
-        { text: '教学模拟和角色问答记录会按书籍保留，方便查看改进过程', emphasis: '按书籍保留', tone: 'sky' },
-        { text: '可使用 AI 生成书籍标签，并统一管理标签与分类', emphasis: 'AI 生成书籍标签', tone: 'accent' },
-        { text: '完成六阶段学习和费曼实践后，可获取同作者、相关主题和阅读路径推荐，并直接加入书架', emphasis: '直接加入书架', tone: 'amber' }
-      ]
-    },
-    {
-      title: 'DeepSeek V4 Flash 与费用',
-      description: 'AI 功能使用你自行配置的 DeepSeek API Key，平台按任务调用系统预设模型。',
-      icon: WalletCards,
-      iconTone: 'accent',
-      tips: [
-        { text: '系统预设模型为 DeepSeek V4 Flash', emphasis: 'DeepSeek V4 Flash', tone: 'accent' },
-        { text: '每次成功调用后，数据管理会记录接口实际返回的输入、输出和合计 Token', emphasis: '接口实际返回的 Token', tone: 'emerald' },
-        { text: '一本书完整使用各项 AI 功能约 0.02 元仅作粗略参考，实际费用会随调用次数和输入长度波动', emphasis: '约 0.02 元仅作粗略参考', tone: 'amber' },
-        { text: '模型计费以 DeepSeek 官方价格和你控制台中的实际账单为准', emphasis: 'DeepSeek 官方价格和你控制台中的实际账单为准', tone: 'sky' }
-      ]
-    },
-    {
-      title: '数据由你掌握',
-      description: '平台不提供账户体系和云端学习数据托管，数据管理权保留在你的设备与浏览器中。',
-      icon: ShieldCheck,
-      iconTone: 'emerald',
-      tips: [
-        { text: '平台服务器不保存你的书籍、笔记、学习记录和 API Key', emphasis: '平台服务器不保存', tone: 'emerald' },
-        { text: '书籍、笔记、学习记录和设置保存在当前浏览器本地', emphasis: '当前浏览器本地', tone: 'sky' },
-        { text: '使用 AI 功能时，相关学习内容由浏览器直接发送给 DeepSeek', emphasis: '直接发送给 DeepSeek', tone: 'accent' },
-        { text: '请自行妥善保管数据，并通过设置中的数据管理定期导出备份', emphasis: '自行妥善保管数据', tone: 'amber' },
-        { text: '已有数据且距上次成功备份满 7 天时，系统会主动提醒再次备份', emphasis: '满 7 天时，系统会主动提醒', tone: 'emerald' }
-      ]
-    },
-    {
-      title: '完成设置，开始阅读',
-      description: '配置 API Key、添加书籍、完成六阶段学习，再通过教学模拟和角色问答检验理解。',
+      title: '需要新分析时，再连接 TokenDance',
+      description: '只有生成新分析、评估或推荐时才需要配置。授权、同意数据传输和保存会在设置中连续完成。',
       icon: Sparkles,
       iconTone: 'sky',
       tips: [
-        { text: '第一步：在设置中填写 DeepSeek API Key，并确认 AI 数据传输授权', emphasis: '填写 DeepSeek API Key', tone: 'accent' },
-        { text: '第二步：手动添加书籍，或上传文档自动提取书籍信息', emphasis: '添加书籍', tone: 'sky' },
-        { text: '第三步：启动六阶段分析并依次完成阶段学习', emphasis: '六阶段分析', tone: 'emerald' },
-        { text: '第四步：通过教学模拟和 3 道角色问答，完成一次费曼阅读闭环', emphasis: '费曼阅读闭环', tone: 'amber' }
+        { text: '系统使用 DeepSeek V4 Flash，优先通过 TokenDance 接入', emphasis: 'TokenDance', tone: 'accent' },
+        { text: 'API Key 仅保存在当前浏览器网站数据中', emphasis: '仅保存在当前浏览器', tone: 'emerald' },
+        { text: '计费以 TokenDance 官方实时标准及后续通知为准', emphasis: '官方实时标准及后续通知', tone: 'amber' }
       ]
     }
   ],
   en: [
     {
-      title: 'Welcome to Feynman Reader',
-      description: 'Bring reading, understanding, explanation, and review into one Feynman learning workflow.',
+      title: 'Start with a complete example',
+      description: 'The Kite Runner is ready with a realistic learning record, so you can see the product before configuring an API key.',
       icon: BookOpen,
       iconTone: 'accent',
       tips: [
-        { text: 'Add books manually or upload PDF, DOCX, Markdown, TXT, and JSON documents', emphasis: 'Add books manually', tone: 'accent' },
-        { text: 'Maintain complete book details including titles, authors, descriptions, covers, and tags', emphasis: 'complete book details', tone: 'sky' },
-        { text: 'Search and filter by title, author, tag, status, and category', emphasis: 'Search and filter', tone: 'emerald' },
-        { text: 'See phase progress and completed scores directly on the bookshelf', emphasis: 'phase progress and completed scores', tone: 'amber' }
+        { text: 'Explore the complete six-phase analysis and learn the method quickly', emphasis: 'six-phase analysis', tone: 'accent' },
+        { text: 'See realistic notes, teaching practice, and persona Q&A records', emphasis: 'realistic', tone: 'emerald' },
+        { text: 'Sample content is clearly labeled and can be removed or replaced', emphasis: 'clearly labeled', tone: 'sky' }
       ]
     },
     {
-      title: 'Six-Phase Deep Reading',
-      description: 'DeepSeek V4 Flash analyzes each book across six implemented dimensions, with phase-by-phase saved results.',
+      title: 'Review for five minutes a day',
+      description: 'The bookshelf leads with the most useful next step, while search, statistics, and management stay secondary.',
       icon: BrainCircuit,
-      iconTone: 'sky',
-      tips: [
-        { text: 'Background: author, writing context, and historical setting', emphasis: 'Background', tone: 'accent' },
-        { text: 'Overview: core framework and whole-book understanding', emphasis: 'Overview', tone: 'sky' },
-        { text: 'Deep Dive: core ideas, concepts, arguments, and examples', emphasis: 'Deep Dive', tone: 'emerald' },
-        { text: 'Critical Analysis: boundaries, counterexamples, and debates', emphasis: 'Critical Analysis', tone: 'amber' },
-        { text: 'Reception: reviews, influence, and alternative perspectives', emphasis: 'Reception', tone: 'accent' },
-        { text: 'Synthesis: connect the book with prior knowledge and action', emphasis: 'Synthesis', tone: 'emerald' }
-      ]
-    },
-    {
-      title: 'Feynman Practice and Scoring',
-      description: 'Explain the book in your own words, then answer persona questions. A final score appears only after both parts pass.',
-      icon: GraduationCap,
       iconTone: 'emerald',
       tips: [
-        { text: 'Teaching practice uses four scoring dimensions: accuracy, completeness, clarity, and overall quality', emphasis: 'four scoring dimensions', tone: 'sky' },
-        { text: 'After teaching practice reaches 60, generate questions from 3 personas', emphasis: 'reaches 60', tone: 'emerald' },
-        { text: 'Each persona answer is scored; unsuccessful attempts remain available for revision', emphasis: 'remain available for revision', tone: 'amber' },
-        { text: 'The complete final score appears only after teaching and all 3 questions pass', emphasis: 'all 3 questions pass', tone: 'accent' }
+        { text: 'Today\'s review prioritizes a weak answer or unfinished phase', emphasis: 'Today\'s review', tone: 'accent' },
+        { text: 'Explain the book in your own words, then test understanding with persona questions', emphasis: 'your own words', tone: 'emerald' },
+        { text: 'Learning data stays in this browser, so export backups regularly', emphasis: 'this browser', tone: 'amber' }
       ]
     },
     {
-      title: 'Notes, Organization, and Discovery',
-      description: 'Keep a durable learning trail, organize your shelf, and continue into related reading.',
-      icon: NotebookPen,
-      iconTone: 'amber',
-      tips: [
-        { text: 'Reading notes are for your own records and are not scored by AI', emphasis: 'not scored by AI', tone: 'emerald' },
-        { text: 'Teaching and persona Q&A records stay organized by book', emphasis: 'organized by book', tone: 'sky' },
-        { text: 'Generate book tags with AI and manage tags and categories centrally', emphasis: 'Generate book tags with AI', tone: 'accent' },
-        { text: 'After all six phases and practice, get author, topic, and reading-path recommendations and add them to your shelf', emphasis: 'add them to your shelf', tone: 'amber' }
-      ]
-    },
-    {
-      title: 'DeepSeek V4 Flash and Cost',
-      description: 'AI features use the DeepSeek API key you configure and the preset model selected by the app.',
-      icon: WalletCards,
-      iconTone: 'accent',
-      tips: [
-        { text: 'The preset model is DeepSeek V4 Flash', emphasis: 'DeepSeek V4 Flash', tone: 'accent' },
-        { text: 'After each successful call, Data Management records the input, output, and total tokens returned by the API', emphasis: 'tokens returned by the API', tone: 'emerald' },
-        { text: 'Roughly CNY 0.02 for a complete book workflow is only a broad reference; actual cost varies with calls and input length', emphasis: 'only a broad reference', tone: 'amber' },
-        { text: 'Billing follows official DeepSeek pricing and the actual records in your console', emphasis: 'official DeepSeek pricing', tone: 'sky' }
-      ]
-    },
-    {
-      title: 'Your Data, Under Your Control',
-      description: 'The platform provides no account-based cloud hosting for learning data; control remains with your device and browser.',
-      icon: ShieldCheck,
-      iconTone: 'emerald',
-      tips: [
-        { text: 'Platform servers do not store your books, notes, learning records, or API key', emphasis: 'do not store', tone: 'emerald' },
-        { text: 'Books, notes, learning records, and settings remain in this browser', emphasis: 'in this browser', tone: 'sky' },
-        { text: 'When using AI, relevant learning content is sent directly from the browser to DeepSeek', emphasis: 'directly from the browser to DeepSeek', tone: 'accent' },
-        { text: 'Keep your data safely and export regular backups from Data Management', emphasis: 'Keep your data safely', tone: 'amber' },
-        { text: 'The app provides a 7-day reminder after the last successful backup', emphasis: '7-day reminder', tone: 'emerald' }
-      ]
-    },
-    {
-      title: 'Finish Setup and Start Reading',
-      description: 'Configure your API key, add a book, complete six-phase learning, and verify understanding through Feynman practice.',
+      title: 'Connect TokenDance when you need new AI work',
+      description: 'Configuration is only required for new analysis, evaluation, or recommendations. Authorization, consent, and saving stay in one flow.',
       icon: Sparkles,
       iconTone: 'sky',
       tips: [
-        { text: 'Step 1: Add your DeepSeek API key in Settings and confirm AI data transfer consent', emphasis: 'DeepSeek API key', tone: 'accent' },
-        { text: 'Step 2: Add a book manually or upload a document for book-detail extraction', emphasis: 'Add a book', tone: 'sky' },
-        { text: 'Step 3: Start six-phase analysis and complete each learning phase', emphasis: 'six-phase analysis', tone: 'emerald' },
-        { text: 'Step 4: Pass teaching practice and 3 persona questions to complete the Feynman reading loop', emphasis: 'Feynman reading loop', tone: 'amber' }
+        { text: 'The app uses DeepSeek V4 Flash through the recommended TokenDance provider', emphasis: 'TokenDance', tone: 'accent' },
+        { text: 'Your API key is stored only in this browser site data', emphasis: 'only in this browser', tone: 'emerald' },
+        { text: 'Billing follows TokenDance official real-time pricing and subsequent notices', emphasis: 'official real-time pricing', tone: 'amber' }
       ]
     }
   ]
@@ -251,7 +140,7 @@ function HighlightedTip({ tip }: { tip: OnboardingTip }) {
   )
 }
 
-export default function Onboarding({ lang, onComplete }: Props) {
+export default function Onboarding({ lang, aiConfigured, onComplete, onConfigureApi }: Props) {
   const [currentStep, setCurrentStep] = useState(0)
   const [showTour, setShowTour] = useState(true)
 
@@ -264,7 +153,32 @@ export default function Onboarding({ lang, onComplete }: Props) {
     }
   }, [onComplete])
 
-  const steps = onboardingSteps[lang] || onboardingSteps.zh
+  const steps = [...(onboardingSteps[lang] || onboardingSteps.zh)]
+  if (aiConfigured) {
+    steps[steps.length - 1] = lang === 'zh'
+      ? {
+          title: 'TokenDance 已连接',
+          description: 'API Key 与数据传输授权均已保存。先体验完整示例，或添加自己的书开始分析。',
+          icon: Sparkles,
+          iconTone: 'emerald',
+          tips: [
+            { text: 'TokenDance API Key 和 AI 数据传输授权均已配置完成', emphasis: '均已配置完成', tone: 'emerald' },
+            { text: '打开《追风筝的人》，查看完整示例', emphasis: '《追风筝的人》', tone: 'accent' },
+            { text: '添加自己的书，生成新的六阶段分析', emphasis: '添加自己的书', tone: 'sky' }
+          ]
+        }
+      : {
+          title: 'TokenDance is connected',
+          description: 'Your API key and data transfer consent are saved. Explore the complete sample or add your own book.',
+          icon: Sparkles,
+          iconTone: 'emerald',
+          tips: [
+            { text: 'Your TokenDance API key and AI data transfer consent are fully configured', emphasis: 'fully configured', tone: 'emerald' },
+            { text: 'Open The Kite Runner to explore the complete example', emphasis: 'The Kite Runner', tone: 'accent' },
+            { text: 'Add your own book and generate a new six-phase analysis', emphasis: 'Add your own book', tone: 'sky' }
+          ]
+        }
+  }
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -274,6 +188,7 @@ export default function Onboarding({ lang, onComplete }: Props) {
       localStorage.setItem(ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION)
       setShowTour(false)
       onComplete()
+      if (!aiConfigured) onConfigureApi?.()
     }
   }
 
@@ -294,7 +209,7 @@ export default function Onboarding({ lang, onComplete }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="card max-h-[90vh] w-full max-w-xl overflow-y-auto p-6 animate-fade-in md:p-8">
+      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className="card max-h-[90vh] w-full max-w-xl overflow-y-auto p-6 animate-fade-in md:p-8">
         {/* 进度指示器 */}
         <div className="flex gap-2 mb-6">
           {steps.map((_, idx) => (
@@ -312,7 +227,7 @@ export default function Onboarding({ lang, onComplete }: Props) {
           <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg ${iconBackgroundClasses[step.iconTone]}`}>
             <StepIcon size={32} strokeWidth={1.8} aria-hidden="true" />
           </div>
-          <h2 className="text-2xl font-bold mb-3">{step.title}</h2>
+          <h2 id="onboarding-title" className="text-2xl font-bold mb-3">{step.title}</h2>
           <p className="text-[var(--text-secondary)] mb-6">{step.description}</p>
 
           {/* 提示列表 */}
@@ -327,7 +242,7 @@ export default function Onboarding({ lang, onComplete }: Props) {
         </div>
 
         {/* 按钮 */}
-        <div className="flex gap-3">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row">
           {currentStep > 0 && (
             <button
               type="button"
@@ -350,7 +265,9 @@ export default function Onboarding({ lang, onComplete }: Props) {
           >
             {currentStep < steps.length - 1
               ? (lang === 'zh' ? '下一步' : 'Next')
-              : (lang === 'zh' ? '开始使用' : 'Get Started')
+              : !aiConfigured
+                ? (lang === 'zh' ? '去配置 API' : 'Configure API')
+                : (lang === 'zh' ? '开始使用' : 'Get Started')
             }
             <ArrowRight size={17} aria-hidden="true" />
           </button>

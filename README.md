@@ -4,12 +4,12 @@
   <img src="assets/brand/feynman-reader-logo.png" alt="费曼读书助手 Logo" width="144">
 </p>
 
-![Next.js](https://img.shields.io/badge/Next.js-14-111111)
+![Next.js](https://img.shields.io/badge/Next.js-16-111111)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
 ![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
 ![本地优先](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%BC%98%E5%85%88-22c55e)
 
-[在线体验](https://www.deline.top) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
+[English](README.en.md) · [在线体验](https://www.deline.top) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
 
 **读完不算懂，能讲清楚才算。**
 
@@ -18,7 +18,7 @@
 **产品访问：** [https://www.deline.top](https://www.deline.top)
 
 > [!IMPORTANT]
-> **这是一个本地优先的学习产品。** 本产品不提供云端存储、同步与恢复服务，学习记录和 API Key 默认保存在用户自己的浏览器里。清理网站数据、卸载浏览器或设备异常可能造成数据丢失，请根据应用提醒及时导出备份。调用 AI 前，需要先阅读并同意隐私政策；当前使用用户自己的 DeepSeek API Key。
+> **这是一个本地优先的学习产品。** 本产品不提供云端存储、同步与恢复服务，学习记录和 API Key 默认保存在用户自己的浏览器里。清理网站数据、卸载浏览器或设备异常可能造成数据丢失，请根据应用提醒及时导出备份。调用 AI 前，需要先阅读并同意隐私政策；TokenDance / TokenPay 是推荐渠道，DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线，届时旧官方 Key 也不再支持。
 
 ## GitHub 传播素材
 
@@ -26,6 +26,8 @@
 - 项目短描述：一个基于费曼学习法的 AI 深度阅读工具，包含六阶段学习、教学模拟、严格评分和 3 角色追问。
 - 建议 Topics：`ai-learning`、`feynman-technique`、`deepseek`、`nextjs`、`learning-tool`、`critical-thinking`、`readwise`
 - 产品素材：真实 Safari 截图、核心流程图和完整录屏均已整理归档。
+
+[![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
 
 ## 为什么做这个
 
@@ -58,10 +60,14 @@
 ### 书架与学习状态
 
 <p>
-  <img src="docs/product/submission/screenshots/01-bookshelf-safari.png" alt="费曼读书助手书架页面，展示已读和在读书籍、学习进度和综合得分" width="100%">
+  <img src="docs/product/screenshots/01-bookshelf-desktop.png" alt="费曼读书助手桌面书架页面，展示追风筝的人示例、今日复习和学习进度" width="100%">
 </p>
 
-书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《乌合之众》，完整呈现深度阅读流程。
+<p>
+  <img src="docs/product/screenshots/02-bookshelf-mobile.png" alt="费曼读书助手移动端书架页面" width="420">
+</p>
+
+书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《追风筝的人》，完整呈现深度阅读流程。
 
 ### 六阶段阅读
 
@@ -122,7 +128,7 @@ flowchart TD
   A[创建书籍或上传本地文档] --> B{已同意 AI 数据使用?}
   B -- 否 --> C[阅读隐私政策并确认]
   C --> B
-  B -- 是 --> D[DeepSeek 生成六阶段学习内容]
+  B -- 是 --> D[DeepSeek V4 Flash 生成六阶段学习内容]
   D --> E[用户提交自己的教学解释]
   E --> F[AI 评分并指出理解漏洞]
   F --> G[AI 生成 3 个角色问题]
@@ -156,13 +162,15 @@ npm run dev
 
 打开 [http://localhost:8080](http://localhost:8080)。第一次使用时：
 
-1. 在设置中填写自己的 DeepSeek API Key。
+1. 在设置中选择 TokenDance / TokenPay 并点击 OAuth 授权，或填写 TokenDance API Key。
 2. 阅读隐私政策，滚动到底部后勾选同意。
 3. 创建一本书或上传资料，开始第一次“讲给 AI 听”的练习。
 
+DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存相关配置，届时旧官方 Key 不再支持。TokenDance 的折扣和分润价格以其官方计费标准和通知为准，不承诺永久或长期有效。
+
 ## 技术栈
 
-- **前端**：Next.js 14、TypeScript、Tailwind CSS
+- **前端**：Next.js 16、TypeScript、Tailwind CSS
 - **AI**：DeepSeek API
 - **本地数据**：IndexedDB
 - **文档解析**：PDF.js、Mammoth、XLSX
@@ -185,6 +193,12 @@ npm run dev
 ## 边界说明
 
 这个项目不是自动读书机，也不应该替用户完成思考。当前版本暂不提供语音输入、OCR 拍书和自动复习提醒；学习模式选择也尚未对用户开放，线上主流程统一采用顺序 6 阶段。
+
+AI 生成的分析、评分和建议仅用于学习辅助，不保证事实准确性；请结合原书和自己的判断核验重要信息。
+
+## GitHub 关注度
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HachikoJ/Feynman-Reader&type=Date)](https://star-history.com/#HachikoJ/Feynman-Reader&Date)
 
 早期浏览器端的 10 次试用与激活机制存在刷新误计次、清理本地存储即可绕过等问题，既影响体验，也不具备可靠的授权能力。相关客户端实现已从当前源码和生产构建中移除，当前版本不会扣减试用次数或要求激活。
 

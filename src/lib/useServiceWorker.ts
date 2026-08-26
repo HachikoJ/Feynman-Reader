@@ -7,6 +7,12 @@ import { logger } from './logger'
 
 export type SWStatus = 'unsupported' | 'loading' | 'active' | 'update-available' | 'error'
 
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1'])
+
+export function shouldDisableServiceWorker(hostname: string, environment = process.env.NODE_ENV): boolean {
+  return environment !== 'production' || LOCAL_HOSTNAMES.has(hostname)
+}
+
 interface UseServiceWorkerReturn {
   status: SWStatus
   update: () => void
@@ -23,6 +29,27 @@ export function useServiceWorker(): UseServiceWorkerReturn {
     // 检查是否支持 Service Worker
     if (!('serviceWorker' in navigator)) {
       setStatus('unsupported')
+      return
+    }
+
+    if (shouldDisableServiceWorker(window.location.hostname)) {
+      setStatus('unsupported')
+      void Promise.all([
+        navigator.serviceWorker.getRegistrations().then(registrations => (
+          Promise.all(registrations.map(current => current.unregister()))
+        )),
+        'caches' in window
+          ? caches.keys().then(cacheNames => (
+              Promise.all(
+                cacheNames
+                  .filter(name => name.startsWith('feynman-'))
+                  .map(name => caches.delete(name))
+              )
+            ))
+          : Promise.resolve([])
+      ]).catch(error => {
+        logger.warn('本地开发缓存清理失败:', error)
+      })
       return
     }
 

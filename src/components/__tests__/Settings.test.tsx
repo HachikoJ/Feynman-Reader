@@ -2,6 +2,13 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
+jest.mock('qrcode', () => ({
+  __esModule: true,
+  default: {
+    toDataURL: jest.fn(() => Promise.resolve('data:image/png;base64,ZmFrZS1xcg=='))
+  }
+}))
+
 jest.mock('@/lib/store', () => ({
   getBooks: jest.fn(() => []),
   getAIUsageRecords: jest.fn(() => []),
@@ -45,14 +52,24 @@ jest.mock('@/lib/deepseek', () => ({
   validateDeepSeekApiKey: jest.fn(() => Promise.resolve())
 }))
 
+jest.mock('@/lib/tokendance', () => ({
+  createTokendanceAuthorizationUrl: jest.fn(),
+  exchangeTokendanceCode: jest.fn(),
+  fetchTokendanceBalance: jest.fn(),
+  createTokendancePaymentSession: jest.fn(),
+  getTokendancePaymentSession: jest.fn(() => new Promise(() => {}))
+}))
+
 import Settings from '../Settings'
 import AppDialogHost from '../AppDialogHost'
 import * as store from '@/lib/store'
+import * as tokendance from '@/lib/tokendance'
 import type { AppSettings } from '@/lib/store'
 
 const getSettingsMock = store.getSettings as jest.MockedFunction<typeof store.getSettings>
 const saveSettingsMock = store.saveSettings as jest.MockedFunction<typeof store.saveSettings>
-const savedApiKey = 'sk-1234567890abcdefghijklmnopqrstuv'
+const createTokendancePaymentSessionMock = tokendance.createTokendancePaymentSession as jest.MockedFunction<typeof tokendance.createTokendancePaymentSession>
+const savedApiKey = ['test', 'api', 'key', 'for', 'settings'].join('-')
 
 const savedSettings: AppSettings = {
   apiKey: savedApiKey,
@@ -86,6 +103,7 @@ describe('Settings AI privacy controls', () => {
   it('persists consent withdrawal immediately', async () => {
     const onSettingsChange = jest.fn()
     renderSettings(onSettingsChange)
+    fireEvent.click(screen.getByRole('button', { name: '管理连接' }))
 
     fireEvent.click(screen.getByRole('checkbox'))
 
@@ -99,9 +117,38 @@ describe('Settings AI privacy controls', () => {
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ aiDataConsent: false }))
   })
 
+  it('keeps consent acceptance in the draft until the API key is saved', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false })
+    renderSettings()
+
+    await waitFor(() => expect(screen.getByPlaceholderText('sk-...')).toBeInTheDocument())
+    saveSettingsMock.mockClear()
+
+    fireEvent.change(screen.getByPlaceholderText('sk-...'), { target: { value: savedApiKey } })
+    fireEvent.click(screen.getByRole('checkbox'))
+    const policy = screen.getByRole('dialog', { name: '隐私政策' })
+    const scrollContainer = policy.querySelector('[class*="overflow-y-auto"]') as HTMLElement
+    Object.defineProperty(scrollContainer, 'scrollHeight', { configurable: true, value: 100 })
+    Object.defineProperty(scrollContainer, 'clientHeight', { configurable: true, value: 100 })
+    fireEvent.scroll(scrollContainer)
+    fireEvent.click(screen.getByRole('button', { name: '已阅读并同意' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '隐私政策' })).not.toBeInTheDocument())
+    expect(saveSettingsMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '保存设置' }))
+    await waitFor(() => {
+      expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({
+        apiKey: savedApiKey,
+        aiDataConsent: true
+      }))
+    })
+  })
+
   it('deletes the saved API key and withdraws consent together', async () => {
     const onSettingsChange = jest.fn()
     renderSettings(onSettingsChange)
+    fireEvent.click(screen.getByRole('button', { name: '管理连接' }))
 
     fireEvent.change(screen.getByPlaceholderText('sk-...'), { target: { value: '' } })
     expect(screen.getByRole('button', { name: '删除 API Key' })).toBeInTheDocument()
@@ -123,9 +170,12 @@ describe('Settings AI privacy controls', () => {
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ apiKey: '', aiDataConsent: false }))
   })
 
-  it('keeps the normal save validation when the API key is empty', () => {
+  it('keeps the normal save validation when the API key is empty', async () => {
     getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false })
     renderSettings()
+
+    await waitFor(() => expect(screen.getByPlaceholderText('sk-...')).toBeInTheDocument())
+    saveSettingsMock.mockClear()
 
     fireEvent.click(screen.getByRole('button', { name: '保存设置' }))
 
@@ -134,16 +184,18 @@ describe('Settings AI privacy controls', () => {
   })
 
   it('does not show a key or consent reminder when saved configuration is complete', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, aiProvider: 'tokendance' })
     render(
       <>
-        <Settings onSettingsChange={jest.fn()} focusApiConfigurationRequest={1} />
+        <Settings onSettingsChange={jest.fn()} />
         <AppDialogHost lang="zh" />
       </>
     )
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('sk-...')).toHaveValue(savedApiKey)
+      expect(screen.getByText('TokenDance 已连接，AI 可用')).toBeInTheDocument()
     })
+    expect(screen.queryByPlaceholderText('TokenDance API Key')).not.toBeInTheDocument()
     expect(screen.queryByText('请先填写 DeepSeek API Key，并在勾选同意后保存。')).not.toBeInTheDocument()
     expect(screen.queryByText('使用 AI 功能前，请先确认 AI 数据传输同意。')).not.toBeInTheDocument()
   })
@@ -158,6 +210,51 @@ describe('Settings AI privacy controls', () => {
     )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('请先填写 DeepSeek API Key，并在勾选同意后保存。')
+  })
+
+  it('uses the English DeepSeek provider name in English mode', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, language: 'en' })
+    renderSettings()
+    expect(await screen.findByText('DeepSeek Official API connected')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Manage connection' }))
+
+    expect(await screen.findByText('DeepSeek Official API')).toBeInTheDocument()
+    expect(screen.queryByText('DeepSeek 官方 API')).not.toBeInTheDocument()
+  })
+
+  it('does not expose TokenDance top-up until the key and consent are persisted', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+    renderSettings()
+
+    await waitFor(() => expect(screen.getByPlaceholderText('TokenDance API Key')).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText('TokenDance API Key'), { target: { value: savedApiKey } })
+
+    expect(screen.queryByText('TokenDance 账户')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '创建充值会话' })).not.toBeInTheDocument()
+  })
+
+  it('keeps desktop users in settings and renders a payment QR session', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, aiProvider: 'tokendance' })
+    createTokendancePaymentSessionMock.mockResolvedValue({
+      id: 'payment-1',
+      amount: 10,
+      status: 'pending',
+      payment_url: 'https://pay.example.com/session-1',
+      status_url: 'https://tokendance.space/portal/api/v1/payment/sessions/payment-1',
+      expired_at: 1_900_000_000
+    })
+    const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+    renderSettings()
+
+    fireEvent.click(await screen.findByRole('button', { name: '管理连接' }))
+    fireEvent.click(await screen.findByRole('button', { name: '创建充值会话' }))
+
+    expect(await screen.findByText('充值状态：等待支付')).toBeInTheDocument()
+    expect(screen.getByText('请使用手机扫描二维码完成支付，本页面会自动刷新到账状态。')).toBeInTheDocument()
+    expect(await screen.findByRole('img', { name: 'TokenDance 充值支付二维码' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '打开支付页' })).toHaveAttribute('href', 'https://pay.example.com/session-1')
+    expect(openSpy).not.toHaveBeenCalled()
+    openSpy.mockRestore()
   })
 
   it('shows backup plaintext risk and multipart import guidance in data management', () => {

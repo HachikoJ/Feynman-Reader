@@ -10,6 +10,7 @@ interface Props {
   content: string
   lang: Language
   documentContent?: string
+  onExpandAll?: () => void
 }
 
 interface Section {
@@ -18,7 +19,7 @@ interface Section {
   isKeyPoint: boolean
 }
 
-export default function PhaseResult({ content, lang, documentContent }: Props) {
+export default function PhaseResult({ content, lang, documentContent, onExpandAll }: Props) {
   const parseContent = (text: string): Section[] => {
     const sections: Section[] = []
     const lines = text.split('\n')
@@ -81,6 +82,7 @@ export default function PhaseResult({ content, lang, documentContent }: Props) {
     const all: Record<number, boolean> = {}
     sections.forEach((_, idx) => { all[idx] = true })
     setExpandedSections(all)
+    onExpandAll?.()
   }
 
   const collapseAll = () => {

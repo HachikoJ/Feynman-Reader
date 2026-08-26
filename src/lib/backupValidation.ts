@@ -23,6 +23,7 @@ import {
 } from './dataLimits'
 import { AIUsageRecord, MAX_AI_USAGE_RECORDS } from './aiUsage'
 import { getBookRelationIdentity, type BookList, type BookRelation, type BookRelationType } from './bookRelations'
+import { migrateToTokenDanceAfterSunset } from './aiProviderPolicy'
 
 export const BACKUP_DATA_VERSION = 5
 export { MAX_BACKUP_FILE_BYTES } from './dataLimits'
@@ -124,17 +125,20 @@ export function normalizeSettings(
 
     return {
       valid: true,
-      data: {
+      data: migrateToTokenDanceAfterSunset({
         apiKey: options.preserveApiKey && typeof item.apiKey === 'string' && item.apiKey.length <= 500
           ? item.apiKey
           : '',
+        aiProvider: item.aiProvider === 'deepseek' || item.aiProvider === 'tokendance'
+          ? item.aiProvider
+          : (typeof item.apiKey === 'string' && item.apiKey.trim() ? 'deepseek' : 'tokendance'),
         language: item.language === 'en' ? 'en' : 'zh',
         theme: item.theme === 'dark' ? 'dark' : 'light',
         hideApiKeyAlert: optionalBoolean(item.hideApiKeyAlert, false),
         aiDataConsent: optionalBoolean(item.aiDataConsent, false),
         quotes: quotesRaw.map((quote, index) => normalizeQuote(quote, `设置.quotes[${index}]`)),
         quotesInitialized: optionalBoolean(item.quotesInitialized, false)
-      }
+      })
     }
   } catch (error) {
     return { valid: false, error: error instanceof Error ? error.message : '设置数据无效' }
@@ -335,6 +339,7 @@ function normalizeBook(value: unknown, path: string): Book {
     createdAt: timestamp(item.createdAt, `${path}.createdAt`),
     updatedAt: timestamp(item.updatedAt, `${path}.updatedAt`)
   }
+  if (item.isSample === true) book.isSample = true
 
   if (item.readingProgress !== undefined) {
     const progress = record(item.readingProgress, `${path}.readingProgress`)

@@ -2,24 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { AlertTriangle, CircleHelp, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CircleHelp, RefreshCw, UsersRound } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import {
   AppSettings,
   Book,
-  flushPendingStoreWrites,
   getBooks,
   getSettings,
   initializeStore,
-  reloadSettingsFromPersistence,
-  saveSettings,
   subscribeToPersistenceErrors
 } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import Settings from '@/components/Settings'
 import Bookshelf from '@/components/Bookshelf'
 import ReadingView from '@/components/ReadingView'
-import ApiKeyAlert from '@/components/ApiKeyAlert'
 import BackToTop from '@/components/BackToTop'
 import AuthGuard from '@/components/AuthGuard'
 import Onboarding, { ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION } from '@/components/Onboarding'
@@ -31,11 +27,12 @@ import {
   DATA_RISK_ACKNOWLEDGED_KEY,
   DATA_RISK_NOTICE_VERSION,
   LAST_BACKUP_AT_KEY,
+  hasBackupRelevantLearningData,
   hasAcknowledgedCurrentDataRisk,
   isBackupReminderDue,
   shouldShowBackupWarning
 } from '@/lib/backupReminder'
-import { getActiveStartupPrompt } from '@/lib/startupPrompt'
+import { getActiveStartupPrompt, isAIConfigurationComplete, shouldShowOnboarding } from '@/lib/startupPrompt'
 import { useServiceWorker } from '@/lib/useServiceWorker'
 import AITaskStatus from '@/components/AITaskStatus'
 import { LoadingState, Skeleton } from '@/components/Skeleton'
@@ -79,6 +76,9 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tokendance_callback') === '1') {
+      setView('settings')
+    }
     const unsubscribePersistenceErrors = subscribeToPersistenceErrors(() => {
       if (!cancelled) setStorageWriteError(true)
     })
@@ -100,25 +100,22 @@ export default function Home() {
       const saved = getSettings()
       setSettings(saved)
       document.documentElement.setAttribute('data-theme', saved.theme)
-
-      if (!saved.apiKey && !saved.hideApiKeyAlert) {
-        setShowApiKeyAlert(true)
-      }
-
       const books = getBooks()
+
       const completedOnboardingVersion = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
-      if (completedOnboardingVersion !== ONBOARDING_VERSION) {
+      if (shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION)) {
         setShowOnboarding(true)
       }
 
       const acknowledged = hasAcknowledgedCurrentDataRisk(localStorage.getItem(DATA_RISK_ACKNOWLEDGED_KEY))
       const lastBackupValue = localStorage.getItem(LAST_BACKUP_AT_KEY)
       const lastBackupAt = lastBackupValue ? Number(lastBackupValue) : null
-      const needsBackup = isBackupReminderDue({ bookCount: books.length, lastBackupAt })
+      const learningDataCount = books.filter(hasBackupRelevantLearningData).length
+      const needsBackup = isBackupReminderDue({ bookCount: learningDataCount, lastBackupAt })
       setBackupDue(needsBackup)
       setShowDataLossWarning(shouldShowBackupWarning({
         acknowledged,
-        bookCount: books.length,
+        bookCount: learningDataCount,
         lastBackupAt
       }))
 
@@ -135,7 +132,7 @@ export default function Home() {
   const handleSettingsChange = (newSettings: AppSettings) => {
     setSettings(newSettings)
     document.documentElement.setAttribute('data-theme', newSettings.theme)
-    if (newSettings.apiKey.trim() && newSettings.aiDataConsent) {
+    if (isAIConfigurationComplete(newSettings)) {
       setShowApiKeyAlert(false)
     }
   }
@@ -144,22 +141,6 @@ export default function Home() {
     setShowApiKeyAlert(false)
     setSelectedBook(book)
     setView('reading')
-  }
-
-  const handleDontRemind = async () => {
-    const newSettings = { ...settings, hideApiKeyAlert: true }
-    try {
-      await flushPendingStoreWrites()
-      saveSettings(newSettings)
-      await flushPendingStoreWrites()
-      setSettings(newSettings)
-      setShowApiKeyAlert(false)
-    } catch (error) {
-      logger.error('Failed to save API key reminder preference:', error)
-      const restored = await reloadSettingsFromPersistence().catch(() => settings)
-      setSettings(restored)
-      setStorageWriteError(true)
-    }
   }
 
   const handleOpenApiSettings = () => {
@@ -176,9 +157,14 @@ export default function Home() {
 
   const handleOnboardingComplete = () => {
     setShowOnboarding(false)
-    if (!settings.apiKey && !settings.hideApiKeyAlert) {
-      setShowApiKeyAlert(true)
-    }
+    const persistedSettings = getSettings()
+    setSettings(persistedSettings)
+  }
+
+  const handleOnboardingConfigureApi = () => {
+    setShowApiKeyAlert(false)
+    setFocusApiConfigurationRequest(request => request + 1)
+    setView('settings')
   }
 
   const acknowledgeDataRisk = (goToBackup: boolean) => {
@@ -390,9 +376,9 @@ export default function Home() {
               <p className="text-[var(--text-secondary)] italic">{t(lang, 'app.quote')}</p>
               <p className="text-[var(--text-secondary)] text-sm mt-1">{t(lang, 'app.quoteAuthor')}</p>
             </div>
-            
-            {/* 网站信息 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm text-[var(--text-secondary)]">
+
+            {/* 网站信息与社群入口保持同一信息带，避免二维码抢占页脚主层级。 */}
+            <div className="grid grid-cols-1 gap-6 border-y border-[var(--border)] py-6 text-sm text-[var(--text-secondary)] md:grid-cols-4">
               {/* 关于 */}
               <div className="text-center md:text-left">
                 <h4 className="font-medium text-[var(--text-primary)] mb-2">
@@ -416,13 +402,50 @@ export default function Home() {
                     : '6-Phase Reading · AI Analysis · Feynman Practice · Progress Tracking'}
                 </p>
               </div>
-              
+
+              {/* 社群入口：保留完整二维码，但使用紧凑缩略尺寸。 */}
+              <section aria-labelledby="community-title" className="flex min-w-0 items-center justify-center gap-3 text-left md:justify-start">
+                <a
+                  href="/community-qr.jpg"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded-md border border-[var(--border)] bg-white p-1 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label={lang === 'zh' ? '打开完整群二维码' : 'Open the full community QR code'}
+                  title={lang === 'zh' ? '点击放大二维码' : 'Open larger QR code'}
+                >
+                  <Image
+                    src="/community-qr.jpg"
+                    alt={lang === 'zh' ? '费曼读书助手交流社群微信群二维码' : 'Feynman Reader WeChat community QR code'}
+                    width={96}
+                    height={149}
+                    className="h-auto w-20 sm:w-24"
+                  />
+                </a>
+                <div className="min-w-0">
+                  <div className="mb-1.5 flex items-center gap-1.5 text-[var(--accent)]">
+                    <UsersRound size={16} aria-hidden="true" />
+                    <span className="text-xs font-semibold">
+                      {lang === 'zh' ? '一起读得更深' : 'Read deeper together'}
+                    </span>
+                  </div>
+                  <h3 id="community-title" className="font-medium text-[var(--text-primary)]">
+                    {lang === 'zh' ? '加入交流社群' : 'Join our community'}
+                  </h3>
+                  <p className="mt-1 text-xs leading-5">
+                    {lang === 'zh' ? '微信扫码加入，交流书籍与学习方法。' : 'Scan with WeChat to exchange reading ideas.'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5">
+                    {lang === 'zh' ? '二维码失效后会在这里更新。' : 'The QR code will be refreshed when it expires.'}
+                  </p>
+                </div>
+              </section>
+
               {/* 版权 */}
               <div className="text-center md:text-right">
                 <h4 className="font-medium text-[var(--text-primary)] mb-2">
                   {lang === 'zh' ? '版权信息' : 'Copyright'}
                 </h4>
-                <p className="text-xs">© 2025 费曼读书助手</p>
+                <p className="text-xs">© 2025 {lang === 'zh' ? '费曼读书助手' : 'Feynman Reader'}</p>
                 <p className="text-xs mt-1">
                   {lang === 'zh' ? '保留所有权利' : 'All Rights Reserved'}
                 </p>
@@ -436,21 +459,13 @@ export default function Home() {
           </div>
         </footer>
 
-        {/* API Key Alert Modal */}
-        {activeStartupPrompt === 'api-key' && (
-          <ApiKeyAlert
-            lang={lang}
-            onGoSettings={handleOpenApiSettings}
-            onLater={() => setShowApiKeyAlert(false)}
-            onDontRemind={handleDontRemind}
-          />
-        )}
-
         {/* P0 新增：新手引导 */}
         {activeStartupPrompt === 'onboarding' && (
           <Onboarding
             lang={lang}
+            aiConfigured={isAIConfigurationComplete(settings)}
             onComplete={handleOnboardingComplete}
+            onConfigureApi={handleOnboardingConfigureApi}
           />
         )}
 

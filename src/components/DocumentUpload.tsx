@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger'
 import { MAX_DOCUMENT_FILE_SIZE, parseDocument, SUPPORTED_FILE_TYPES } from '@/lib/document-parser'
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
+import { tokendanceRecoveryMessage } from '@/lib/tokendance'
 import { getSettings, addBook, flushPendingStoreWrites, reloadBookFromPersistence, BookTag } from '@/lib/store'
 import { MAX_BOOK_TAGS, MAX_TAG_LENGTH } from '@/lib/dataLimits'
 import { detectMaliciousContent, sanitizeTextInput, validateAuthorName, validateBookName, validateContent } from '@/lib/validation'
@@ -126,6 +127,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
         const cancelled = analysisError instanceof Error && analysisError.message === AI_REQUEST_CANCELLED
         const busy = analysisError instanceof Error && analysisError.message === AI_TASK_BUSY
         const incomplete = analysisError instanceof Error && analysisError.message === AI_OUTPUT_INCOMPLETE
+        const recoveryMessage = tokendanceRecoveryMessage(analysisError, lang)
         setAnalysisWarning(cancelled
           ? (lang === 'zh' ? '已取消 AI 信息提取。完整文档仍已保留，请手工确认后添加。' : 'AI extraction was cancelled. The full document was kept; confirm the details manually.')
           : busy
@@ -136,6 +138,8 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
           ? (lang === 'zh'
               ? '文档上下文过长，系统自动缩减后仍未能提取书籍信息。完整原文会继续保留，请手工确认后添加。'
               : 'The document context was still too long after automatic reduction. The full text will be kept; confirm the book details manually.')
+          : recoveryMessage
+          ? recoveryMessage
           : consentRequired
           ? (lang === 'zh'
               ? '尚未同意 AI 数据传输，文档不会发送给 AI。请手工确认信息，或前往设置完成授权。'

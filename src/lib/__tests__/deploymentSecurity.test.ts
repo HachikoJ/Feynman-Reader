@@ -8,6 +8,8 @@ describe('production security header deployment', () => {
   const deployScript = readFileSync(join(process.cwd(), 'deploy.sh'), 'utf8')
   const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))
   const secretScanWorkflow = readFileSync(join(process.cwd(), '.github/workflows/secret-scan.yml'), 'utf8')
+  const safelineDoc = readFileSync(join(process.cwd(), 'docs/operations/safeline-rollout.md'), 'utf8')
+  const safelineVerifier = readFileSync(join(process.cwd(), 'scripts/verify-safeline-rollout.sh'), 'utf8')
   const requiredHeaders = [
     'Content-Security-Policy',
     'X-Frame-Options',
@@ -53,5 +55,17 @@ describe('production security header deployment', () => {
   it('rejects retired browser-side activation logic in the published source', () => {
     expect(secretScanWorkflow).toContain('git grep -nE "$forbidden" -- src')
     expect(secretScanWorkflow).not.toContain('git rev-list --all')
+  })
+
+  it('documents and verifies a low-false-positive SafeLine rollout', () => {
+    expect(safelineDoc).toContain('不启用人机验证、身份认证、HTML/JavaScript 动态防护')
+    expect(safelineDoc).toContain('api.deepseek.com')
+    expect(safelineDoc).toContain('观察至少一个完整高峰周期')
+    expect(safelineVerifier).toContain('费曼读书助手')
+    for (const header of requiredHeaders) {
+      expect(safelineVerifier).toContain(header)
+    }
+    expect(safelineVerifier).toContain('POST')
+    expect(safelineVerifier).toContain('/.env')
   })
 })

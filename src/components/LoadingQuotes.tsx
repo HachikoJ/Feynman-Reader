@@ -142,17 +142,136 @@ export const defaultQuotesZh: CustomQuote[] = [
 ]
 
 export const defaultQuotesEn: CustomQuote[] = [
-  { text: '如果你不能简单地解释它，你就没有真正理解它。', author: '理查德·费曼', isPreset: true },
-  { text: '学习的最好方式是教别人。', author: '费曼学习法', isPreset: true },
-  { text: '知识的诅咒：一旦你知道了某件事，就很难想象不知道它是什么感觉。', author: '认知心理学', isPreset: true },
-  { text: '真正的理解是能用自己的话重新表达。', author: '费曼学习法', isPreset: true },
-  { text: '发现自己不懂的地方，才是学习真正开始的时候。', author: '费曼学习法', isPreset: true },
-  { text: '类比是理解复杂概念的钥匙。', author: '费曼学习法', isPreset: true },
-  { text: '不要被术语吓倒，每个术语背后都是简单的概念。', author: '理查德·费曼', isPreset: true },
-  { text: '读书不在多，而在于精。', author: '古训', isPreset: true },
-  { text: '尽信书不如无书。', author: '孟子', isPreset: true },
-  { text: '学而不思则罔，思而不学则殆。', author: '孔子', isPreset: true }
+  { text: 'If you cannot explain it simply, you do not understand it well enough.', author: 'Richard Feynman', isPreset: true },
+  { text: 'I would rather have questions that cannot be answered than answers that cannot be questioned.', author: 'Richard Feynman', isPreset: true },
+  { text: 'The first principle is that you must not fool yourself, and you are the easiest person to fool.', author: 'Richard Feynman', isPreset: true },
+  { text: 'Knowing the name of something is not the same as understanding it.', author: 'Richard Feynman', isPreset: true },
+  { text: 'We are trying to find a new way of thinking.', author: 'Richard Feynman', isPreset: true },
+  { text: 'Science is a way of trying not to fool yourself.', author: 'Richard Feynman', isPreset: true },
+
+  { text: 'Imagination is more important than knowledge, because knowledge is limited.', author: 'Albert Einstein', isPreset: true },
+  { text: 'Education is what remains after one has forgotten what one learned in school.', author: 'Albert Einstein', isPreset: true },
+  { text: 'I have no special talent. I am only passionately curious.', author: 'Albert Einstein', isPreset: true },
+  { text: 'Logic will get you from A to B. Imagination will take you everywhere.', author: 'Albert Einstein', isPreset: true },
+  { text: 'To learn knowledge, one must think, think, and think again.', author: 'Albert Einstein', isPreset: true },
+  { text: 'I have no special talents. I am only intensely curious.', author: 'Albert Einstein', isPreset: true },
+  { text: 'Imagination is more important than knowledge. Knowledge is limited, while imagination embraces the entire world.', author: 'Albert Einstein', isPreset: true },
+
+  { text: 'The enemy of learning is complacency. To learn something seriously, one must begin by refusing to be self-satisfied.', author: 'Mao Zedong', isPreset: true },
+  { text: 'One may go a day without food or sleep, but not a day without reading.', author: 'Mao Zedong', isPreset: true },
+  { text: 'Reading is learning, but applying what one learns is an even more important kind of learning.', author: 'Mao Zedong', isPreset: true },
+  { text: 'Conditions are constantly changing. To adapt our thinking to new conditions, we must learn.', author: 'Mao Zedong', isPreset: true },
+  { text: 'Learning requires both going deeply into a subject and stepping back out of it.', author: 'Mao Zedong', isPreset: true },
+  { text: 'Nothing in the world is difficult for one who is willing to climb.', author: 'Mao Zedong', isPreset: true },
+  { text: 'Modesty helps one progress; conceit makes one fall behind.', author: 'Mao Zedong', isPreset: true },
+  { text: 'A person must have some spirit.', author: 'Mao Zedong', isPreset: true },
+  { text: 'With confidence that life can span two hundred years, one can swim three thousand li through the waves.', author: 'Mao Zedong', isPreset: true },
+  { text: 'The mighty pass is like iron, yet today we stride across it from the start.', author: 'Mao Zedong', isPreset: true },
+
+  { text: 'Learning without thought is labor lost; thought without learning is perilous.', author: 'Confucius', isPreset: true },
+  { text: 'To know what you know and what you do not know: that is knowledge.', author: 'Confucius', isPreset: true },
+  { text: 'Review the old and learn the new, and you may become a teacher.', author: 'Confucius', isPreset: true },
+  { text: 'When three people walk together, there is always something I can learn from one of them.', author: 'Confucius', isPreset: true },
+  { text: 'Is it not a pleasure to learn and practice what you have learned?', author: 'Confucius', isPreset: true },
+  { text: 'Be quick to learn and unashamed to ask questions.', author: 'Confucius', isPreset: true },
+  { text: 'After reading ten thousand volumes, the pen moves as if inspired.', author: 'Du Fu', isPreset: true },
+  { text: 'What is learned on paper always feels shallow; to truly know it, you must put it into practice.', author: 'Lu You', isPreset: true },
+  { text: 'Diligence is the path through the mountain of books; hard work is the boat across the boundless sea of learning.', author: 'Han Yu', isPreset: true },
+  { text: 'How can the channel be so clear? Because fresh water flows from its source.', author: 'Zhu Xi', isPreset: true },
+  { text: 'Excellence comes from diligence and is lost in play; achievement comes from thought and is ruined by carelessness.', author: 'Han Yu', isPreset: true },
+  { text: 'If the young do not study diligently, the old will regret that they began too late.', author: 'Yan Zhenqing', isPreset: true },
+  { text: 'Books are like medicine; reading them well can cure ignorance.', author: 'Liu Xiang', isPreset: true },
+  { text: 'Read ten thousand books and travel ten thousand miles.', author: 'Liu Yi', isPreset: true },
+  { text: 'It would be better to have no books than to believe every word in them.', author: 'Mencius', isPreset: true },
+
+  { text: 'I think, therefore I am.', author: 'Rene Descartes', isPreset: true },
+  { text: 'Reading without reflecting is like eating without digesting.', author: 'Edmund Burke', isPreset: true },
+  { text: 'True ignorance is not the absence of knowledge, but the refusal to acquire it.', author: 'Karl Popper', isPreset: true },
+  { text: 'Knowledge is power.', author: 'Francis Bacon', isPreset: true },
+  { text: 'The only thing I know is that I know nothing.', author: 'Socrates', isPreset: true },
+  { text: 'The unexamined life is not worth living.', author: 'Socrates', isPreset: true },
+  { text: 'The purpose of education is to enable students to educate themselves.', author: 'Thomas Huxley', isPreset: true },
+  { text: 'Thinking is the soul talking to itself.', author: 'Plato', isPreset: true },
+
+  { text: 'Live and learn.', author: 'Solon', isPreset: true },
+  { text: 'It is never too late to learn.', author: 'Maxim Gorky', isPreset: true },
+  { text: 'Books are the ladder of human progress.', author: 'Maxim Gorky', isPreset: true },
+  { text: 'Reading a good book is like having a conversation with many noble people.', author: 'Johann Wolfgang von Goethe', isPreset: true },
+  { text: 'Experience is the best teacher, but the tuition is high.', author: 'Thomas Carlyle', isPreset: true },
+  { text: 'Books are the ladder of human progress, lifelong companions, and the sincerest friends.', author: 'Maxim Gorky', isPreset: true },
+
+  { text: 'Reading makes a full person, discussion a ready person, and writing an exact person.', author: 'Francis Bacon', isPreset: true },
+  { text: 'People who do not read stop thinking.', author: 'Denis Diderot', isPreset: true },
+  { text: 'Reading means building your own thoughts with the help of the thoughts of others.', author: 'Nikolai Rubakin', isPreset: true },
+  { text: 'A lover of books will never lack a faithful friend.', author: 'Isaac Barrow', isPreset: true },
+  { text: 'Books are the nourishment of the whole world.', author: 'William Shakespeare', isPreset: true },
+  { text: 'Read books, love reading, and read good books.', author: 'Bing Xin', isPreset: true },
+  { text: 'The way to read is to proceed step by step, read thoroughly, and reflect carefully.', author: 'Zhu Xi', isPreset: true },
+  { text: 'Learning is the foundation of character, and reading is the foundation of learning.', author: 'Ouyang Xiu', isPreset: true },
+
+  { text: 'Thinking is one of the greatest pleasures of humankind.', author: 'Bertolt Brecht', isPreset: true },
+  { text: 'Independent thinking is essential to scientific research, creation, and invention.', author: 'Hua Luogeng', isPreset: true },
+  { text: 'Those who think well change their minds quickly; those who do not think become confused.', author: 'Vasily Klyuchevsky', isPreset: true },
+  { text: 'Thought is the root; ideals are its green shoots.', author: 'Victor Hugo', isPreset: true },
+  { text: 'The human mind is remarkable. Concentrate on one endeavor, and you can achieve results that surprise even yourself.', author: 'Mark Twain', isPreset: true },
+
+  { text: 'Practice is the sole criterion for testing truth.', author: 'Deng Xiaoping', isPreset: true },
+  { text: 'Talk without practice is empty; practice without explanation is blind; combining both is true mastery.', author: 'Traditional Saying', isPreset: true },
+  { text: 'One real action is worth more than a dozen programs.', author: 'Friedrich Engels', isPreset: true },
+  { text: 'Knowledge is a treasure, but practice is the key to it.', author: 'Thomas Fuller', isPreset: true },
+  { text: 'Hearing is not as good as seeing, and seeing is not as good as doing.', author: 'Liu Xiang', isPreset: true },
+  { text: 'True knowledge comes from practice.', author: 'Traditional Saying', isPreset: true },
+
+  { text: 'Genius is one percent inspiration and ninety-nine percent perspiration.', author: 'Thomas Edison', isPreset: true },
+  { text: 'The secret of success is persistence in purpose and conviction.', author: 'Benjamin Disraeli', isPreset: true },
+  { text: 'Stop carving and even rotten wood will not break; keep carving and you can engrave metal and stone.', author: 'Xunzi', isPreset: true },
+  { text: 'One leap of a fine horse cannot cover ten steps; a slow horse succeeds through ten journeys without giving up.', author: 'Xunzi', isPreset: true },
+  { text: 'A rope can saw through wood, and dripping water can wear through stone.', author: 'Luo Dajing', isPreset: true },
+  { text: 'With enough effort, an iron rod can be ground into a needle.', author: 'Traditional Saying', isPreset: true },
+  { text: 'A sword is sharpened through grinding, and plum blossoms are fragrant after bitter cold.', author: 'Traditional Saying', isPreset: true },
+
+  { text: 'Curiosity is the first virtue of a scholar.', author: 'Marie Curie', isPreset: true },
+  { text: 'Curiosity creates scientists and poets.', author: 'Anatole France', isPreset: true },
+  { text: 'The desire for knowledge and curiosity are enduring, unchanging human traits.', author: 'Vasily Sukhomlinsky', isPreset: true },
+
+  { text: 'Wisdom comes from diligence, and greatness grows from ordinary work.', author: 'Traditional Saying', isPreset: true },
+  { text: 'Wisdom is the daughter of experience.', author: 'Leonardo da Vinci', isPreset: true },
+  { text: 'Knowledge gives weight, and achievement gives luster; most people see the luster but do not weigh the substance.', author: 'Francis Bacon', isPreset: true },
+  { text: 'True wisdom lies not only in seeing the present clearly, but also in foreseeing the future.', author: 'Terence', isPreset: true },
+  { text: 'Even the wise may err after much thought; even the foolish may gain something after much thought.', author: 'Records of the Grand Historian', isPreset: true },
+
+  { text: 'Innovation is the soul of a nation\'s progress.', author: 'Jiang Zemin', isPreset: true },
+  { text: 'Creativity comes from unexpected combinations of different things.', author: 'Charles Thompson', isPreset: true },
+  { text: 'Innovation is the act of creating a resource.', author: 'Peter Drucker', isPreset: true },
+  { text: 'Distance has vanished: innovate or die.', author: 'Tom Peters', isPreset: true },
+
+  { text: 'Where there is a will, there is a way.', author: 'Book of the Later Han', isPreset: true },
+  { text: 'Set your aspirations high.', author: 'Zhuge Liang', isPreset: true },
+  { text: 'An ideal is a guiding light. Without ideals, there is no secure direction.', author: 'Leo Tolstoy', isPreset: true },
+  { text: 'The higher a person\'s goal, the faster their abilities develop.', author: 'Maxim Gorky', isPreset: true },
+
+  { text: 'Time is life, time is speed, and time is strength.', author: 'Guo Moruo', isPreset: true },
+  { text: 'An inch of time is worth an inch of gold, but an inch of gold cannot buy an inch of time.', author: 'Traditional Saying', isPreset: true },
+  { text: 'If the young do not work hard, the old will grieve in vain.', author: 'Han Dynasty Music Bureau', isPreset: true },
+  { text: 'Do not idle away your youth and grieve when your hair has turned white.', author: 'Yue Fei', isPreset: true },
+
+  { text: 'A craftsperson who wishes to do good work must first sharpen their tools.', author: 'Confucius', isPreset: true },
+  { text: 'Give a person a fish and you feed them for a day; teach them to fish and you feed them for a lifetime.', author: 'Traditional Saying', isPreset: true },
+  { text: 'Good methods help us make better use of our natural abilities.', author: 'Rene Descartes', isPreset: true }
 ]
+
+export function localizePresetQuotes(quotes: CustomQuote[], lang: Language): CustomQuote[] {
+  const presets = quotes.filter(quote => quote.isPreset)
+  if (presets.length === 0) return quotes
+
+  const localizedPresets = lang === 'zh' ? defaultQuotesZh : defaultQuotesEn
+  const alreadyLocalized = presets.length === localizedPresets.length && presets.every((quote, index) => (
+    quote.text === localizedPresets[index].text && quote.author === localizedPresets[index].author
+  ))
+  if (alreadyLocalized) return quotes
+
+  return [...localizedPresets, ...quotes.filter(quote => !quote.isPreset)]
+}
 
 interface Props {
   lang: Language
@@ -162,13 +281,13 @@ interface Props {
 export default function LoadingQuotes({ lang, quotes = [] }: Props) {
   const [currentIndex, setCurrentIndex] = useState(() => {
     // 初始就随机选择一个
-    const displayQuotes = quotes.length > 0 ? quotes : (lang === 'zh' ? defaultQuotesZh : defaultQuotesEn)
+    const displayQuotes = quotes.length > 0 ? localizePresetQuotes(quotes, lang) : (lang === 'zh' ? defaultQuotesZh : defaultQuotesEn)
     return Math.floor(Math.random() * displayQuotes.length)
   })
   const [fade, setFade] = useState(true)
 
   // 如果没有金句，使用默认的
-  const displayQuotes = quotes.length > 0 ? quotes : (lang === 'zh' ? defaultQuotesZh : defaultQuotesEn)
+  const displayQuotes = quotes.length > 0 ? localizePresetQuotes(quotes, lang) : (lang === 'zh' ? defaultQuotesZh : defaultQuotesEn)
 
   useEffect(() => {
     if (displayQuotes.length === 0) return
@@ -200,7 +319,7 @@ export default function LoadingQuotes({ lang, quotes = [] }: Props) {
     )
   }
 
-  const quote = displayQuotes[currentIndex]
+  const quote = displayQuotes[currentIndex % displayQuotes.length]
 
   return (
     <div className="flex flex-col items-center justify-center py-12">

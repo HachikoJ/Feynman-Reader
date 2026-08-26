@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私密报告安全漏洞
+    url: mailto:946106011@qq.com?subject=Feynman%20Reader%20Security
+    about: 请勿公开安全漏洞，通过邮件私密联系维护者。
+  - name: 在线体验
+    url: https://www.deline.top
+    about: 先确认问题是否能在当前线上版本复现。

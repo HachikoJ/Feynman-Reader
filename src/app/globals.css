@@ -47,24 +47,23 @@
 }
 
 body {
-  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+  background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
 }
 
 .card {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 8px;
+  padding: 20px;
 }
 
 .card-hover {
   transition: all 0.3s ease;
 }
 .card-hover:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 8px 30px rgba(14, 165, 233, 0.15);
   border-color: var(--accent);
 }
@@ -74,10 +73,10 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
+  background: var(--accent);
   color: white;
   padding: 12px 24px;
-  border-radius: 12px;
+  border-radius: 8px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -99,7 +98,7 @@ body {
   border: 1px solid var(--border);
   color: var(--text-primary);
   padding: 12px 24px;
-  border-radius: 12px;
+  border-radius: 8px;
   font-weight: 500;
   transition: all 0.2s ease;
 }
@@ -112,7 +111,7 @@ body {
   width: 100%;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 12px 16px;
   color: var(--text-primary);
   transition: all 0.2s ease;

@@ -6,6 +6,7 @@ import { Language } from '@/lib/i18n'
 import { Book, addBook, flushPendingStoreWrites, getBooks, reloadBookFromPersistence } from '@/lib/store'
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, createDeepSeekClient, requestDeepSeekCompletion, withDeepSeekDefaults, withDocumentContextRetry } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
+import { tokendanceRecoveryMessage } from '@/lib/tokendance'
 import { secureSystemPrompt, secureUserMessage } from '@/lib/promptSecurity'
 import LoadingQuotes from './LoadingQuotes'
 import AppIcon from './AppIcon'
@@ -149,6 +150,9 @@ export function getRecommendationErrorMessage(error: unknown, lang: Language): s
   if (error instanceof Error && error.message === AI_OUTPUT_INCOMPLETE) {
     return lang === 'zh' ? 'AI 返回的推荐内容不完整，系统已拦截，请重新获取。' : 'The AI returned incomplete recommendations. Please try again.'
   }
+
+  const recovery = tokendanceRecoveryMessage(error, lang)
+  if (recovery) return recovery
 
   if (error instanceof SyntaxError || (error instanceof Error && (
     error.message.startsWith('推荐数据') ||

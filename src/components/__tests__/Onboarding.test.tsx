@@ -14,49 +14,58 @@ describe('Onboarding implemented-feature copy', () => {
   }
 
   it('allows users to return to the previous step', () => {
-    render(<Onboarding lang="zh" onComplete={jest.fn()} />)
+    render(<Onboarding lang="zh" aiConfigured={false} onComplete={jest.fn()} />)
 
     expect(screen.queryByRole('button', { name: '上一步' })).not.toBeInTheDocument()
     next()
-    expect(screen.getByText('六阶段深度阅读')).toBeInTheDocument()
+    expect(screen.getByText('每天用 5 分钟复习')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '上一步' }))
 
-    expect(screen.getByText('欢迎使用费曼读书助手')).toBeInTheDocument()
+    expect(screen.getByText('先看一本完整示例')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '上一步' })).not.toBeInTheDocument()
   })
 
   it('describes the implemented workflow and highlights key facts', () => {
-    render(<Onboarding lang="zh" onComplete={jest.fn()} />)
+    render(<Onboarding lang="zh" aiConfigured={false} onComplete={jest.fn()} />)
 
-    expect(ONBOARDING_VERSION).toBe('5')
-    expect(screen.getByText('欢迎使用费曼读书助手')).toBeInTheDocument()
-    expect(screen.getByText('手动添加书籍').tagName).toBe('STRONG')
-
-    next()
-    for (const phase of ['背景探索', '全书概览', '深度拆解', '辩证分析', '众声回响', '融会贯通']) {
-      expect(screen.getByText(phase)).toBeInTheDocument()
-    }
-    expect(screen.queryByText('阶段5：教学模拟')).not.toBeInTheDocument()
+    expect(ONBOARDING_VERSION).toBe('6')
+    expect(screen.getByText('先看一本完整示例')).toBeInTheDocument()
+    expect(screen.getByText('六阶段分析').tagName).toBe('STRONG')
 
     next()
-    expect(screen.getByText('60 分后')).toBeInTheDocument()
-    expect(screen.getByText('全部通过后')).toBeInTheDocument()
+    expect(screen.getByText('今日复习').tagName).toBe('STRONG')
+    expect(screen.getByText('当前浏览器').tagName).toBe('STRONG')
 
     next()
-    expect(screen.getByText('不进行 AI 评分')).toBeInTheDocument()
-    expect(screen.getByText('直接加入书架')).toBeInTheDocument()
+    expect(screen.getByText('需要新分析时，再连接 TokenDance')).toBeInTheDocument()
+    expect(screen.getByText('TokenDance').tagName).toBe('STRONG')
+    expect(screen.getByText('官方实时标准及后续通知').tagName).toBe('STRONG')
+  })
+
+  it('offers API configuration after the three-step tour for users without AI setup', () => {
+    const onComplete = jest.fn()
+    const onConfigureApi = jest.fn()
+    render(<Onboarding lang="zh" aiConfigured={false} onComplete={onComplete} onConfigureApi={onConfigureApi} />)
 
     next()
-    const model = screen.getByText('DeepSeek V4 Flash')
-    expect(model.tagName).toBe('STRONG')
-    expect(model.className).toContain('text-[var(--accent)]')
-    expect(screen.getByText('DeepSeek 官方价格和你控制台中的实际账单为准')).toBeInTheDocument()
+    next()
+    expect(screen.getByRole('button', { name: '去配置 API' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '去配置 API' }))
+
+    expect(onComplete).toHaveBeenCalledTimes(1)
+    expect(onConfigureApi).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not ask users to configure an API key again after setup is complete', () => {
+    render(<Onboarding lang="zh" aiConfigured onComplete={jest.fn()} />)
 
     next()
-    const localData = screen.getByText('平台服务器不保存')
-    expect(localData.tagName).toBe('STRONG')
-    expect(localData.className).toContain('text-emerald')
-    expect(screen.getByText('自行妥善保管数据')).toBeInTheDocument()
+    next()
+
+    expect(screen.getByText('TokenDance 已连接')).toBeInTheDocument()
+    expect(screen.getByText('均已配置完成')).toBeInTheDocument()
+    expect(screen.queryByText('填写 TokenDance API Key')).not.toBeInTheDocument()
   })
 })

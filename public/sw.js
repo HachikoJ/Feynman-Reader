@@ -3,9 +3,10 @@
  * 支持离线访问和资源缓存
  */
 
-const APP_SHELL_CACHE = 'feynman-app-shell-v3'
-const ASSET_CACHE = 'feynman-assets-v3'
+const APP_SHELL_CACHE = 'feynman-app-shell-v4'
+const ASSET_CACHE = 'feynman-assets-v4'
 const CURRENT_CACHES = new Set([APP_SHELL_CACHE, ASSET_CACHE])
+const IS_LOCAL_DEVELOPMENT = ['localhost', '127.0.0.1', '::1'].includes(self.location.hostname)
 
 // 需要预缓存的静态资源
 const STATIC_ASSETS = [
@@ -49,6 +50,11 @@ async function cacheFirst(request, cacheKey) {
 
 // 安装事件：预缓存静态资源
 self.addEventListener('install', (event) => {
+  if (IS_LOCAL_DEVELOPMENT) {
+    self.skipWaiting()
+    return
+  }
+
   event.waitUntil(
     caches.open(ASSET_CACHE).then((cache) => {
       return cache.addAll(STATIC_ASSETS)
@@ -67,6 +73,10 @@ self.addEventListener('activate', (event) => {
           .filter(name => name.startsWith('feynman-') && !CURRENT_CACHES.has(name))
           .map(name => caches.delete(name))
       )
+      if (IS_LOCAL_DEVELOPMENT) {
+        await self.registration.unregister()
+        return
+      }
       await self.clients.claim()
       const clients = await self.clients.matchAll({ type: 'window' })
       clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }))
@@ -78,6 +88,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
+
+  // Next.js development chunks use stable filenames and must never be served
+  // from a previous compilation's cache.
+  if (IS_LOCAL_DEVELOPMENT) {
+    event.respondWith(fetch(request))
+    return
+  }
 
   // 只处理同源请求
   if (url.origin !== location.origin) {

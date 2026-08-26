@@ -20,6 +20,7 @@ export function getSafeImageSrc(rawValue?: string): string | null {
   const value = rawValue?.trim()
   if (!value) return null
   if (SAFE_IMAGE_DATA_URL.test(value)) return value
+  if (value.startsWith('/') && !value.startsWith('//')) return value
 
   try {
     const url = new URL(value)
