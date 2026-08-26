@@ -68,7 +68,8 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       icon: Sparkles,
       iconTone: 'sky',
       tips: [
-        { text: '系统使用 DeepSeek V4 Flash，优先通过 TokenDance 接入', emphasis: 'TokenDance', tone: 'accent' },
+        { text: '系统使用 DeepSeek V4 Flash；TokenDance 峰时火山方舟端口最高约省 20%', emphasis: '最高约省 20%', tone: 'emerald' },
+        { text: '智能路由到其他端口时不保证优惠，可在 TokenDance 设置路由偏好', emphasis: '不保证优惠', tone: 'amber' },
         { text: 'API Key 仅保存在当前浏览器网站数据中', emphasis: '仅保存在当前浏览器', tone: 'emerald' },
         { text: '计费以 TokenDance 官方实时标准及后续通知为准', emphasis: '官方实时标准及后续通知', tone: 'amber' }
       ]
@@ -103,7 +104,8 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       icon: Sparkles,
       iconTone: 'sky',
       tips: [
-        { text: 'The app uses DeepSeek V4 Flash through the recommended TokenDance provider', emphasis: 'TokenDance', tone: 'accent' },
+        { text: 'For DeepSeek V4 Flash, TokenDance offers up to about 20% off on the Volcengine Ark route during peak hours', emphasis: 'up to about 20% off', tone: 'emerald' },
+        { text: 'The offer is not guaranteed when smart routing selects another port; route preferences can be set in TokenDance', emphasis: 'not guaranteed', tone: 'amber' },
         { text: 'Your API key is stored only in this browser site data', emphasis: 'only in this browser', tone: 'emerald' },
         { text: 'Billing follows TokenDance official real-time pricing and subsequent notices', emphasis: 'official real-time pricing', tone: 'amber' }
       ]

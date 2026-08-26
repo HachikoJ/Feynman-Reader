@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  agentRules: false,
   // 应用没有服务端接口，静态导出可直接移除线上 Node 渲染与查询参数缓存穿透面。
   output: 'export',
   trailingSlash: true,

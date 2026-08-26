@@ -39,7 +39,8 @@ describe('Onboarding implemented-feature copy', () => {
 
     next()
     expect(screen.getByText('需要新分析时，再连接 TokenDance')).toBeInTheDocument()
-    expect(screen.getByText('TokenDance').tagName).toBe('STRONG')
+    expect(screen.getByText('最高约省 20%').tagName).toBe('STRONG')
+    expect(screen.getByText('不保证优惠').tagName).toBe('STRONG')
     expect(screen.getByText('官方实时标准及后续通知').tagName).toBe('STRONG')
   })
 

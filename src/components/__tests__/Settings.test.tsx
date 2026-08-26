@@ -233,6 +233,16 @@ describe('Settings AI privacy controls', () => {
     expect(screen.queryByRole('button', { name: '创建充值会话' })).not.toBeInTheDocument()
   })
 
+  it('explains the conditional TokenDance peak-hour discount without promising a universal rate', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+
+    render(<Settings onSettingsChange={jest.fn()} />)
+
+    await waitFor(() => expect(screen.getByText(/峰时路由到火山方舟端口，最高约省 20%/)).toBeInTheDocument())
+    expect(screen.getByText(/不是所有请求的固定折扣/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '查看 V4 Flash 实时价目' })).toHaveAttribute('href', 'https://tokendance.space/models/deepseek-v4-flash-0731')
+  })
+
   it('keeps desktop users in settings and renders a payment QR session', async () => {
     getSettingsMock.mockReturnValue({ ...savedSettings, aiProvider: 'tokendance' })
     createTokendancePaymentSessionMock.mockResolvedValue({

@@ -1111,6 +1111,11 @@ export default function Settings({
                   {lang === 'zh' ? 'DeepSeek V4 Flash 已就绪，可直接返回书籍继续分析。' : 'DeepSeek V4 Flash is ready. Return to a book to continue analyzing.'}
                 </p>
               </div>
+              {activeProvider === 'tokendance' && (
+                <a href="https://tokendance.space/models/deepseek-v4-flash-0731" target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300">
+                  {lang === 'zh' ? '峰时火山方舟端口最高约省 20% · 查看实时价目' : 'Up to ~20% off the Volcengine Ark route at peak · Live pricing'}
+                </a>
+              )}
             </div>
           )}
           {(!aiConfigurationComplete || showAiConfiguration) && (
@@ -1136,11 +1141,45 @@ export default function Settings({
                 className={`rounded-lg border p-3 text-left transition ${activeProvider === provider ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:bg-[var(--bg-secondary)]'}`}
               >
                 {provider === 'tokendance' && <img src="https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg" alt="TokenDance" className="mb-2 h-7 w-auto max-w-[150px] object-contain object-left" />}
-                <span className="block font-medium">{provider === 'tokendance' ? 'TokenDance / TokenPay' : (lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API')}</span>
-                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{provider === 'tokendance' ? (lang === 'zh' ? 'OAuth 授权、余额和充值；调用会计入应用归因。' : 'OAuth, balance and top-up with app attribution.') : (lang === 'zh' ? '使用 DeepSeek 官方控制台和账单。' : 'Use the official DeepSeek console and billing.')}</span>
+                <span className="flex flex-wrap items-center gap-2 font-medium">
+                  {provider === 'tokendance' ? 'TokenDance / TokenPay' : (lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API')}
+                  {provider === 'tokendance' && (
+                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                      {lang === 'zh' ? '峰时最高约省 20%' : 'Up to ~20% off at peak'}
+                    </span>
+                  )}
+                </span>
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{provider === 'tokendance' ? (lang === 'zh' ? 'OAuth、余额与充值；峰时火山方舟端口有条件优惠，并支持智能路由。' : 'OAuth, balance, and top-up, with a conditional peak-hour offer on the Volcengine Ark route and smart routing.') : (lang === 'zh' ? '使用 DeepSeek 官方控制台和账单，不含 TokenDance 峰时端口优惠。' : 'Use the official DeepSeek console and billing without TokenDance route offers.')}</span>
               </button>
             ))}
           </div>
+          {activeProvider === 'tokendance' && (
+            <div className="mb-4 rounded-lg border border-emerald-500/35 bg-emerald-500/5 p-3" role="note">
+              <div className="flex flex-wrap items-start gap-2">
+                <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">
+                  {lang === 'zh' ? '峰时优惠' : 'Peak-hour offer'}
+                </span>
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="font-medium text-emerald-800 dark:text-emerald-200">
+                    {lang === 'zh' ? 'DeepSeek V4 Flash（v4flash0731）峰时路由到火山方舟端口，最高约省 20%' : 'Up to about 20% off DeepSeek V4 Flash (v4flash0731) when peak-hour traffic uses the Volcengine Ark route'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                    {lang === 'zh'
+                      ? '这是有条件的端口优惠，不是所有请求的固定折扣。TokenDance 会智能路由；切换到 DeepSeek 官方、阿里或百度等其他端口时不保证优惠，实际价格和活动期限以官方实时价目与通知为准。'
+                      : 'This is a conditional route offer, not a fixed discount for every request. TokenDance uses smart routing; requests routed to DeepSeek official, Alibaba, Baidu, or other ports are not guaranteed to receive the offer. Actual prices and campaign dates follow TokenDance official pricing and notices.'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    <a href="https://tokendance.space/models/deepseek-v4-flash-0731" target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+                      {lang === 'zh' ? '查看 V4 Flash 实时价目' : 'View live V4 Flash pricing'}
+                    </a>
+                    <a href="https://tokendance.space" target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+                      {lang === 'zh' ? '前往 TokenDance 设置路由偏好' : 'Set route preferences in TokenDance'}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {!aiConfigurationComplete && activeProvider === 'tokendance' && (
             <ol className="mb-4 grid gap-2 text-sm sm:grid-cols-3" aria-label={lang === 'zh' ? 'TokenDance 配置步骤' : 'TokenDance setup steps'}>
               {[

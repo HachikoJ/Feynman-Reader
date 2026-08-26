@@ -43,7 +43,7 @@ Open <http://localhost:8080>. You can inspect the sample book without an API key
 
 The app does not provide cloud storage, sync, or recovery. Clearing browser data can delete learning records, so export backups when prompted. API keys are kept locally and should never be shared in issues, screenshots, or logs.
 
-TokenDance discounts, profit-sharing rates, and campaign periods are controlled by TokenDance's current billing notices. They are not promised to be permanent or long-term. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
+According to TokenDance's official clarification, `v4flash0731` can be up to about 20% cheaper when peak-hour requests use the Volcengine Ark route. The offer is not guaranteed when smart routing selects DeepSeek official, Alibaba, Baidu, or another port; users can set route preferences in the TokenDance interface. Actual prices, eligible periods, and campaign end dates follow [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731) and later notices, and are not promised to be permanent or long-term. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
 
 ## Development Checks
 
