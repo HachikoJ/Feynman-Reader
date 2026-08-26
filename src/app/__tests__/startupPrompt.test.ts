@@ -1,7 +1,9 @@
 import {
   getActiveStartupPrompt,
   isAIConfigurationComplete,
+  hasUserHistory,
   shouldShowOnboarding,
+  shouldShowTokenDanceMigration,
   shouldShowTokenDanceWelcome
 } from '../../lib/startupPrompt'
 
@@ -24,10 +26,19 @@ describe('onboarding visibility', () => {
 
 describe('TokenDance welcome visibility', () => {
   it('shows once per version and stays out of the OAuth callback flow', () => {
-    expect(shouldShowTokenDanceWelcome(null, '1', false, false)).toBe(true)
-    expect(shouldShowTokenDanceWelcome('1', '1', false, false)).toBe(false)
-    expect(shouldShowTokenDanceWelcome(null, '1', true, false)).toBe(false)
-    expect(shouldShowTokenDanceWelcome(null, '1', false, true)).toBe(false)
+    expect(shouldShowTokenDanceWelcome(null, '1', false, false, false)).toBe(true)
+    expect(shouldShowTokenDanceWelcome('1', '1', false, false, false)).toBe(false)
+    expect(shouldShowTokenDanceWelcome(null, '1', true, false, false)).toBe(false)
+    expect(shouldShowTokenDanceWelcome(null, '1', false, true, false)).toBe(false)
+    expect(shouldShowTokenDanceWelcome(null, '1', false, false, true)).toBe(false)
+  })
+
+  it('recognizes user books without treating the bundled sample as history', () => {
+    expect(hasUserHistory([{ isSample: true }])).toBe(false)
+    expect(hasUserHistory([{ isSample: true }, { isSample: false }])).toBe(true)
+    expect(shouldShowTokenDanceMigration(null, '1', false, true)).toBe(true)
+    expect(shouldShowTokenDanceMigration(null, '1', true, true)).toBe(false)
+    expect(shouldShowTokenDanceMigration('1', '1', false, true)).toBe(false)
   })
 })
 
@@ -36,6 +47,7 @@ describe('startup prompt priority', () => {
     expect(getActiveStartupPrompt({
       showDataLossWarning: true,
       showTokenDanceWelcome: true,
+      showTokenDanceMigration: true,
       showOnboarding: true,
       showApiKeyAlert: true
     })).toBe('data-risk')
@@ -45,6 +57,7 @@ describe('startup prompt priority', () => {
     expect(getActiveStartupPrompt({
       showDataLossWarning: false,
       showTokenDanceWelcome: true,
+      showTokenDanceMigration: false,
       showOnboarding: true,
       showApiKeyAlert: true
     })).toBe('tokendance-welcome')
@@ -54,6 +67,17 @@ describe('startup prompt priority', () => {
     expect(getActiveStartupPrompt({
       showDataLossWarning: false,
       showTokenDanceWelcome: false,
+      showTokenDanceMigration: true,
+      showOnboarding: true,
+      showApiKeyAlert: true
+    })).toBe('tokendance-migration')
+  })
+
+  it('shows onboarding after the migration notice is complete', () => {
+    expect(getActiveStartupPrompt({
+      showDataLossWarning: false,
+      showTokenDanceWelcome: false,
+      showTokenDanceMigration: false,
       showOnboarding: true,
       showApiKeyAlert: true
     })).toBe('onboarding')
@@ -63,6 +87,7 @@ describe('startup prompt priority', () => {
     expect(getActiveStartupPrompt({
       showDataLossWarning: false,
       showTokenDanceWelcome: false,
+      showTokenDanceMigration: false,
       showOnboarding: false,
       showApiKeyAlert: true
     })).toBe('api-key')
@@ -72,6 +97,7 @@ describe('startup prompt priority', () => {
     expect(getActiveStartupPrompt({
       showDataLossWarning: false,
       showTokenDanceWelcome: false,
+      showTokenDanceMigration: false,
       showOnboarding: false,
       showApiKeyAlert: false
     })).toBeNull()

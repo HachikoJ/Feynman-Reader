@@ -23,6 +23,10 @@ import TokenDanceWelcome, {
   TOKENDANCE_WELCOME_KEY,
   TOKENDANCE_WELCOME_VERSION
 } from '@/components/TokenDanceWelcome'
+import TokenDanceMigrationNotice, {
+  TOKENDANCE_MIGRATION_NOTICE_KEY,
+  TOKENDANCE_MIGRATION_NOTICE_VERSION
+} from '@/components/TokenDanceMigrationNotice'
 import DataLossWarning from '@/components/DataLossWarning'
 import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -40,7 +44,9 @@ import {
   getActiveStartupPrompt,
   isAIConfigurationComplete,
   shouldShowOnboarding,
-  shouldShowTokenDanceWelcome
+  shouldShowTokenDanceWelcome,
+  shouldShowTokenDanceMigration,
+  hasUserHistory
 } from '@/lib/startupPrompt'
 import { useServiceWorker } from '@/lib/useServiceWorker'
 import AITaskStatus from '@/components/AITaskStatus'
@@ -75,6 +81,7 @@ export default function Home() {
   const [bookshelfKey, setBookshelfKey] = useState(0) // 用于强制刷新书架
   const [showOnboarding, setShowOnboarding] = useState(false) // P0 新增：新手引导
   const [showTokenDanceWelcome, setShowTokenDanceWelcome] = useState(false)
+  const [showTokenDanceMigration, setShowTokenDanceMigration] = useState(false)
   const [showDataLossWarning, setShowDataLossWarning] = useState(false)
   const [backupDue, setBackupDue] = useState(false)
   const [openDataManagement, setOpenDataManagement] = useState(false)
@@ -112,6 +119,7 @@ export default function Home() {
       setSettings(saved)
       document.documentElement.setAttribute('data-theme', saved.theme)
       const books = getBooks()
+      const userHasHistory = hasUserHistory(books)
 
       const completedOnboardingVersion = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
       if (shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION, isTokenDanceCallback)) {
@@ -123,9 +131,20 @@ export default function Home() {
         completedTokenDanceWelcomeVersion,
         TOKENDANCE_WELCOME_VERSION,
         isTokenDanceCallback,
-        isAIConfigurationComplete(saved)
+        isAIConfigurationComplete(saved),
+        userHasHistory
       )) {
         setShowTokenDanceWelcome(true)
+      }
+
+      const completedMigrationNoticeVersion = localStorage.getItem(TOKENDANCE_MIGRATION_NOTICE_KEY)
+      if (shouldShowTokenDanceMigration(
+        completedMigrationNoticeVersion,
+        TOKENDANCE_MIGRATION_NOTICE_VERSION,
+        isTokenDanceCallback,
+        userHasHistory
+      )) {
+        setShowTokenDanceMigration(true)
       }
 
       const acknowledged = hasAcknowledgedCurrentDataRisk(localStorage.getItem(DATA_RISK_ACKNOWLEDGED_KEY))
@@ -186,6 +205,14 @@ export default function Home() {
     setShowTokenDanceWelcome(false)
   }
 
+  const handleTokenDanceMigrationClose = () => {
+    setShowTokenDanceMigration(false)
+  }
+
+  const handleOpenTokenDanceMigration = () => {
+    setShowTokenDanceMigration(true)
+  }
+
   const handleOnboardingConfigureApi = () => {
     setShowApiKeyAlert(false)
     setFocusApiConfigurationRequest(request => request + 1)
@@ -209,6 +236,7 @@ export default function Home() {
   const activeStartupPrompt = getActiveStartupPrompt({
     showDataLossWarning,
     showTokenDanceWelcome,
+    showTokenDanceMigration,
     showOnboarding,
     showApiKeyAlert
   })
@@ -386,6 +414,7 @@ export default function Home() {
               onSettingsChange={handleSettingsChange}
               openDataManagement={openDataManagement}
               focusApiConfigurationRequest={focusApiConfigurationRequest}
+              onOpenMigrationNotice={handleOpenTokenDanceMigration}
               onBackupCompleted={() => {
                 setBackupDue(false)
                 setOpenDataManagement(false)
@@ -488,6 +517,14 @@ export default function Home() {
         {/* P0 新增：新手引导 */}
         {activeStartupPrompt === 'tokendance-welcome' && (
           <TokenDanceWelcome lang={lang} onContinue={handleTokenDanceWelcomeComplete} />
+        )}
+
+        {activeStartupPrompt === 'tokendance-migration' && (
+          <TokenDanceMigrationNotice
+            lang={lang}
+            onClose={handleTokenDanceMigrationClose}
+            onOpenSettings={handleOpenApiSettings}
+          />
         )}
 
         {activeStartupPrompt === 'onboarding' && (

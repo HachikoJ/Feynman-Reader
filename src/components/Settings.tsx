@@ -24,7 +24,8 @@ import {
   X,
   Wallet,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Megaphone
 } from 'lucide-react'
 import {
   AppSettings,
@@ -75,13 +76,15 @@ interface Props {
   openDataManagement?: boolean
   focusApiConfigurationRequest?: number
   onBackupCompleted?: () => void
+  onOpenMigrationNotice?: () => void
 }
 
 export default function Settings({
   onSettingsChange,
   openDataManagement = false,
   focusApiConfigurationRequest = 0,
-  onBackupCompleted
+  onBackupCompleted,
+  onOpenMigrationNotice
 }: Props) {
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
@@ -1071,6 +1074,23 @@ export default function Settings({
           </button>
         </div>
       </div>
+
+      {onOpenMigrationNotice && (
+        <button
+          type="button"
+          onClick={onOpenMigrationNotice}
+          className="mb-4 flex w-full items-start gap-3 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-left text-sm hover:bg-sky-500/10"
+        >
+          <Megaphone size={18} className="mt-0.5 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+          <span className="min-w-0">
+            <span className="block font-semibold">{lang === 'zh' ? '查看渠道迁移说明' : 'View provider migration notice'}</span>
+            <span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">
+              {lang === 'zh' ? '了解 TokenDance 推荐接入、DeepSeek 官方渠道下线时间，以及历史数据保留规则。' : 'Review the TokenDance recommendation, the DeepSeek sunset date, and historical data retention.'}
+            </span>
+          </span>
+          <ExternalLink size={16} className="ml-auto mt-0.5 shrink-0 text-[var(--text-secondary)]" aria-hidden="true" />
+        </button>
+      )}
 
       {quickSettingError && (
         <div role="alert" className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-300">
