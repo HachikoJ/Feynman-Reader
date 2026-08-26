@@ -1088,7 +1088,7 @@ export default function Settings({
                 {aiConfigurationComplete ? <Check size={14} aria-hidden="true" /> : <AlertTriangle size={14} aria-hidden="true" />}
               {aiConfigurationComplete
                   ? (activeProvider === 'tokendance'
-                      ? (lang === 'zh' ? 'TokenDance 已连接，AI 可用' : 'TokenDance connected, AI ready')
+                      ? (lang === 'zh' ? 'TokenDance 合作接入已连接' : 'TokenDance partner connection active')
                       : (lang === 'zh' ? 'DeepSeek 官方 API 已连接' : 'DeepSeek Official API connected'))
                   : (lang === 'zh' ? '完成 3 步后启用 AI' : 'Complete 3 steps to enable AI')}
               </span>

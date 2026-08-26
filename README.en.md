@@ -66,6 +66,14 @@ git diff --check
 
 This is an actively maintained personal project becoming a public product. Voice input, OCR, cloud sync, and automated review scheduling are not part of the current release.
 
+## Latest Update
+
+### August 27, 2026
+
+- Added a one-time TokenDance partner introduction covering OAuth, account services, smart routing, and the conditions for up to about 20% peak-hour savings on the Volcengine Ark route.
+- The introduction stays dismissed after entry, while configured users only see a lightweight partner connection status.
+- TokenDance OAuth callbacks now open Settings without welcome or onboarding interruptions.
+
 ## License
 
 [MIT License](LICENSE)

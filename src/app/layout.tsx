@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://www.deline.top'),
   title: '费曼读书助手 | Feynman Reader',
   description: '用费曼学习法深度理解一本书',
   manifest: '/manifest.json',

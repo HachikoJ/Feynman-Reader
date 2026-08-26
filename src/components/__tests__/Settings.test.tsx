@@ -193,7 +193,7 @@ describe('Settings AI privacy controls', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('TokenDance 已连接，AI 可用')).toBeInTheDocument()
+      expect(screen.getByText('TokenDance 合作接入已连接')).toBeInTheDocument()
     })
     expect(screen.queryByPlaceholderText('TokenDance API Key')).not.toBeInTheDocument()
     expect(screen.queryByText('请先填写 DeepSeek API Key，并在勾选同意后保存。')).not.toBeInTheDocument()

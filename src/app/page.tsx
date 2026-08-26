@@ -19,6 +19,10 @@ import ReadingView from '@/components/ReadingView'
 import BackToTop from '@/components/BackToTop'
 import AuthGuard from '@/components/AuthGuard'
 import Onboarding, { ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION } from '@/components/Onboarding'
+import TokenDanceWelcome, {
+  TOKENDANCE_WELCOME_KEY,
+  TOKENDANCE_WELCOME_VERSION
+} from '@/components/TokenDanceWelcome'
 import DataLossWarning from '@/components/DataLossWarning'
 import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -32,7 +36,12 @@ import {
   isBackupReminderDue,
   shouldShowBackupWarning
 } from '@/lib/backupReminder'
-import { getActiveStartupPrompt, isAIConfigurationComplete, shouldShowOnboarding } from '@/lib/startupPrompt'
+import {
+  getActiveStartupPrompt,
+  isAIConfigurationComplete,
+  shouldShowOnboarding,
+  shouldShowTokenDanceWelcome
+} from '@/lib/startupPrompt'
 import { useServiceWorker } from '@/lib/useServiceWorker'
 import AITaskStatus from '@/components/AITaskStatus'
 import { LoadingState, Skeleton } from '@/components/Skeleton'
@@ -65,6 +74,7 @@ export default function Home() {
   const [storageWriteError, setStorageWriteError] = useState(false)
   const [bookshelfKey, setBookshelfKey] = useState(0) // 用于强制刷新书架
   const [showOnboarding, setShowOnboarding] = useState(false) // P0 新增：新手引导
+  const [showTokenDanceWelcome, setShowTokenDanceWelcome] = useState(false)
   const [showDataLossWarning, setShowDataLossWarning] = useState(false)
   const [backupDue, setBackupDue] = useState(false)
   const [openDataManagement, setOpenDataManagement] = useState(false)
@@ -76,7 +86,8 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tokendance_callback') === '1') {
+    const isTokenDanceCallback = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tokendance_callback') === '1'
+    if (isTokenDanceCallback) {
       setView('settings')
     }
     const unsubscribePersistenceErrors = subscribeToPersistenceErrors(() => {
@@ -103,8 +114,18 @@ export default function Home() {
       const books = getBooks()
 
       const completedOnboardingVersion = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
-      if (shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION)) {
+      if (shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION, isTokenDanceCallback)) {
         setShowOnboarding(true)
+      }
+
+      const completedTokenDanceWelcomeVersion = localStorage.getItem(TOKENDANCE_WELCOME_KEY)
+      if (shouldShowTokenDanceWelcome(
+        completedTokenDanceWelcomeVersion,
+        TOKENDANCE_WELCOME_VERSION,
+        isTokenDanceCallback,
+        isAIConfigurationComplete(saved)
+      )) {
+        setShowTokenDanceWelcome(true)
       }
 
       const acknowledged = hasAcknowledgedCurrentDataRisk(localStorage.getItem(DATA_RISK_ACKNOWLEDGED_KEY))
@@ -161,6 +182,10 @@ export default function Home() {
     setSettings(persistedSettings)
   }
 
+  const handleTokenDanceWelcomeComplete = () => {
+    setShowTokenDanceWelcome(false)
+  }
+
   const handleOnboardingConfigureApi = () => {
     setShowApiKeyAlert(false)
     setFocusApiConfigurationRequest(request => request + 1)
@@ -183,6 +208,7 @@ export default function Home() {
   const lang = settings.language
   const activeStartupPrompt = getActiveStartupPrompt({
     showDataLossWarning,
+    showTokenDanceWelcome,
     showOnboarding,
     showApiKeyAlert
   })
@@ -460,6 +486,10 @@ export default function Home() {
         </footer>
 
         {/* P0 新增：新手引导 */}
+        {activeStartupPrompt === 'tokendance-welcome' && (
+          <TokenDanceWelcome lang={lang} onContinue={handleTokenDanceWelcomeComplete} />
+        )}
+
         {activeStartupPrompt === 'onboarding' && (
           <Onboarding
             lang={lang}
