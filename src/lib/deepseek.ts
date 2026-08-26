@@ -405,17 +405,18 @@ function createTokendanceFetch(): NonNullable<ConstructorParameters<typeof OpenA
   }) as unknown as NonNullable<ConstructorParameters<typeof OpenAI>[0]>['fetch']
 }
 
-export async function createDeepSeekClient(apiKey: string) {
+export async function createDeepSeekClient(apiKey: string, provider?: 'tokendance' | 'deepseek') {
   const settings = getSettings()
   if (!settings.aiDataConsent) {
     throw new Error(AI_DATA_CONSENT_REQUIRED)
   }
 
-  if (!isDeepSeekOfficialSupported() && isOfficialDeepSeekProvider(settings.aiProvider)) {
+  const resolvedProvider = provider ?? settings.aiProvider
+  if (!isDeepSeekOfficialSupported() && isOfficialDeepSeekProvider(resolvedProvider)) {
     throw new Error(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
   }
 
-  const useTokendance = settings.aiProvider === 'tokendance'
+  const useTokendance = resolvedProvider === 'tokendance'
   return new OpenAI({
     baseURL: useTokendance ? TOKENDANCE_GATEWAY_URL : 'https://api.deepseek.com',
     apiKey: apiKey,
