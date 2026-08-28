@@ -17,16 +17,14 @@
 
 1. Feynman Reader 卡片、按钮、导航、文档和 Open Graph 链接统一使用：
    `https://reader.deline.top/`
-2. 官网收到下列请求时返回 `308`，目标使用完整 URL：
-   - `/reader` -> `https://reader.deline.top/`
-   - `/reader/` -> `https://reader.deline.top/`
-   - `/reader/<path>` -> `https://reader.deline.top/<path>`（只有确认该路径仍有意义时才保留；默认只迁移入口）
-3. query string 原样保留。例如：
-   `/reader/?view=settings` -> `https://reader.deline.top/?view=settings`
+2. 官网收到下列请求时返回 `410 Gone`，不执行跳转：
+   - `/reader`、`/reader/` 及其子路径
+   - `/feynmanreader`、`/feynmanreader/` 及其子路径
+3. 旧路径上的 query string 不得触发产品页面、OAuth 或支付配置。
 4. 官网不要使用 iframe、跨域脚本、localStorage、IndexedDB 或 Service Worker 读取产品数据。
 5. 官网“返回首页”只回到 `https://www.deline.top/`；产品中的“官网”按钮已经负责回到该地址。
 
-如果旧官网入口上存在用户数据，不能直接声称 308 已完成数据迁移。应先保留一个临时迁移页，引导用户在旧 origin 的“设置 > 数据管理”导出备份，再到新产品域名导入；没有旧数据时才直接 308。
+旧官网入口不再承载产品、OAuth、Token 或支付配置。若用户仍需取回原 origin 的本地数据，应使用单独、只读的迁移说明页，不得在旧路径恢复配置表单。
 
 ## 3. DNS 与 TLS
 
@@ -95,13 +93,10 @@ server {
     root /var/www/deline-website;
     index index.html;
 
-    location = /reader {
-        return 308 https://reader.deline.top/$is_args$args;
-    }
-
-    location ^~ /reader/ {
-        return 308 https://reader.deline.top/$is_args$args;
-    }
+    location = /reader { return 410; }
+    location ^~ /reader/ { return 410; }
+    location = /feynmanreader { return 410; }
+    location ^~ /feynmanreader/ { return 410; }
 
     location / {
         limit_except GET HEAD { deny all; }
@@ -122,7 +117,7 @@ server {
 4. 运行 `nginx -t`。
 5. 原子切换官网软链接，例如 `mv -Tf .next-link /var/www/deline-website`。
 6. `systemctl reload nginx`，不要 `restart`。
-7. 用公网 HTTPS 请求验收首页、旧 `/reader/` 跳转和静态资源。
+7. 用公网 HTTPS 请求验收首页、停用入口的 `410` 响应和静态资源。
 8. 保留最近 3 至 5 个 release；失败时把软链接切回上一 release，再 reload Nginx。
 
 建议自动化部署使用部署锁，避免重复触发导致两个发布同时进行：
@@ -138,7 +133,8 @@ GitHub 拉取需要使用只读 Deploy Key 或 GitHub App。不要把 PAT、私�
 ```bash
 curl -fsSI https://www.deline.top/
 curl -fsSI https://deline.top/
-curl -fsSI 'https://www.deline.top/reader/?from=legacy'
+curl -sSI 'https://www.deline.top/reader/?from=retired'
+curl -sSI 'https://www.deline.top/feynmanreader'
 curl -fsSI https://reader.deline.top/
 curl -fsSI https://reader.deline.top/privacy/
 curl -fsSI https://reader.deline.top/manifest.json
@@ -147,10 +143,10 @@ curl -fsSI https://reader.deline.top/manifest.json
 验收标准：
 
 - `deline.top/` -> `www.deline.top/` 为 `308`。
-- `www.deline.top/reader/?from=legacy` -> `https://reader.deline.top/?from=legacy` 为 `308`。
+- `www.deline.top/reader`、`www.deline.top/feynmanreader` 及其子路径均为 `410`。
 - `reader.deline.top/` 返回费曼读书助手页面，不能返回官网页面。
-- `reader.deline.top/reader/` 继续由产品侧 `308` 到 `/`。
-- 产品页面的 canonical、Open Graph、PWA manifest 和 TokenDance OAuth callback 都使用 `reader.deline.top`。
+- `reader.deline.top/reader`、`reader.deline.top/feynmanreader` 及其子路径均为 `410`。
+- 产品页面的 canonical、Open Graph、PWA manifest 和 TokenDance OAuth callback 都使用 `reader.deline.top`；TokenDance `app_url` 保持已登记的裸域归因标识 `https://deline.top`。
 - 官网和产品均无混合内容、证书错误或跨域存储假设。
 
 ## 8. 变更责任

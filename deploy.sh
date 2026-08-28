@@ -153,6 +153,14 @@ for header in "${REQUIRED_HEADERS[@]}"; do
   fi
 done
 
+for retired_path in "/reader" "/reader/?view=settings&tokendance_callback=1" "/feynmanreader" "/feynmanreader/settings"; do
+  retired_status="$(curl -sS --retry 3 --connect-timeout 10 --max-time 20 -o /dev/null -w '%{http_code}' "https://reader.deline.top$retired_path")"
+  if [[ "$retired_status" != "410" ]]; then
+    echo "部署失败：停用入口 $retired_path 返回 HTTP $retired_status，而不是 410" >&2
+    exit 1
+  fi
+done
+
 new_chunk="$(find "$PROJECT_DIR/out/_next/static" -type f -name '*.js' -print -quit)"
 if [[ -z "$new_chunk" ]]; then
   echo "部署失败：构建产物中没有可验证的 JavaScript Chunk" >&2

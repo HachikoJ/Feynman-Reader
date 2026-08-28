@@ -69,7 +69,7 @@ describe('TokenDance recovery headers', () => {
       }))
 
       const headers = new Headers(fetchMock.mock.calls[0][1]?.headers)
-      expect(headers.get('X-App-URL')).toBe('https://reader.deline.top')
+      expect(headers.get('X-App-URL')).toBe('https://deline.top')
       expect(Array.from(headers.keys()).some(name => name.startsWith('x-stainless-'))).toBe(false)
     } finally {
       global.fetch = originalFetch

@@ -2,7 +2,10 @@ import { APP_ROUTES } from './appRoutes'
 
 export const TOKENDANCE_BASE_URL = 'https://tokendance.space'
 export const TOKENDANCE_GATEWAY_URL = `${TOKENDANCE_BASE_URL}/gateway/v1`
-export const TOKENDANCE_APP_URL = 'https://reader.deline.top'
+// TokenDance app_url is the stable attribution identifier registered for this app.
+// It is intentionally independent from the product's current hosting origin.
+export const TOKENDANCE_APP_URL = 'https://deline.top'
+export const TOKENDANCE_CALLBACK_ORIGIN = 'https://reader.deline.top'
 export type TokendanceRecoveryAction = 'top_up_balance' | 'reauthorize_api_key' | 'api_key_quota'
 export const TOKENDANCE_RECOVERY_PREFIX = 'TOKENDANCE_RECOVERY:'
 
@@ -64,7 +67,7 @@ export async function createTokendanceAuthorizationUrl(): Promise<string> {
   sessionStorage.setItem(verifierKey, verifier)
   sessionStorage.setItem(stateKey, state)
 
-  const callback = `${window.location.origin}${APP_ROUTES.home}?view=settings&tokendance_callback=1&state=${encodeURIComponent(state)}`
+  const callback = `${TOKENDANCE_CALLBACK_ORIGIN}${APP_ROUTES.home}?view=settings&tokendance_callback=1&state=${encodeURIComponent(state)}`
   const params = new URLSearchParams({
     callback_url: callback,
     code_challenge: base64Url(new Uint8Array(digest)),

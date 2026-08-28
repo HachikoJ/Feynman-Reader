@@ -48,6 +48,11 @@ grep -Eiq '^strict-transport-security:' "$HEADERS" || fail "缺少 Strict-Transp
 ROOT_STATUS="$(status_code "$BASE_URL/")"
 [[ "$ROOT_STATUS" == "200" ]] || fail "首页返回 HTTP $ROOT_STATUS"
 
+for retired_path in "/reader" "/reader/?view=settings&tokendance_callback=1" "/feynmanreader" "/feynmanreader/settings"; do
+  RETIRED_STATUS="$(status_code "$BASE_URL$retired_path")"
+  [[ "$RETIRED_STATUS" == "410" ]] || fail "停用入口 $retired_path 返回 HTTP $RETIRED_STATUS，而不是 410"
+done
+
 CSS_PATH="$(grep -m 1 -oE 'href="/_next/static/css/[^"]+\.css"' "$BODY" | cut -d'"' -f2)"
 JS_PATH="$(grep -m 1 -oE 'src="/_next/static/[^" ]+\.js"' "$BODY" | cut -d'"' -f2)"
 [[ -n "$CSS_PATH" ]] || fail "首页没有找到 CSS 静态资源"

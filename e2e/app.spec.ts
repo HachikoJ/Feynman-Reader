@@ -41,10 +41,14 @@ test.describe('应用启动和导航', () => {
     await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
   })
 
-  test('兼容路径会回到独立产品根地址', async ({ page }) => {
-    await page.goto('/reader/?view=settings&tokendance_callback=1')
-    await expect(page).toHaveURL(/\/$/)
-    await expect(page).toHaveTitle(/费曼读书助手/)
+  test('停用路径不会打开产品或配置页面', async ({ page }) => {
+    const response = await page.goto('/reader/?view=settings&tokendance_callback=1')
+    expect([404, 410]).toContain(response?.status())
+    await expect(page).not.toHaveTitle(/费曼读书助手/)
+  })
+
+  test('旧产品别名返回 410', async ({ request }) => {
+    expect([404, 410]).toContain((await request.get('/feynmanreader')).status())
   })
 })
 

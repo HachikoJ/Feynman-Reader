@@ -10,6 +10,8 @@ describe('production security header deployment', () => {
   const secretScanWorkflow = readFileSync(join(process.cwd(), '.github/workflows/secret-scan.yml'), 'utf8')
   const safelineDoc = readFileSync(join(process.cwd(), 'docs/operations/safeline-rollout.md'), 'utf8')
   const safelineVerifier = readFileSync(join(process.cwd(), 'scripts/verify-safeline-rollout.sh'), 'utf8')
+  const productNginx = readFileSync(join(process.cwd(), 'reader.deline.top.conf'), 'utf8')
+  const tokendanceSource = readFileSync(join(process.cwd(), 'src/lib/tokendance.ts'), 'utf8')
   const requiredHeaders = [
     'Content-Security-Policy',
     'X-Frame-Options',
@@ -36,6 +38,8 @@ describe('production security header deployment', () => {
     for (const header of requiredHeaders) {
       expect(deployScript).toContain(`"${header}"`)
     }
+    expect(deployScript).toContain('停用入口')
+    expect(safelineVerifier).toContain('停用入口')
   })
 
   it('publishes immutable releases without deleting chunks used by open pages', () => {
@@ -45,6 +49,17 @@ describe('production security header deployment', () => {
     expect(deployScript).toContain('OLD_CHUNK_URL')
     expect(deployScript).toContain('rollback_on_error')
     expect(deployScript).not.toContain('rsync -a --delete')
+  })
+
+  it('retires old product aliases before they can reach configuration screens', () => {
+    expect(productNginx).toContain('location = /reader { return 410; }')
+    expect(productNginx).toContain('location ^~ /reader/ { return 410; }')
+    expect(productNginx).toContain('location = /feynmanreader { return 410; }')
+    expect(productNginx).toContain('location ^~ /feynmanreader/ { return 410; }')
+    expect(tokendanceSource).toContain("TOKENDANCE_APP_URL = 'https://deline.top'")
+    expect(tokendanceSource).toContain("TOKENDANCE_CALLBACK_ORIGIN = 'https://reader.deline.top'")
+    expect(tokendanceSource).toContain('TOKENDANCE_CALLBACK_ORIGIN}${APP_ROUTES.home}')
+    expect(tokendanceSource).not.toContain('window.location.origin}${APP_ROUTES.home}')
   })
 
   it('removes Finder metadata after every static build', () => {

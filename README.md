@@ -17,13 +17,13 @@
 
 **产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
 
-费曼读书助手现在独立部署在 `reader.deline.top`，根路径 `/` 直接进入产品；`/reader/` 作为兼容入口保留。官网位于 `www.deline.top`，产品中的“官网”按钮会返回官网主路由。
+费曼读书助手现在独立部署在 `reader.deline.top`，根路径 `/` 直接进入产品。官网位于 `www.deline.top`，产品中的“官网”按钮会返回官网主路由。已停用的 `/reader`、`/feynmanreader` 等旧入口返回 `410 Gone`。
 
 > [!IMPORTANT]
 > **这是一个本地优先的学习产品。** 本产品不提供云端存储、同步与恢复服务，学习记录和 API Key 默认保存在用户自己的浏览器里。清理网站数据、卸载浏览器或设备异常可能造成数据丢失，请根据应用提醒及时导出备份。调用 AI 前，需要先阅读并同意隐私政策；TokenDance / TokenPay 是推荐渠道，DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线，届时旧官方 Key 也不再支持。
 
 > [!WARNING]
-> `www.deline.top/reader/` 与 `reader.deline.top/` 属于不同浏览器存储源。若旧地址已有书籍、设置或学习记录，请先在旧地址的“设置 > 数据管理”导出备份，再在新产品域名导入；308 跳转本身不会迁移 localStorage 或 IndexedDB。
+> `www.deline.top/reader/` 与 `reader.deline.top/` 属于不同浏览器存储源。旧入口已停用，不会承载 OAuth、Token 或支付配置；如果旧地址仍能打开，请立即停止输入敏感信息并联系维护者。
 
 ## GitHub 传播素材
 
