@@ -42,12 +42,16 @@ describe('production security header deployment', () => {
     expect(safelineVerifier).toContain('停用入口')
   })
 
-  it('publishes immutable releases without deleting chunks used by open pages', () => {
+  it('publishes a standalone Node service without deleting chunks used by open pages', () => {
     expect(deployScript).toContain('RELEASES_DIR=')
     expect(deployScript).toContain('mv -Tf "$NEXT_LINK" "$WEB_ROOT"')
-    expect(deployScript).toContain('rsync -a "$WEB_ROOT/_next/static/"')
+    expect(deployScript).toContain('rsync -a "$WEB_ROOT/.next/static/"')
     expect(deployScript).toContain('OLD_CHUNK_URL')
     expect(deployScript).toContain('rollback_on_error')
+    expect(deployScript).toContain('pm2 startOrReload')
+    expect(deployScript).toContain('/api/health/')
+    expect(packageJson.scripts.start).toBe('next start -p 8080 -H 127.0.0.1')
+    expect(productNginx).toContain('proxy_pass http://127.0.0.1:8080;')
     expect(deployScript).not.toContain('rsync -a --delete')
   })
 
@@ -62,11 +66,10 @@ describe('production security header deployment', () => {
     expect(tokendanceSource).not.toContain('window.location.origin}${APP_ROUTES.home}')
   })
 
-  it('removes Finder metadata after every static build', () => {
+  it('removes Finder metadata after every server build', () => {
     expect(packageJson.scripts.postbuild).toBe('node scripts/sanitize-static-export.mjs')
     const sanitizer = readFileSync(join(process.cwd(), 'scripts/sanitize-static-export.mjs'), 'utf8')
     expect(sanitizer).toContain("entry.name === '.DS_Store'")
-    expect(secretScanWorkflow).toContain("find out -type f -name '.DS_Store'")
     expect(secretScanWorkflow).toContain("git ls-files | grep -E '(^|/)\\.DS_Store$'")
   })
 

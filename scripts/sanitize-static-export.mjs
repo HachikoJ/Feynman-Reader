@@ -18,4 +18,7 @@ async function removeFinderMetadata(directory) {
   }))
 }
 
-await removeFinderMetadata(join(process.cwd(), 'out'))
+await Promise.all([
+  removeFinderMetadata(join(process.cwd(), '.next')),
+  removeFinderMetadata(join(process.cwd(), 'public'))
+])

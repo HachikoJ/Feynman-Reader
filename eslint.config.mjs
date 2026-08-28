@@ -8,6 +8,7 @@ export default [
     ignores: ['coverage/**', 'public/pdf.worker.min.mjs', '.next/**', 'out/**', 'next-env.d.ts'],
   },
   {
+    files: ['**/*.{js,jsx,mjs,ts,tsx,mts,cts}'],
     rules: {
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       'prefer-const': 'warn',

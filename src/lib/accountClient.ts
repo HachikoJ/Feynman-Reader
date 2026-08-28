@@ -1,0 +1,56 @@
+export interface AccountUser {
+  id: string
+  tokendanceSubject?: string
+  phone?: string
+  email?: string
+  phoneVerifiedAt?: string
+  emailVerifiedAt?: string
+}
+
+export interface AccountState {
+  user: AccountUser | null
+  configured: boolean
+}
+
+export const ACCOUNT_CUTOFF = new Date('2026-10-01T00:00:00+08:00')
+
+export function isAccountRequired(now = new Date()): boolean {
+  return now.getTime() >= ACCOUNT_CUTOFF.getTime()
+}
+
+export async function getAccount(): Promise<AccountState> {
+  const response = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+  if (response.ok) {
+    const data = await response.json() as { user?: AccountUser | null }
+    return { user: data.user ?? null, configured: true }
+  }
+  return { user: null, configured: response.status !== 503 }
+}
+
+export async function getApiKeyStatus(): Promise<{ configured: boolean; masked: string }> {
+  const response = await fetch('/api/account/api-key', { credentials: 'include', cache: 'no-store' })
+  if (!response.ok) throw new Error((await response.json().catch(() => null) as { error?: string } | null)?.error || '无法读取 API Key 状态。')
+  return response.json() as Promise<{ configured: boolean; masked: string }>
+}
+
+export async function saveApiKey(apiKey: string): Promise<void> {
+  const response = await fetch('/api/account/api-key', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+  })
+  if (!response.ok) throw new Error((await response.json().catch(() => null) as { error?: string } | null)?.error || 'API Key 保存失败。')
+}
+
+export async function deleteApiKey(): Promise<void> {
+  const response = await fetch('/api/account/api-key', { method: 'DELETE', credentials: 'include' })
+  if (!response.ok) throw new Error((await response.json().catch(() => null) as { error?: string } | null)?.error || 'API Key 删除失败。')
+}
+
+export async function importLocalData(payload: unknown): Promise<{ booksImported: number }> {
+  const response = await fetch('/api/account/import', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  const data = await response.json().catch(() => ({})) as { error?: string; booksImported?: number }
+  if (!response.ok) throw new Error(data.error || '本地数据导入失败。')
+  return { booksImported: data.booksImported || 0 }
+}
