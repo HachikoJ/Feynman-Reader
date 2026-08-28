@@ -1,23 +1,30 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
+import 'katex/dist/katex.min.css'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.deline.top'),
+  metadataBase: new URL('https://reader.deline.top'),
   title: '费曼读书助手 | Feynman Reader',
-  description: '用费曼学习法深度理解一本书',
+  description: '把一本书讲给 AI 听，直到你真的理解。费曼读书助手是一个本地优先的 AI 深度阅读工作区。',
+  applicationName: '费曼读书助手',
   manifest: '/manifest.json',
+  alternates: { canonical: '/' },
+  icons: {
+    icon: [{ url: '/icon-192.png', type: 'image/png', sizes: '192x192' }],
+    apple: [{ url: '/icon-192.png', sizes: '192x192', type: 'image/png' }]
+  },
   openGraph: {
     title: '费曼读书助手 | Feynman Reader',
-    description: '把一本书讲给 AI 听，直到 3 个角色都问不倒你。',
-    url: 'https://www.deline.top',
-    siteName: 'Feynman Reader',
+    description: '把一本书讲给 AI 听，直到你真的理解。',
+    url: 'https://reader.deline.top',
+    siteName: '费曼读书助手',
     type: 'website',
-    images: [{ url: '/icon-512.png', width: 512, height: 512, alt: 'Feynman Reader' }],
+    images: [{ url: '/icon-512.png', width: 512, height: 512, alt: '费曼读书助手' }],
   },
   twitter: {
     card: 'summary',
     title: '费曼读书助手 | Feynman Reader',
-    description: '把一本书讲给 AI 听，直到 3 个角色都问不倒你。',
+    description: '把一本书讲给 AI 听，直到你真的理解。',
     images: ['/icon-512.png'],
   },
   appleWebApp: {
@@ -30,14 +37,13 @@ export const metadata: Metadata = {
   },
 }
 
-// P1 修复：将 viewport 和 themeColor 移到单独的导出
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
+    { media: '(prefers-color-scheme: light)', color: '#f9fbff' },
     { media: '(prefers-color-scheme: dark)', color: '#0f172a' },
   ],
 }
@@ -86,15 +92,7 @@ export default function RootLayout({
         {process.env.NODE_ENV === 'development' && (
           <script dangerouslySetInnerHTML={{ __html: localCacheRecoveryScript }} />
         )}
-        {/* P1 新增：PWA 支持 */}
-        <link rel="icon" href="/icon-192.png" type="image/png" />
-        <link rel="apple-touch-icon" href="/icon-192.png" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="费曼读书助手" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="application-name" content="费曼读书助手" />
-        <meta name="msapplication-TileColor" content="#0284c7" />
+        <meta name="msapplication-TileColor" content="#315efb" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
       </head>
       <body className="font-sans" suppressHydrationWarning>{children}</body>

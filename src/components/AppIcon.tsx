@@ -140,12 +140,12 @@ const icons: Record<AppIconName, LucideIcon> = {
 const tones: Record<AppIconTone, string> = {
   inherit: '',
   accent: 'text-[var(--accent)]',
-  blue: 'text-blue-600 dark:text-blue-400',
-  cyan: 'text-cyan-600 dark:text-cyan-400',
+  blue: 'text-[var(--accent)]',
+  cyan: 'text-[var(--success)]',
   green: 'text-emerald-600 dark:text-emerald-400',
   amber: 'text-amber-600 dark:text-amber-400',
   red: 'text-red-600 dark:text-red-400',
-  violet: 'text-violet-600 dark:text-violet-400',
+  violet: 'text-[var(--accent-secondary)]',
   muted: 'text-[var(--text-secondary)]'
 }
 

@@ -180,6 +180,8 @@ interface Props {
   onRecommendationsChange: (recs: string) => Promise<void>
   loadingRecommendations: boolean
   onLoadingChange: (loading: boolean) => void
+  onOpenSettings?: () => void
+  needsAiConfiguration?: boolean
 }
 
 export default function BookRecommendations({
@@ -190,7 +192,9 @@ export default function BookRecommendations({
   recommendations: savedRecommendations,
   onRecommendationsChange,
   loadingRecommendations,
-  onLoadingChange
+  onLoadingChange,
+  onOpenSettings,
+  needsAiConfiguration = false
 }: Props) {
   const [recommendations, setRecommendations] = useState<Recommendations | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -228,10 +232,8 @@ export default function BookRecommendations({
 
   const generateRecommendations = async () => {
     if (loadingRecommendations) return
-    if (!apiKey) {
-      setErrorMessage(lang === 'zh'
-        ? '请先在设置中填写 API Key。'
-        : 'Please add an API key in Settings first.')
+    if (!apiKey || needsAiConfiguration) {
+      onOpenSettings?.()
       return
     }
 

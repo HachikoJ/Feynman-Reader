@@ -26,11 +26,11 @@ import { LEARNING_PHASES } from '@/lib/feynman-prompts'
 import AppIcon from './AppIcon'
 
 const CHART_COLORS = {
-  accent: '#2563eb',
-  cyan: '#0891b2',
-  green: '#059669',
-  amber: '#d97706',
-  violet: '#7c3aed',
+  accent: '#315efb',
+  cyan: '#28c79a',
+  green: '#16a47b',
+  amber: '#d5a400',
+  violet: '#ff6b61',
   muted: '#94a3b8'
 }
 

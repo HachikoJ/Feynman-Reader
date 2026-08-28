@@ -198,15 +198,15 @@ export default function ReadingProgressPanel({ lang }: Props) {
           <div className="text-xs text-[var(--text-secondary)]">{t.totalBooks}</div>
         </div>
         <div className="card p-4 text-center">
-          <div className="text-3xl mb-2 text-green-400">{overview.completedBooks}</div>
+          <div className="mb-2 text-3xl text-[var(--success)]">{overview.completedBooks}</div>
           <div className="text-xs text-[var(--text-secondary)]">{t.completedBooks}</div>
         </div>
         <div className="card p-4 text-center">
-          <div className="text-3xl mb-2 text-blue-400">{overview.totalPagesRead}</div>
+          <div className="mb-2 text-3xl text-[var(--accent)]">{overview.totalPagesRead}</div>
           <div className="text-xs text-[var(--text-secondary)]">{t.pages}</div>
         </div>
         <div className="card p-4 text-center">
-          <div className="text-3xl mb-2 text-purple-400">
+          <div className="mb-2 text-3xl text-[var(--accent-secondary)]">
             {Math.round(overview.totalMinutesRead / 60)}h
           </div>
           <div className="text-xs text-[var(--text-secondary)]">{t.totalMinutesRead}</div>
@@ -264,7 +264,7 @@ export default function ReadingProgressPanel({ lang }: Props) {
               </div>
               <div className="h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-blue-500 transition-all duration-500"
+                  className="h-full bg-[var(--accent)] transition-all duration-500"
                   style={{ width: `${overview.todayProgress.pagesProgress}%` }}
                 />
               </div>
@@ -276,7 +276,7 @@ export default function ReadingProgressPanel({ lang }: Props) {
               </div>
               <div className="h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-purple-500 transition-all duration-500"
+                  className="h-full bg-[var(--accent-secondary)] transition-all duration-500"
                   style={{ width: `${overview.todayProgress.minutesProgress}%` }}
                 />
               </div>
@@ -347,13 +347,13 @@ export default function ReadingProgressPanel({ lang }: Props) {
                 <div className="w-full flex flex-col items-center">
                   {/* Pages bar */}
                   <div
-                    className={`w-full rounded-t transition-all duration-300 ${isToday ? 'bg-blue-500' : 'bg-blue-500/50'}`}
+                    className={`w-full rounded-t transition-all duration-300 ${isToday ? 'bg-[var(--accent)]' : 'bg-[var(--accent)]/50'}`}
                     style={{ height: `${pagesHeight}%` }}
                     title={`${stat.pagesRead} ${t.pages}`}
                   />
                   {/* Minutes bar */}
                   <div
-                    className={`w-full rounded-b transition-all duration-300 ${isToday ? 'bg-purple-500' : 'bg-purple-500/50'}`}
+                    className={`w-full rounded-b transition-all duration-300 ${isToday ? 'bg-[var(--accent-secondary)]' : 'bg-[var(--accent-secondary)]/50'}`}
                     style={{ height: `${minutesHeight}%` }}
                     title={`${stat.minutesRead} ${t.minutes}`}
                   />
@@ -367,11 +367,11 @@ export default function ReadingProgressPanel({ lang }: Props) {
         </div>
         <div className="flex items-center justify-center gap-6 mt-4 text-xs text-[var(--text-secondary)]">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-blue-500 rounded" />
+            <div className="h-3 w-3 rounded bg-[var(--accent)]" />
             <span>{t.pages}</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-purple-500 rounded" />
+            <div className="h-3 w-3 rounded bg-[var(--accent-secondary)]" />
             <span>{t.minutes}</span>
           </div>
         </div>
@@ -380,7 +380,7 @@ export default function ReadingProgressPanel({ lang }: Props) {
       {/* Goal Setting Modal */}
       {showGoalModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="card max-w-md w-full p-6">
+          <div className="brand-dialog w-full max-w-md rounded-xl p-6">
             <h3 className="text-xl font-bold mb-4">{t.setGoal}</h3>
             <div className="space-y-4">
               <div>

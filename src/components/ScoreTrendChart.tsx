@@ -74,7 +74,7 @@ export default function ScoreTrendChart({ records, lang, compact = false, embedd
   // 获取趋势颜色
   const getTrendColor = () => {
     if (trend.improvement > 20) return '#22c55e' // green
-    if (trend.improvement > 0) return '#3b82f6' // blue
+    if (trend.improvement > 0) return '#315efb' // brand cobalt
     if (trend.improvement < -10) return '#ef4444' // red
     return '#f59e0b' // yellow
   }
@@ -152,7 +152,7 @@ export default function ScoreTrendChart({ records, lang, compact = false, embedd
           </div>
         </div>
         <div className="bg-[var(--bg-secondary)] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-blue-400">
+          <div className="text-2xl font-bold text-[var(--accent)]">
             {trend.best.toFixed(0)}
           </div>
           <div className="text-xs text-[var(--text-secondary)]">
@@ -267,7 +267,7 @@ export default function ScoreTrendChart({ records, lang, compact = false, embedd
       {/* 趋势描述 */}
       <div className={`rounded-lg p-4 border-2 ${
         trend.improvement > 20 ? 'border-green-500/30 bg-green-500/5' :
-        trend.improvement > 0 ? 'border-blue-500/30 bg-blue-500/5' :
+        trend.improvement > 0 ? 'border-[var(--accent)]/30 bg-[var(--accent)]/5' :
         trend.improvement < -10 ? 'border-red-500/30 bg-red-500/5' :
         'border-[var(--border)] bg-[var(--bg-secondary)]'
       }`}>

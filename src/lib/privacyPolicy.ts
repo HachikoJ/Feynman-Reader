@@ -24,9 +24,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
 • **应用设置**：语言偏好、主题选择等个性化设置
 • **API Key**：用于调用 AI 服务的密钥（可选）
 
-**平台服务器不收集或保存上述用户数据。** 使用 AI 功能时，完成当前任务所需的相关输入会由您的浏览器直接发送给您在设置中选择的 DeepSeek 或 TokenDance。DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线；到期后仅支持 TokenDance，且此前配置的 DeepSeek 官方 Key 不再可用。
-
-TokenDance 是可选的第三方 API 网关；通过 OAuth 创建的 Key 会记录费曼读书助手的应用归因，TokenDance 可能按其合作规则向作者提供分润。`
+**平台服务器不收集或保存上述用户数据。** 使用 AI 功能时，完成当前任务所需的相关输入会由您的浏览器直接发送给您在设置中选择的 DeepSeek 或 TokenDance。DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线；到期后仅支持 TokenDance，且此前配置的 DeepSeek 官方 Key 不再可用。`
       },
       {
         title: '2. 数据存储',
@@ -56,7 +54,7 @@ TokenDance 是可选的第三方 API 网关；通过 OAuth 创建的 Key 会记�
 
 使用 AI 功能时，可能发送的内容包括书名、作者、简介、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。上传文档的解析原文完整保存在当前浏览器；调用 AI 时，较短文档可能发送完整原文，较长文档会从完整原文中检索并发送与当前任务相关且覆盖不同位置的片段。请勿在这些内容中填写不希望提供给所选 AI 服务的个人敏感信息。
 
-**Token 消耗与费用说明**：系统预设模型为 **DeepSeek V4 Flash**。每次 AI 调用成功后，本应用会在浏览器本地记录接口实际返回的输入、输出及合计 Token，您可在“设置 > 数据管理”查看并随备份导出。根据当前使用情况粗略估算，一本书完整使用六阶段分析、教学评估、角色问答、重新生成、相关推荐、标签生成等 AI 功能，费用大约为 0.02 元。该数字仅供参考，并非固定价格、折扣或费用承诺；API 返回 Token 数但不返回实际扣费金额，费用会随调用次数、输入长度、附件解析字符数量及模型价格变化。根据 TokenDance 官方确认，**v4flash0731** 峰时路由到火山方舟端口时最高约可省 20%；智能路由到 DeepSeek 官方、阿里、百度等其他端口时不保证优惠，您可在 TokenDance 界面设置路由偏好。**实际价格、适用时段与活动期限以 TokenDance 官方实时计费标准及后续通知为准。** TokenDance 充值和支付由用户确认，费曼读书助手不会代收款。
+**Token 消耗与费用说明**：系统预设模型为 **DeepSeek V4 Flash**。每次 AI 调用成功后，本应用会在浏览器本地记录接口实际返回的输入、输出及合计 Token，您可在“设置 > 数据管理”查看并随备份导出。根据当前使用情况粗略估算，一本书完整使用六阶段分析、教学评估、角色问答、重新生成、相关推荐、标签生成等 AI 功能，费用大约为 0.02 元。该数字为当前用量估算；API 返回 Token 数但不返回实际扣费金额，实际费用会随调用次数、输入长度、附件解析字符数量及模型价格变化。根据 TokenDance 官方确认，**v4flash0731** 峰时火山方舟端口提供限时优惠，最高约可省 20%，您可在 TokenDance 界面设置路由偏好。**适用线路、价格、时段与活动期限以 TokenDance 官方实时计费标准及后续通知为准。**
 
 建议：
 • 不要在不安全的设备上保存 API Key
@@ -97,7 +95,7 @@ TokenDance 是可选的第三方 API 网关；通过 OAuth 创建的 Key 会记�
   - 使用 AI 功能会将上述相关内容直接发送给 TokenDance
   - 您的使用受 TokenDance 的服务条款约束
 
-我们对这些第三方服务的内容或隐私政策不承担任何责任。`
+TokenDance 将按照其服务条款和隐私政策处理相关服务数据。`
       },
       {
         title: '7. Cookie 使用',
@@ -137,9 +135,7 @@ TokenDance 是可选的第三方 API 网关；通过 OAuth 创建的 Key 会记�
 • **App Settings**: Language preference, theme selection, and other personalized settings
 • **API Key**: Used to call AI services (optional)
 
-**Platform servers do not collect or store this user data.** When you use AI features, input needed for the current task is sent directly from your browser to the DeepSeek or TokenDance service selected in Settings. The official DeepSeek configuration channel ends on October 1, 2026; after that date, only TokenDance is supported and previously configured official DeepSeek keys no longer work.
-
-TokenDance is an optional third-party API gateway. OAuth-created keys attribute usage to Feynman Reader, and TokenDance may provide the author a revenue share under its partner terms.`
+**Platform servers do not collect or store this user data.** When you use AI features, input needed for the current task is sent directly from your browser to the DeepSeek or TokenDance service selected in Settings. The official DeepSeek configuration channel ends on October 1, 2026; after that date, only TokenDance is supported and previously configured official DeepSeek keys no longer work.`
       },
       {
         title: '2. Data Storage',
@@ -167,7 +163,7 @@ The platform currently does not provide cloud storage, sync, or recovery service
 
 AI features may send the book title, author, description, learning-phase input, teaching-practice content, persona Q&A, and related learning content used to generate recommendations. The complete parsed source remains in the current browser. Short documents may be sent in full for an AI request; for longer documents, the browser retrieves and sends task-relevant excerpts distributed across the full source. Do not include personal sensitive information that you do not want to provide to the selected AI service.
 
-**Token usage and cost**: The preset model is **DeepSeek V4 Flash**. After each successful AI call, the app stores the input, output, and total token counts returned by the API locally in your browser. You can view them under Settings > Data Management and include them in backups. Based on current usage, the complete set of AI features for one book costs roughly CNY 0.02. This is only a broad reference, not a fixed price, discount, or cost commitment. The API returns token counts, not the billed amount; actual cost varies with request count, input length, attachment size, and model pricing. According to TokenDance's official clarification, **v4flash0731** can be up to about 20% cheaper when peak-hour traffic uses the Volcengine Ark route. The offer is not guaranteed when smart routing selects DeepSeek official, Alibaba, Baidu, or another port; route preferences can be set in TokenDance. **Actual prices, eligible periods, and campaign dates follow TokenDance official real-time pricing and subsequent notices. Users confirm TokenDance payments; Feynman Reader does not collect payment.**
+**Token usage and cost**: The preset model is **DeepSeek V4 Flash**. After each successful AI call, the app stores the input, output, and total token counts returned by the API locally in your browser. You can view them under Settings > Data Management and include them in backups. Based on current usage, the complete set of AI features for one book costs roughly CNY 0.02. This is a current usage estimate; the API returns token counts rather than the billed amount, and actual cost varies with request count, input length, attachment size, and model pricing. According to TokenDance's official clarification, the **v4flash0731** Volcengine Ark route provides limited-time savings of up to about 20% at peak hours, and route preferences can be configured in TokenDance. **Eligible routes, pricing, periods, and offer dates follow TokenDance official live pricing and subsequent notices.**
 
 Recommendations:
 • Don't save API Key on public/shared devices
@@ -207,7 +203,7 @@ We recommend exporting a backup before deletion.`
   - Using AI features sends the related content described above directly to TokenDance
   - Your use is subject to TokenDance's terms of service
 
-We are not responsible for the content or privacy policies of these third-party services.`
+TokenDance processes related service data under its terms of service and privacy policy.`
       },
       {
         title: '7. Cookie Usage',

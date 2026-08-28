@@ -128,6 +128,7 @@ export interface AppSettings {
   theme: Theme
   hideApiKeyAlert: boolean
   aiDataConsent?: boolean
+  assistantMemoryEnabled?: boolean
   quotes: CustomQuote[]
   quotesInitialized?: boolean
 }

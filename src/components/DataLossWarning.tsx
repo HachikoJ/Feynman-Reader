@@ -33,7 +33,7 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
         role="dialog"
         aria-modal="true"
         aria-labelledby="data-loss-warning-title"
-        className="w-full max-w-lg rounded-lg border border-amber-500/40 bg-[var(--bg-card)] p-5 shadow-2xl md:p-6"
+        className="brand-dialog w-full max-w-lg rounded-xl border-amber-500/40 p-5 md:p-6"
       >
         <div className="mb-4 flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500">
@@ -53,7 +53,7 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
 
         <div className="space-y-3 text-sm leading-6">
           <div className="flex items-start gap-3">
-            <HardDrive size={19} className="mt-0.5 shrink-0 text-sky-500" aria-hidden="true" />
+            <HardDrive size={19} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
             <p>{isZh ? '书籍、笔记和学习记录仅保存在当前浏览器的本地存储中。' : 'Books, notes, and learning records are stored only in this browser.'}</p>
           </div>
           <div className="flex items-start gap-3">

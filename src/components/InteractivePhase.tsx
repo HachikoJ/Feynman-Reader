@@ -16,6 +16,7 @@ import MarkdownRenderer from './MarkdownRenderer'
 import SourceEvidence from './SourceEvidence'
 import { getThinkingQuestionsForPhase, ThinkingQuestion } from '@/lib/learningModes'
 import AppIcon from './AppIcon'
+import CopyContentButton from './CopyContentButton'
 
 interface Props {
   bookId: string
@@ -228,6 +229,7 @@ export default function InteractivePhase({
                 {lang === 'zh' ? '重新生成' : 'Regenerate'}
               </span>
             </button>
+            <CopyContentButton content={content} lang={lang} />
           </div>
         </div>
 
@@ -390,6 +392,9 @@ export default function InteractivePhase({
                   </p>
                 </div>
                 <div className="bg-[var(--bg-secondary)] rounded-xl p-3">
+                  <div className="mb-2 flex justify-end">
+                    <CopyContentButton content={item.a} lang={lang} />
+                  </div>
                   <MarkdownRenderer content={item.a} />
                   <SourceEvidence content={item.a} documentContent={documentContent} lang={lang} />
                 </div>

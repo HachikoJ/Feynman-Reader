@@ -72,7 +72,7 @@ export default function ConfirmDialog({ options, onClose, lang }: Props) {
     info: {
       icon: 'info',
       tone: 'blue',
-      bgClass: 'bg-blue-500/10',
+      bgClass: 'bg-[var(--accent)]/10',
       btnClass: 'bg-[var(--accent)] hover:opacity-90 text-white'
     }
   }
@@ -88,7 +88,7 @@ export default function ConfirmDialog({ options, onClose, lang }: Props) {
       />
 
       {/* 对话框 */}
-      <div className="relative bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in">
+      <div className="brand-dialog relative w-full max-w-md rounded-xl p-6 animate-scale-in">
         {/* 图标 */}
         <div className="text-center mb-4">
           <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${config.bgClass}`}>

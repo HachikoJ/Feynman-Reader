@@ -1,33 +1,148 @@
 'use client'
 
+import { Check, Copy, Download } from 'lucide-react'
+import { useState } from 'react'
 import { getSafeLinkHref } from '@/lib/safeUrl'
+import { downloadMarkdownAsWord, downloadTableAsExcel } from '@/lib/markdownExport'
+import { findMathExpressions } from '@/lib/mathRendering'
 import AppIcon from './AppIcon'
+import HtmlFragment from './HtmlFragment'
+import MathFormula from './MathFormula'
+import MermaidDiagram from './MermaidDiagram'
 
 interface Props {
   content: string
   className?: string
+  showWordDownload?: boolean
 }
 
-export default function MarkdownRenderer({ content, className = '' }: Props) {
+function CopyCodeButton({ value, inline = false }: { value: string; inline?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setFailed(false)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      setFailed(true)
+      window.setTimeout(() => setFailed(false), 1800)
+    }
+  }
+
+  const label = failed ? '复制失败 / Copy failed' : copied ? '已复制 / Copied' : '复制代码 / Copy code'
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className={inline
+        ? 'markdown-inline-code-copy'
+        : 'markdown-code-copy'}
+      aria-label={label}
+      title={label}
+    >
+      {copied ? <Check size={inline ? 11 : 14} aria-hidden="true" /> : <Copy size={inline ? 11 : 14} aria-hidden="true" />}
+      {!inline && (failed ? '失败 / Failed' : copied ? '已复制 / Copied' : '复制 / Copy')}
+    </button>
+  )
+}
+
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  const cells: string[] = []
+  let cell = ''
+  let escaped = false
+  for (const char of trimmed) {
+    if (char === '|' && !escaped) {
+      cells.push(cell.trim())
+      cell = ''
+    } else {
+      cell += char
+    }
+    escaped = char === '\\' && !escaped
+  }
+  cells.push(cell.trim())
+  return cells
+}
+
+function isTableDivider(line: string): boolean {
+  const cells = splitTableRow(line)
+  return cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell))
+}
+
+function tableAlignment(cell: string): 'left' | 'center' | 'right' | undefined {
+  const value = cell.trim()
+  if (value.startsWith(':') && value.endsWith(':')) return 'center'
+  if (value.endsWith(':')) return 'right'
+  if (value.startsWith(':')) return 'left'
+  return undefined
+}
+
+export default function MarkdownRenderer({ content, className = '', showWordDownload = false }: Props) {
   const parseMarkdown = (text: string): JSX.Element[] => {
     const lines = text.split('\n')
     const elements: JSX.Element[] = []
-    let listItems: string[] = []
+    type ListItem = { content: string; checked?: boolean; depth: number; type: 'ordered' | 'unordered' }
+    type ListNode = { item: ListItem; children: ListNode[] }
+    let listItems: ListItem[] = []
     let blockquoteLines: string[] = []
-    let codeBlock: { lang: string; lines: string[] } | null = null
+    let codeBlock: { lang: string; lines: string[]; fence: '`' | '~' } | null = null
+
+    const flushTable = (header: string[], divider: string[], body: string[][]) => {
+      const columnCount = Math.max(header.length, divider.length, ...body.map(row => row.length))
+      const headers = Array.from({ length: columnCount }, (_, index) => header[index] || '')
+      const alignments = Array.from({ length: columnCount }, (_, index) => tableAlignment(divider[index] || ''))
+      const rows = body.map(row => Array.from({ length: columnCount }, (_, index) => row[index] || ''))
+      elements.push(
+        <div key={`table-${elements.length}`} className="markdown-table-wrap" role="region" aria-label="Markdown 表格 / Markdown table" tabIndex={0}>
+          <div className="markdown-table-toolbar">
+            <span>表格 / Table</span>
+            <button type="button" className="markdown-table-download" onClick={() => void downloadTableAsExcel({ headers, rows }, 'feynman-table.xlsx')} aria-label="下载 Excel / Download Excel" title="下载 Excel / Download Excel">
+              <Download size={13} aria-hidden="true" />
+              <span>Excel</span>
+            </button>
+          </div>
+          <table className="markdown-table">
+            <thead>
+              <tr>{headers.map((cell, index) => <th key={index} style={{ textAlign: alignments[index] }}>{parseInline(cell)}</th>)}</tr>
+            </thead>
+            {rows.length > 0 && <tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, index) => <td key={index} style={{ textAlign: alignments[index] }}>{parseInline(cell)}</td>)}</tr>)}</tbody>}
+          </table>
+        </div>
+      )
+    }
 
     const flushList = () => {
       if (listItems.length > 0) {
-        elements.push(
-          <ul key={`list-${elements.length}`} className="my-3 space-y-2">
-            {listItems.map((item, i) => (
-              <li key={i} className="flex items-start gap-3 text-[var(--text-secondary)] leading-relaxed">
-                <span className="flex-shrink-0 w-2 h-2 rounded-full bg-[var(--accent)] mt-2"></span>
-                <span className="flex-1">{parseInline(item)}</span>
+        const roots: ListNode[] = []
+        const stack: Array<{ depth: number; node: ListNode }> = []
+        listItems.forEach(item => {
+          while (stack.length && stack[stack.length - 1].depth >= item.depth) stack.pop()
+          const node: ListNode = { item, children: [] }
+          if (stack.length) stack[stack.length - 1].node.children.push(node)
+          else roots.push(node)
+          stack.push({ depth: item.depth, node })
+        })
+
+        const renderNodes = (nodes: ListNode[], key: string): JSX.Element => {
+          const type = nodes[0]?.item.type === 'ordered' ? 'ol' : 'ul'
+          const ListTag = type === 'ol' ? 'ol' : 'ul'
+          return <ListTag key={key} className={type === 'ol' ? 'my-2 list-decimal space-y-2 pl-6 marker:font-semibold marker:text-[var(--accent)]' : 'my-2 list-disc space-y-2 pl-6 marker:text-[var(--accent)]'}>
+            {nodes.map((node, index) => (
+              <li key={`${key}-${index}`} className="min-w-0 text-[var(--text-secondary)] leading-relaxed">
+                <span className={node.item.checked !== undefined ? 'inline-flex min-w-0 items-start gap-2' : 'min-w-0'}>
+                  {node.item.checked !== undefined && <span className="mt-1.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[var(--accent)] text-[11px] leading-none text-[var(--accent)]" aria-label={node.item.checked ? '已完成' : '未完成'}>{node.item.checked ? '✓' : ''}</span>}
+                  <span className="min-w-0">{node.item.content.split('\n').map((part, partIndex) => <span key={partIndex}>{partIndex > 0 && <br />}{parseInline(part)}</span>)}</span>
+                </span>
+                {node.children.length > 0 && renderNodes(node.children, `${key}-${index}-nested`)}
               </li>
             ))}
-          </ul>
-        )
+          </ListTag>
+        }
+        elements.push(<div key={`list-${elements.length}`} className="my-3">{renderNodes(roots, `list-${elements.length}`)}</div>)
         listItems = []
       }
     }
@@ -50,66 +165,86 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
 
     const flushCodeBlock = () => {
       if (codeBlock) {
-        elements.push(
-          <pre 
-            key={`code-${elements.length}`}
-            className="my-3 p-4 bg-[var(--bg-primary)] rounded-xl overflow-x-auto border border-[var(--border)]"
-          >
-            <code className="text-sm text-[var(--accent)] font-mono">
-              {codeBlock.lines.join('\n')}
-            </code>
-          </pre>
-        )
+        const codeLanguage = codeBlock.lang.toLowerCase().split(/\s+/)[0]
+        if (codeLanguage === 'mermaid' || codeLanguage === 'mmd') {
+          elements.push(<MermaidDiagram key={`mermaid-${elements.length}`} source={codeBlock.lines.join('\n')} />)
+        } else {
+          elements.push(
+            <div key={`code-${elements.length}`} className="markdown-code-wrap">
+              <div className="markdown-code-toolbar"><span>{codeBlock.lang || 'text'}</span><CopyCodeButton value={codeBlock.lines.join('\n')} /></div>
+              <pre><code>{codeBlock.lines.join('\n')}</code></pre>
+            </div>
+          )
+        }
         codeBlock = null
       }
     }
 
+    let inlineKeySeed = 0
+
     // 解析行内元素
     const parseInline = (text: string): (string | JSX.Element)[] => {
+      const math = findMathExpressions(text)
+      if (math.length > 0) {
+        const result: (string | JSX.Element)[] = []
+        let offset = 0
+        math.forEach((expression, index) => {
+          if (expression.start > offset) result.push(...parseInline(text.slice(offset, expression.start)))
+          result.push(<MathFormula key={`math-${index}-${expression.start}`} latex={expression.latex} display={false} />)
+          offset = expression.end
+        })
+        if (offset < text.length) result.push(...parseInline(text.slice(offset)))
+        return result
+      }
       const result: (string | JSX.Element)[] = []
-      let remaining = text
       let keyIndex = 0
 
-      while (remaining.length > 0) {
-        // 粗体 **text**
-        let match = remaining.match(/^(.*?)\*\*(.+?)\*\*(.*)$/)
-        if (match) {
-          if (match[1]) result.push(match[1])
-          result.push(<strong key={`b-${keyIndex++}`} className="font-semibold text-[var(--text-primary)]">{match[2]}</strong>)
-          remaining = match[3]
-          continue
-        }
+      const htmlPattern = /<(?:a|p|h[1-6]|mark|sup|sub|kbd|u|s|small|strong|em|code|del|ins)\b[^>]*>[\s\S]*?<\/(?:a|p|h[1-6]|mark|sup|sub|kbd|u|s|small|strong|em|code|del|ins)>|<br\s*\/?>/i
+      const htmlMatch = htmlPattern.exec(text)
+      if (htmlMatch) {
+        if (htmlMatch.index > 0) result.push(...parseInline(text.slice(0, htmlMatch.index)))
+        result.push(<HtmlFragment key={`html-${inlineKeySeed++}`} html={htmlMatch[0]} />)
+        if (htmlMatch.index + htmlMatch[0].length < text.length) result.push(...parseInline(text.slice(htmlMatch.index + htmlMatch[0].length)))
+        return result
+      }
 
-        // 行内代码 `code`
-        match = remaining.match(/^(.*?)`([^`]+)`(.*)$/)
-        if (match) {
-          if (match[1]) result.push(match[1])
+      // Scan for the next token so mixed inline styles (for example bold plus
+      // highlights in one sentence) are parsed independently.
+      const tokenPattern = /==([^=\n]+)==|\*\*([^*\n]+)\*\*|__([^_\n]+)__|~~([^~\n]+)~~|`([^`\n]+)`|\[([^\]]+)\]\(([^)\n]+)\)|\*([^*\n]+)\*|_([^_\n]+)_/
+      let offset = 0
+      while (offset < text.length) {
+        const match = tokenPattern.exec(text.slice(offset))
+        if (!match) {
+          result.push(text.slice(offset))
+          break
+        }
+        const start = offset + match.index
+        if (start > offset) result.push(text.slice(offset, start))
+
+        if (match[1]) {
+          result.push(<mark key={`m-${keyIndex++}`} className="rounded bg-amber-200/80 px-1 text-amber-950 dark:bg-amber-300/25 dark:text-amber-100">{match[1]}</mark>)
+        } else if (match[2] || match[3]) {
+          result.push(<strong key={`b-${keyIndex++}`} className="font-semibold text-[var(--text-primary)]">{match[2] || match[3]}</strong>)
+        } else if (match[4]) {
+          result.push(<del key={`d-${keyIndex++}`} className="text-[var(--text-secondary)] line-through">{match[4]}</del>)
+        } else if (match[5]) {
           result.push(
-            <code key={`c-${keyIndex++}`} className="px-1.5 py-0.5 bg-[var(--accent)]/10 text-[var(--accent)] rounded text-sm font-mono">
-              {match[2]}
-            </code>
+            <span key={`c-${keyIndex++}`} className="markdown-inline-code">
+              <code>{match[5]}</code>
+              <CopyCodeButton value={match[5]} inline />
+            </span>
           )
-          remaining = match[3]
-          continue
-        }
-
-        // 链接 [text](url)
-        match = remaining.match(/^(.*?)\[([^\]]+)\]\(([^)]+)\)(.*)$/)
-        if (match) {
-          if (match[1]) result.push(match[1])
-          const safeHref = getSafeLinkHref(match[3])
+        } else if (match[6] && match[7]) {
+          const safeHref = getSafeLinkHref(match[7])
           result.push(safeHref ? (
-            <a key={`a-${keyIndex++}`} href={safeHref} target="_blank" rel="noopener noreferrer"
-              className="text-[var(--accent)] hover:underline">
-              {match[2]}
+            <a key={`a-${keyIndex++}`} href={safeHref} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+              {match[6]}
             </a>
-          ) : <span key={`a-${keyIndex++}`}>{match[2]}</span>)
-          remaining = match[4]
-          continue
+          ) : <span key={`a-${keyIndex++}`}>{match[6]}</span>)
+        } else if (match[8] || match[9]) {
+          result.push(<em key={`e-${keyIndex++}`} className="italic text-[var(--accent)]">{match[8] || match[9]}</em>)
         }
-
-        result.push(remaining)
-        break
+        offset = start + match[0].length
       }
 
       return result
@@ -119,19 +254,79 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
       const line = lines[i]
 
       // 代码块
-      if (line.startsWith('```')) {
+      const fenceMatch = line.match(/^\s*(`{3,}|~{3,})(.*)$/)
+      if (fenceMatch) {
         if (codeBlock) {
-          flushCodeBlock()
+          if (fenceMatch[1][0] === codeBlock.fence) flushCodeBlock()
         } else {
           flushList()
           flushBlockquote()
-          codeBlock = { lang: line.slice(3).trim(), lines: [] }
+          codeBlock = { lang: fenceMatch[2].trim(), lines: [], fence: fenceMatch[1][0] as '`' | '~' }
         }
         continue
       }
 
       if (codeBlock) {
         codeBlock.lines.push(line)
+        continue
+      }
+
+      const blockFormulaStart = line.trim().match(/^(\$\$|\\\[)(.*)$/)
+      if (blockFormulaStart) {
+        flushList()
+        flushBlockquote()
+        const closing = blockFormulaStart[1] === '$$' ? '$$' : '\\]'
+        const parts: string[] = []
+        const firstPart = blockFormulaStart[2]
+        if (firstPart.endsWith(closing)) {
+          parts.push(firstPart.slice(0, -closing.length))
+        } else {
+          if (firstPart) parts.push(firstPart)
+          i += 1
+          while (i < lines.length && !lines[i].trim().endsWith(closing)) {
+            parts.push(lines[i])
+            i += 1
+          }
+          if (i < lines.length) parts.push(lines[i].trim().slice(0, -closing.length))
+        }
+        elements.push(<MathFormula key={`math-block-${elements.length}`} latex={parts.join('\n').trim()} display />)
+        continue
+      }
+
+      // Safe HTML blocks such as tables and details. The fragment is sanitized
+      // by HtmlFragment before it is inserted into the document.
+      const htmlBlockStart = line.trim().match(/^<(table|details|div|section|article|aside|figure|pre|ul|ol|blockquote|h[1-6])\b/i)
+      if (htmlBlockStart) {
+        flushList()
+        flushBlockquote()
+        const tag = htmlBlockStart[1].toLowerCase()
+        const htmlLines = [line]
+        if (!new RegExp(`</${tag}\\s*>`, 'i').test(line)) {
+          i += 1
+          while (i < lines.length && !new RegExp(`</${tag}\\s*>`, 'i').test(lines[i])) {
+            htmlLines.push(lines[i])
+            i += 1
+          }
+          if (i < lines.length) htmlLines.push(lines[i])
+        }
+        elements.push(<HtmlFragment key={`html-block-${elements.length}`} html={htmlLines.join('\n')} block />)
+        continue
+      }
+
+      // GitHub-flavoured Markdown table: header, divider, then optional rows.
+      if (i + 1 < lines.length && line.includes('|') && isTableDivider(lines[i + 1])) {
+        flushList()
+        flushBlockquote()
+        const header = splitTableRow(line)
+        const divider = splitTableRow(lines[i + 1])
+        const body: string[][] = []
+        i += 2
+        while (i < lines.length && lines[i].trim() && lines[i].includes('|')) {
+          body.push(splitTableRow(lines[i]))
+          i += 1
+        }
+        i -= 1
+        flushTable(header, divider, body)
         continue
       }
 
@@ -152,6 +347,24 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
       }
 
       // 标题
+      if (line.startsWith('# ')) {
+        flushList()
+        elements.push(
+          <h2 key={`h2-${elements.length}`} className="mt-5 mb-3 text-xl font-bold leading-tight text-[var(--text-primary)]">
+            {parseInline(line.slice(2))}
+          </h2>
+        )
+        continue
+      }
+      if (line.startsWith('## ')) {
+        flushList()
+        elements.push(
+          <h3 key={`h2-${elements.length}`} className="mt-5 mb-2.5 border-l-2 border-[var(--accent)] pl-3 text-base font-semibold text-[var(--text-primary)]">
+            {parseInline(line.slice(3))}
+          </h3>
+        )
+        continue
+      }
       if (line.startsWith('### ')) {
         flushList()
         elements.push(
@@ -174,9 +387,25 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
       }
 
       // 无序列表（支持多种符号）
-      const listMatch = line.match(/^\s*[-*•◦▪▸►]\s+(.*)$/) || line.match(/^\s*\d+[.、)]\s*(.*)$/)
-      if (listMatch) {
-        listItems.push(listMatch[1])
+      const taskMatch = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/)
+      const unorderedMatch = line.match(/^\s*[-*+•◦▪▸►]\s+(.*)$/)
+      const orderedMatch = line.match(/^\s*\d+[.、)]\s*(.*)$/)
+      const listMatch = unorderedMatch || orderedMatch
+      if (taskMatch || listMatch) {
+        const nextType = taskMatch || unorderedMatch ? 'unordered' : 'ordered'
+        const indentation = line.match(/^\s*/)?.[0].replace(/\t/g, '  ').length || 0
+        const depth = Math.floor(indentation / 2)
+        const lastRoot = [...listItems].reverse().find(item => item.depth === 0)
+        if (depth === 0 && lastRoot && lastRoot.type !== nextType) flushList()
+        if (taskMatch) listItems.push({ content: taskMatch[2], checked: taskMatch[1].toLowerCase() === 'x', depth, type: nextType })
+        else listItems.push({ content: listMatch?.[1] || '', depth, type: nextType })
+        continue
+      }
+
+      // Preserve wrapped paragraphs inside the current list item.
+      const continuation = line.match(/^\s{2,}(\S.*)$/)
+      if (continuation && listItems.length) {
+        listItems[listItems.length - 1].content += `\n${continuation[1]}`
         continue
       }
 
@@ -203,5 +432,17 @@ export default function MarkdownRenderer({ content, className = '' }: Props) {
     return elements
   }
 
-  return <div className={`markdown-content ${className}`}>{parseMarkdown(content)}</div>
+  return (
+    <div className={`markdown-content ${className}`}>
+      {showWordDownload && (
+        <div className="markdown-export-toolbar">
+          <button type="button" className="markdown-word-download" onClick={() => void downloadMarkdownAsWord(content, 'feynman-ai-reply.docx')} aria-label="下载 Word / Download Word" title="下载 Word / Download Word">
+            <Download size={14} aria-hidden="true" />
+            <span>下载 Word / Word</span>
+          </button>
+        </div>
+      )}
+      {parseMarkdown(content)}
+    </div>
+  )
 }

@@ -83,17 +83,17 @@ export const presetThemes: Record<Theme, CustomTheme> = {
     name: 'light',
     displayName: 'Light',
     colors: {
-      background: '#ffffff',
-      surface: '#f5f5f5',
-      primary: '#1976d2',
-      secondary: '#9c27b0',
-      accent: '#ff4081',
-      text: '#212121',
-      textSecondary: '#757575',
-      border: '#e0e0e0',
-      success: '#4caf50',
-      warning: '#ff9800',
-      error: '#f44336'
+      background: '#f9fbff',
+      surface: '#eef3ff',
+      primary: '#315efb',
+      secondary: '#ff6b61',
+      accent: '#315efb',
+      text: '#1a2133',
+      textSecondary: '#657087',
+      border: '#dce4f1',
+      success: '#28c79a',
+      warning: '#ffd75e',
+      error: '#ff6b61'
     }
   },
   dark: {
@@ -101,17 +101,17 @@ export const presetThemes: Record<Theme, CustomTheme> = {
     name: 'dark',
     displayName: 'Dark',
     colors: {
-      background: '#121212',
-      surface: '#1e1e1e',
-      primary: '#90caf9',
-      secondary: '#ce93d8',
-      accent: '#f48fb1',
-      text: '#ffffff',
-      textSecondary: '#b0bec5',
-      border: '#333333',
-      success: '#81c784',
-      warning: '#ffb74d',
-      error: '#e57373'
+      background: '#151823',
+      surface: '#232838',
+      primary: '#7695ff',
+      secondary: '#ff857d',
+      accent: '#7695ff',
+      text: '#f8faff',
+      textSecondary: '#b3bdd2',
+      border: '#394257',
+      success: '#55d9b5',
+      warning: '#ffe07a',
+      error: '#ff857d'
     }
   },
   cyber: {
@@ -119,17 +119,17 @@ export const presetThemes: Record<Theme, CustomTheme> = {
     name: 'cyber',
     displayName: 'Cyber',
     colors: {
-      background: '#0a0e27',
-      surface: '#1a1f3a',
-      primary: '#00d4ff',
-      secondary: '#7b2cbf',
-      accent: '#ff006e',
-      text: '#e0e6ed',
-      textSecondary: '#94a3b8',
-      border: '#2d3561',
-      success: '#00ff88',
-      warning: '#ffaa00',
-      error: '#ff3366'
+      background: '#101522',
+      surface: '#19243a',
+      primary: '#78a0ff',
+      secondary: '#ff756c',
+      accent: '#78a0ff',
+      text: '#f4f8ff',
+      textSecondary: '#a9bad6',
+      border: '#38517b',
+      success: '#3de1b3',
+      warning: '#ffe06b',
+      error: '#ff756c'
     },
     borderRadius: '12px'
   }
@@ -197,6 +197,7 @@ export function applyTheme(theme: CustomTheme | Theme): void {
   root.style.setProperty('--primary', colors.primary)
   root.style.setProperty('--secondary', colors.secondary)
   root.style.setProperty('--accent', colors.accent)
+  root.style.setProperty('--accent-secondary', colors.secondary)
   root.style.setProperty('--text-primary', colors.text)
   root.style.setProperty('--text-secondary', colors.textSecondary)
   root.style.setProperty('--border', colors.border)

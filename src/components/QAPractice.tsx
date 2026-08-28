@@ -16,10 +16,12 @@ import ScoringCriteriaDisplay from './ScoringCriteriaDisplay'
 import { ProgressRecord, PERSONA_TYPES } from '@/lib/practiceEnhancement'
 import { MAX_AI_ANSWER_LENGTH } from '@/lib/dataLimits'
 import AppIcon, { AppIconName } from './AppIcon'
+import CopyContentButton from './CopyContentButton'
 
 interface Props {
   book: Book
   apiKey: string
+  needsAiConfiguration?: boolean
   lang: Language
   quotes?: { text: string; author: string }[]
   onBookUpdate?: () => void
@@ -143,7 +145,13 @@ export function matchEvaluationsToQuestions(
   })
 }
 
-export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef, onOpenSettings }: Props) {
+function getFirstUnpassedQuestionIndex(record: QAPracticeRecord | null): number | null {
+  if (!record) return null
+  const index = record.questions.findIndex(question => !question.passed)
+  return index >= 0 ? index : null
+}
+
+export default function QAPractice({ book, apiKey, needsAiConfiguration = false, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef, onOpenSettings }: Props) {
   const [currentRecord, setCurrentRecord] = useState<QAPracticeRecord | null>(null)
   const [qaRecords, setQaRecords] = useState<QAPracticeRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -155,6 +163,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
   const [selectedPersonaIds, setSelectedPersonaIds] = useState<string[]>([])
   const [showCriteria, setShowCriteria] = useState(false)
   const [showProgress, setShowProgress] = useState(false)
+  const [expandedQuestionIndex, setExpandedQuestionIndex] = useState<number | null>(null)
+  const [showPersonaSelector, setShowPersonaSelector] = useState(false)
   const requestInFlightRef = useRef(false)
   const deletingRecordIdsRef = useRef(new Set<string>())
   const [deletingRecordIds, setDeletingRecordIds] = useState<Set<string>>(new Set())
@@ -168,6 +178,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
     setQaRecords(records)
     const activeRecord = selectActiveQARecord(records)
     setCurrentRecord(activeRecord)
+    setExpandedQuestionIndex(getFirstUnpassedQuestionIndex(activeRecord))
     setAnswers(activeRecord
       ? Object.fromEntries(activeRecord.questions.flatMap((question, index) =>
           !question.passed && question.userAnswer ? [[index, question.userAnswer]] : []
@@ -178,6 +189,21 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
 
   const bestTeachingRecord = getBestPassedTeachingRecord(book.practiceRecords)
   const bestTeachingContent = bestTeachingRecord?.content
+  const qaHistoryText = qaRecords
+    .slice()
+    .reverse()
+    .map((record, recordIndex) => [
+      `${lang === 'zh' ? '问答记录' : 'Q&A Record'} ${recordIndex + 1}`,
+      ...record.questions.map((question, questionIndex) => [
+        `${questionIndex + 1}. ${question.personaName}: ${question.question}`,
+        ...getQuestionAttempts(question).map((attempt, attemptIndex) => [
+          `${lang === 'zh' ? `第 ${attemptIndex + 1} 次回答` : `Attempt ${attemptIndex + 1}`} (${attempt.score})`,
+          attempt.userAnswer,
+          `${lang === 'zh' ? 'AI 点评' : 'AI Review'}:\n${attempt.aiReview}`
+        ].join('\n'))
+      ].join('\n\n'))
+    ].join('\n\n'))
+    .join('\n\n---\n\n')
   const hasPassedTeaching = bestTeachingContent !== undefined
 
   const getRequestErrorMessage = (error: unknown, action: 'generate' | 'evaluate') => {
@@ -231,8 +257,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
   // 生成新问题
   const handleGenerateQuestions = async () => {
     if (requestInFlightRef.current) return
-    if (!apiKey) {
-      setErrorMessage(lang === 'zh' ? '请先在设置中填写 API Key。' : 'Please add an API key in Settings first.')
+    if (!apiKey || needsAiConfiguration) {
+      onOpenSettings?.()
       return
     }
     if (!bestTeachingContent) {
@@ -280,6 +306,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       })
       await flushPendingStoreWrites()
       setCurrentRecord(savedRecord)
+      setExpandedQuestionIndex(0)
       setQaRecords(getQAPracticeRecords(book.id))
       setAnswers({})
 
@@ -299,8 +326,8 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
   // 提交答案
   const handleSubmitAnswers = async () => {
     if (requestInFlightRef.current) return
-    if (!currentRecord || !apiKey) {
-      setErrorMessage(lang === 'zh' ? '请先在设置中填写 API Key。' : 'Please add an API key in Settings first.')
+    if (!currentRecord || !apiKey || needsAiConfiguration) {
+      onOpenSettings?.()
       return
     }
 
@@ -345,7 +372,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         throw new Error('AI returned an incomplete evaluation set')
       }
       
-      // 更新记录
+      // 保存学习记录
       const updatedQuestions = [...currentRecord.questions]
       const answersByIndex = new Map(questionsToEvaluate.map(question => [question.index, question.answer]))
       matchedEvaluations.forEach(({ index, evaluation }) => {
@@ -366,6 +393,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       const updatedRecord = getQAPracticeRecords(book.id).find(r => r.id === currentRecord.id)
       if (updatedRecord) {
         setCurrentRecord(updatedRecord)
+      setExpandedQuestionIndex(getFirstUnpassedQuestionIndex(updatedRecord))
       }
       setQaRecords(getQAPracticeRecords(book.id))
       setAnswers(Object.fromEntries(updatedQuestions.flatMap((question, index) =>
@@ -383,6 +411,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         const persistedRecord = records.find(record => record.id === currentRecord?.id) || selectActiveQARecord(records)
         setQaRecords(records)
         setCurrentRecord(persistedRecord)
+        setExpandedQuestionIndex(getFirstUnpassedQuestionIndex(persistedRecord))
       }
       logger.error('评估失败:', error)
       setErrorMessage(getRequestErrorMessage(error, 'evaluate'))
@@ -406,6 +435,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       if (currentRecord?.id === recordId) {
         const activeRecord = selectActiveQARecord(records)
         setCurrentRecord(activeRecord)
+        setExpandedQuestionIndex(getFirstUnpassedQuestionIndex(activeRecord))
         setAnswers(activeRecord
           ? Object.fromEntries(activeRecord.questions.flatMap((question, index) =>
               !question.passed && question.userAnswer ? [[index, question.userAnswer]] : []
@@ -466,40 +496,40 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
 
   return (
     <div className="space-y-6">
-      {/* 进步追踪图 */}
-      {progressRecords.length > 0 && (
-        <details className="card overflow-hidden" onToggle={event => setShowProgress(event.currentTarget.open)}>
-          <summary className="cursor-pointer flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors">
+      {/* 学习概览：把趋势和评分规则收进同一工作台区域 */}
+      <div className="card overflow-hidden p-0">
+        {progressRecords.length > 0 && (
+          <details onToggle={event => setShowProgress(event.currentTarget.open)}>
+            <summary className="flex cursor-pointer items-center justify-between p-3 transition-colors hover:bg-[var(--bg-secondary)]">
+              <h3 className="flex items-center gap-2 font-semibold">
+                <AppIcon name="trendUp" tone="green" size={17} />{lang === 'zh' ? '进步追踪' : 'Progress Tracking'}
+              </h3>
+              <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showProgress ? 'rotate-180' : ''}`} />
+            </summary>
+            <div className="border-t border-[var(--border)] p-3 sm:p-4">
+              <ScoreTrendChart records={progressRecords} lang={lang} compact={false} embedded />
+            </div>
+          </details>
+        )}
+        <details onToggle={event => setShowCriteria(event.currentTarget.open)}>
+          <summary className={`flex cursor-pointer items-center justify-between p-3 transition-colors hover:bg-[var(--bg-secondary)] ${progressRecords.length > 0 ? 'border-t border-[var(--border)]' : ''}`}>
             <h3 className="flex items-center gap-2 font-semibold">
-              <AppIcon name="trendUp" tone="green" size={17} />{lang === 'zh' ? '进步追踪' : 'Progress Tracking'}
+              <AppIcon name="chart" tone="blue" size={17} />{lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
             </h3>
-            <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showProgress ? 'rotate-180' : ''}`} />
+            <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showCriteria ? 'rotate-180' : ''}`} />
           </summary>
-          <div className="border-t border-[var(--border)] p-4">
-            <ScoreTrendChart records={progressRecords} lang={lang} compact={false} embedded />
+          <div className="border-t border-[var(--border)] p-3 sm:p-4">
+            <ScoringCriteriaDisplay lang={lang} compact={false} embedded />
           </div>
         </details>
-      )}
-
-      {/* 评分标准 */}
-      <details className="card overflow-hidden" onToggle={event => setShowCriteria(event.currentTarget.open)}>
-        <summary className="cursor-pointer flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors">
-          <h3 className="flex items-center gap-2 font-semibold">
-            <AppIcon name="chart" tone="blue" size={17} />{lang === 'zh' ? '评分标准' : 'Scoring Criteria'}
-          </h3>
-          <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showCriteria ? 'rotate-180' : ''}`} />
-        </summary>
-        <div className="border-t border-[var(--border)] p-4">
-          <ScoringCriteriaDisplay lang={lang} compact={false} embedded />
-        </div>
-      </details>
+      </div>
 
       {/* 问答输入区域 */}
       <div className="card">
         <h3 className="flex items-center gap-2 text-xl font-bold mb-2">
           <AppIcon name="message" tone="green" size={22} />{lang === 'zh' ? '角色问答' : 'Role-based Q&A'}
         </h3>
-        <p className="text-sm text-[var(--text-secondary)] mb-4">
+        <p className="mb-3 text-sm text-[var(--text-secondary)]">
           {lang === 'zh'
             ? 'AI 会分析你的教学实践内容，找出其中的漏洞和不足，然后从不同角色的视角提出针对性的问题'
             : 'AI will analyze your teaching content, find gaps, and ask targeted questions from different perspectives'}
@@ -519,25 +549,42 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
         {loading ? (
           <LoadingQuotes lang={lang} quotes={quotes} />
         ) : !currentRecord ? (
-          <div className="text-center py-8">
-            <AppIcon name="users" tone="violet" size={48} className="mx-auto mb-4" />
-
-            {/* 角色选择器 */}
+          <div className="space-y-3 py-2">
             {hasPassedTeaching && (
-              <div className="mb-6">
-                <PersonaSelector
-                  lang={lang}
-                  selectedIds={selectedPersonaIds}
-                  onSelectionChange={setSelectedPersonaIds}
-                  maxSelect={PERSONA_QUESTION_COUNT}
-                  compact={false}
-                />
-              </div>
+              <>
+                <div className="flex items-center gap-3 rounded-xl bg-[var(--bg-secondary)] p-3">
+                  <AppIcon name="users" tone="violet" size={24} />
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="font-medium">{lang === 'zh' ? '准备一次角色问答' : 'Prepare role-based Q&A'}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {selectedPersonaIds.length > 0
+                        ? (lang === 'zh' ? `已选择 ${selectedPersonaIds.length} 个角色` : `${selectedPersonaIds.length} personas selected`)
+                        : (lang === 'zh' ? '默认使用 3 个视角' : 'Use 3 default perspectives')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPersonaSelector(!showPersonaSelector)}
+                    className="shrink-0 text-sm text-[var(--accent)] hover:underline"
+                  >
+                    {showPersonaSelector ? (lang === 'zh' ? '收起选择' : 'Hide') : (lang === 'zh' ? '调整角色' : 'Adjust')}
+                  </button>
+                </div>
+                {showPersonaSelector && (
+                  <PersonaSelector
+                    lang={lang}
+                    selectedIds={selectedPersonaIds}
+                    onSelectionChange={setSelectedPersonaIds}
+                    maxSelect={PERSONA_QUESTION_COUNT}
+                    compact={false}
+                  />
+                )}
+              </>
             )}
 
             {hasPassedTeaching ? (
               <>
-                <p className="text-[var(--text-secondary)] mb-4">
+                <p className="text-sm text-[var(--text-secondary)]">
                   {lang === 'zh'
                     ? selectedPersonaIds.length > 0
                       ? `已选择 ${selectedPersonaIds.length} 个角色，AI 将从这些角色的视角提出问题`
@@ -547,14 +594,14 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                 <button
                   onClick={handleGenerateQuestions}
                   disabled={loading}
-                  className="btn-primary"
+                  className="btn-primary mt-1"
                 >
                   {lang === 'zh' ? '生成问题' : 'Generate Questions'}
                 </button>
               </>
             ) : (
               <>
-                <p className="mb-4 flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400">
+                <p className="flex items-center justify-center gap-2 text-sm text-amber-700 dark:text-amber-400">
                   <AppIcon name="alert" size={17} />{lang === 'zh'
                     ? '请先完成并通过教学模拟（60 分及以上），AI 会基于合格的教学内容生成问题'
                     : 'Pass the teaching simulation with 60 or above first'}
@@ -569,7 +616,7 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
             )}
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {/* 进度提示 */}
             <div className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-lg">
               <div className="flex items-center gap-2">
@@ -591,19 +638,28 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
             </div>
 
             {/* 问题列表 */}
-            {currentRecord.questions.map((q, idx) => (
-              <div key={idx} className="bg-[var(--bg-secondary)] rounded-xl p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <AppIcon name={PERSONA_ICONS[idx] || 'help'} tone={idx % 3 === 0 ? 'blue' : idx % 3 === 1 ? 'violet' : 'amber'} size={24} />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{q.personaName}</span>
-                      {q.passed && <span className="flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={14} />{lang === 'zh' ? '已通过' : 'Passed'}</span>}
-                      {q.score !== undefined && !q.passed && <span className="text-yellow-400 text-sm">{q.score}分</span>}
-                    </div>
-                    <p className="text-sm mb-3">{q.question}</p>
-                    <SourceEvidence content={q.question} documentContent={book.documentContent} lang={lang} />
-                    
+            {currentRecord.questions.map((q, idx) => {
+              const isExpanded = expandedQuestionIndex === idx
+
+              return (
+              <div key={idx} className="overflow-hidden rounded-xl bg-[var(--bg-secondary)]">
+                <button
+                  type="button"
+                  onClick={() => setExpandedQuestionIndex(isExpanded ? null : idx)}
+                  className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--bg-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]/50"
+                  aria-expanded={isExpanded}
+                >
+                  <AppIcon name={PERSONA_ICONS[idx] || 'help'} tone={idx % 3 === 0 ? 'blue' : idx % 3 === 1 ? 'violet' : 'amber'} size={21} />
+                  <span className="min-w-0 flex-1 truncate font-medium">{q.personaName}</span>
+                  {q.passed && <span className="flex shrink-0 items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><AppIcon name="success" size={14} />{lang === 'zh' ? '已通过' : 'Passed'}</span>}
+                  {q.score !== undefined && !q.passed && <span className="shrink-0 text-xs text-yellow-400">{q.score}{lang === 'zh' ? '分' : ' pts'}</span>}
+                  <AppIcon name="chevronDown" tone="muted" size={17} className={`shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isExpanded && <div className="border-t border-[var(--border)] px-3 pb-3 pt-3">
+                  <p className="mb-2 text-sm leading-6">{q.question}</p>
+                  <SourceEvidence content={q.question} documentContent={book.documentContent} lang={lang} />
+
                     {q.userAnswer && q.aiReview && !q.passed && (
                       <div className="mt-3 border border-yellow-500/30 bg-yellow-500/10 rounded-lg p-3 text-sm">
                         <p className="font-medium text-yellow-300 mb-2">
@@ -613,9 +669,12 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                           {lang === 'zh' ? '你的回答：' : 'Your answer:'}
                         </p>
                         <p className="mb-3 whitespace-pre-wrap">{q.userAnswer}</p>
-                        <p className="text-xs text-[var(--text-secondary)] mb-1">
-                          {lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:'}
-                        </p>
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            {lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:'}
+                          </p>
+                          <CopyContentButton content={q.aiReview} lang={lang} />
+                        </div>
                         <MarkdownRenderer content={q.aiReview} />
                         <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
@@ -638,24 +697,27 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
 
                     {q.userAnswer && q.aiReview && q.passed && (
                       <div className="mt-3 p-3 bg-[var(--bg-card)] rounded text-sm">
-                        <p className="text-xs text-[var(--text-secondary)] mb-1">
-                          {lang === 'zh' ? 'AI 点评：' : 'AI Review:'}
-                        </p>
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            {lang === 'zh' ? 'AI 点评：' : 'AI Review:'}
+                          </p>
+                          <CopyContentButton content={q.aiReview} lang={lang} />
+                        </div>
                         <MarkdownRenderer content={q.aiReview} />
                         <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
                     )}
-                  </div>
-                </div>
+                </div>}
               </div>
-            ))}
+              )
+            })}
 
             {/* 提交按钮 */}
             {!hasAnsweredAll && (
               <div className="space-y-3">
                 {!canSubmit && (
-                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                    <p className="flex items-start gap-2 text-blue-700 dark:text-blue-300 text-sm">
+                  <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/8 p-3">
+                    <p className="flex items-start gap-2 text-sm text-[var(--accent)]">
                       <AppIcon name="lightbulb" tone="amber" size={16} className="mt-0.5" />{lang === 'zh'
                         ? '请先回答所有未通过的问题，至少写一些思考内容，才能提交给 AI 评估' 
                         : 'Please answer all unanswered questions before submitting'}
@@ -687,13 +749,26 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
       {/* 问答记录 - 默认折叠 */}
       {qaRecords.length > 0 && (
         <div className="card" ref={historyRef}>
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="w-full flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
-          >
-            <h3 className="flex items-center gap-2 font-semibold"><AppIcon name="chart" tone="blue" size={18} />{lang === 'zh' ? '问答记录' : 'Q&A History'} ({qaRecords.length})</h3>
-            <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showHistory ? 'rotate-180' : ''}`} />
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => setShowHistory(!showHistory)}
+              className="min-w-0 flex-1 flex items-center gap-2 rounded-lg p-2 text-left transition-colors hover:bg-[var(--bg-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]/50"
+            >
+              <h3 className="min-w-0 flex items-center gap-2 font-semibold"><AppIcon name="chart" tone="blue" size={18} />{lang === 'zh' ? '问答记录' : 'Q&A History'} ({qaRecords.length})</h3>
+            </button>
+            {showHistory && (
+              <CopyContentButton content={qaHistoryText} lang={lang} label={lang === 'zh' ? '复制问答记录' : 'Copy Q&A records'} />
+            )}
+            <button
+              type="button"
+              onClick={() => setShowHistory(!showHistory)}
+              className="inline-flex min-h-10 min-w-10 items-center justify-center mr-1 rounded-lg transition-colors hover:bg-[var(--bg-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
+              aria-label={lang === 'zh' ? (showHistory ? '收起问答记录' : '展开问答记录') : (showHistory ? 'Collapse Q&A records' : 'Expand Q&A records')}
+            >
+              <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showHistory ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
           
           {showHistory && (
             <div className="mt-4 space-y-4 animate-fade-in">
@@ -752,9 +827,12 @@ export default function QAPractice({ book, apiKey, lang, quotes = [], onBookUpda
                             </div>
                             <p className="text-xs text-[var(--text-secondary)] mb-1">{lang === 'zh' ? '你的回答：' : 'Your answer:'}</p>
                             <p className="mb-3 whitespace-pre-wrap">{attempt.userAnswer}</p>
-                            <p className="text-xs text-[var(--text-secondary)] mb-1">
-                              {attempt.passed ? (lang === 'zh' ? 'AI 点评：' : 'AI Review:') : (lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:')}
-                            </p>
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <p className="text-xs text-[var(--text-secondary)]">
+                                {attempt.passed ? (lang === 'zh' ? 'AI 点评：' : 'AI Review:') : (lang === 'zh' ? 'AI 改进建议：' : 'AI improvement advice:')}
+                              </p>
+                              <CopyContentButton content={attempt.aiReview} lang={lang} />
+                            </div>
                             <MarkdownRenderer content={attempt.aiReview} />
                             <SourceEvidence content={attempt.aiReview} documentContent={book.documentContent} lang={lang} />
                           </div>

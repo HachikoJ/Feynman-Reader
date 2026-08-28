@@ -268,9 +268,9 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-[var(--bg-primary)] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="brand-dialog flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--border)]">
+        <div className="brand-dialog-header flex items-center justify-between border-b border-[var(--border)] p-6">
           <h2 className="text-xl font-bold text-[var(--text-primary)]">{text.title}</h2>
           <button
             onClick={onClose}

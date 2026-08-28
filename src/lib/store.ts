@@ -161,6 +161,8 @@ export interface AppSettings {
   theme: Theme
   hideApiKeyAlert: boolean
   aiDataConsent?: boolean
+  /** Enables the opt-in assistant memory layer. Only explicit memory requests are stored. */
+  assistantMemoryEnabled?: boolean
   quotes: CustomQuote[]  // 改名，包含预设和自定义
   quotesInitialized?: boolean  // 标记是否已初始化预设金句
 }
@@ -172,6 +174,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   hideApiKeyAlert: false,
   aiDataConsent: false,
+  assistantMemoryEnabled: true,
   quotes: [],
   quotesInitialized: false
 }

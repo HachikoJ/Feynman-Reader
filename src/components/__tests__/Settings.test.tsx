@@ -233,14 +233,17 @@ describe('Settings AI privacy controls', () => {
     expect(screen.queryByRole('button', { name: '创建充值会话' })).not.toBeInTheDocument()
   })
 
-  it('explains the conditional TokenDance peak-hour discount without promising a universal rate', async () => {
+  it('explains the limited-time TokenDance discount with live pricing details', async () => {
     getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
 
     render(<Settings onSettingsChange={jest.fn()} />)
 
     await waitFor(() => expect(screen.getByText(/峰时路由到火山方舟端口，最高约省 20%/)).toBeInTheDocument())
-    expect(screen.getByText(/不是所有请求的固定折扣/)).toBeInTheDocument()
+    expect(screen.getByText(/适用线路、价格、时段和活动期限/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '查看 V4 Flash 实时价目' })).toHaveAttribute('href', 'https://tokendance.space/models/deepseek-v4-flash-0731')
+    expect(screen.queryByText(/向作者分润/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/新分析所需的书籍信息/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/完整 Key 只在授权交换时返回/)).not.toBeInTheDocument()
   })
 
   it('keeps desktop users in settings and renders a payment QR session', async () => {
@@ -265,6 +268,45 @@ describe('Settings AI privacy controls', () => {
     expect(screen.getByRole('link', { name: '打开支付页' })).toHaveAttribute('href', 'https://pay.example.com/session-1')
     expect(openSpy).not.toHaveBeenCalled()
     openSpy.mockRestore()
+  })
+
+  it('highlights a received top-up and confirms the balance update', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, aiProvider: 'tokendance' })
+    createTokendancePaymentSessionMock.mockResolvedValue({
+      id: 'payment-paid',
+      amount: 20,
+      status: 'paid',
+      payment_url: 'https://pay.example.com/session-paid',
+      status_url: 'https://tokendance.space/portal/api/v1/payment/sessions/payment-paid',
+      expired_at: 1_900_000_000
+    })
+    renderSettings()
+
+    fireEvent.click(await screen.findByRole('button', { name: '管理连接' }))
+    fireEvent.click(await screen.findByRole('button', { name: '创建充值会话' }))
+
+    expect(await screen.findByText('充值已到账')).toBeInTheDocument()
+    expect(screen.getByText('充值金额 ¥20 已到账，余额已更新。')).toBeInTheDocument()
+  })
+
+  it('shows direct support contact when a top-up fails', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, aiProvider: 'tokendance' })
+    createTokendancePaymentSessionMock.mockResolvedValue({
+      id: 'payment-failed',
+      amount: 10,
+      status: 'failed',
+      payment_url: 'https://pay.example.com/session-failed',
+      status_url: 'https://tokendance.space/portal/api/v1/payment/sessions/payment-failed',
+      expired_at: 1_900_000_000
+    })
+    renderSettings()
+
+    fireEvent.click(await screen.findByRole('button', { name: '管理连接' }))
+    fireEvent.click(await screen.findByRole('button', { name: '创建充值会话' }))
+
+    expect(await screen.findByText('充值失败')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '联系客服：18682408521@163.com' })).toHaveAttribute('href', 'mailto:18682408521@163.com')
+    expect(screen.getByText('微信：hostrow')).toBeInTheDocument()
   })
 
   it('shows backup plaintext risk and multipart import guidance in data management', () => {

@@ -29,17 +29,19 @@ export default function AITaskStatus({ lang }: { lang: Language }) {
     aiRequestManager.getSnapshot
   )
 
-  if (!state.active) return null
+  if (!state.activeTasks.length) return null
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-lg border border-[var(--accent)]/40 bg-[var(--bg-card)] px-4 py-3 shadow-xl">
       <LoaderCircle size={19} className="shrink-0 animate-spin text-[var(--accent)]" aria-hidden="true" />
       <div className="min-w-0">
-        <p role="status" className="truncate text-sm font-medium">{taskLabel(state.active.task, lang)}</p>
+        <p role="status" className="truncate text-sm font-medium">{state.activeTasks.length > 1
+          ? (lang === 'zh' ? `${state.activeTasks.length} 个 AI 任务运行中` : `${state.activeTasks.length} AI tasks running`)
+          : taskLabel(state.activeTasks[0].task, lang)}</p>
         <p className="text-xs text-[var(--text-secondary)]">
           {state.cancelling
             ? (lang === 'zh' ? '正在取消...' : 'Cancelling...')
-            : (lang === 'zh' ? '同一时间仅运行一个 AI 任务' : 'Only one AI task runs at a time')}
+            : (lang === 'zh' ? '任务可并行运行，受账号并发额度限制' : 'Tasks run in parallel, subject to account limits')}
         </p>
       </div>
       <button

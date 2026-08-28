@@ -153,6 +153,23 @@ describe('ReadingView navigation position', () => {
     }))
   })
 
+  it('keeps every mobile main-tab label on one line', () => {
+    render(
+      <ReadingView
+        book={sampleBook}
+        apiKey=""
+        lang="zh"
+        onBack={jest.fn()}
+        onOpenSettings={jest.fn()}
+      />
+    )
+
+    for (const tab of ['phase', 'practice', 'notes', 'recommendations']) {
+      const button = screen.getByTestId(`reading-tab-${tab}`)
+      expect(button.querySelector('.sm\\:hidden')).toHaveClass('whitespace-nowrap')
+    }
+  })
+
   it('returns to learning progress when expanding all phase sections', async () => {
     render(
       <ReadingView

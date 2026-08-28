@@ -29,7 +29,10 @@ describe('production security header deployment', () => {
 
   it('installs the shared config and verifies the live HTTPS response', () => {
     expect(deployScript).toContain('00-feynman-security-headers.conf')
-    expect(deployScript).toContain('https://www.deline.top/')
+    expect(deployScript).toContain('https://reader.deline.top/')
+    expect(deployScript).toContain('/etc/nginx/conf.d/reader.deline.top.conf')
+    expect(securityConfig).toContain('reader.deline.top 1;')
+    expect(securityConfig).not.toContain('www.deline.top 1;')
     for (const header of requiredHeaders) {
       expect(deployScript).toContain(`"${header}"`)
     }

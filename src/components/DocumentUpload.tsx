@@ -320,7 +320,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
         {step === 'confirm' && analyzedInfo && (
           <div className="space-y-4">
-            <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm text-sky-700 dark:text-sky-300">
+            <div className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/8 p-3 text-sm text-[var(--accent)]">
               {lang === 'zh'
                 ? `已完整解析 ${documentContent.length.toLocaleString()} 个字符。添加后，原文将用于阶段学习、费曼实践、角色问答和相关推荐。`
                 : `${documentContent.length.toLocaleString()} characters parsed in full. After adding the book, the source will support phase learning, Feynman practice, persona Q&A, and recommendations.`}

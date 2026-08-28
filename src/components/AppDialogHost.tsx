@@ -115,7 +115,7 @@ export default function AppDialogHost({ lang }: Props) {
       aria-describedby={messageId}
       onClick={cancel}
     >
-      <div className="modal-content max-w-sm" onClick={event => event.stopPropagation()}>
+      <div className="modal-content brand-dialog max-w-sm" onClick={event => event.stopPropagation()}>
         <div className="text-center">
           <AppIcon name={config.icon} tone={config.iconTone} size={46} className="mx-auto mb-4" />
           <h2 id={titleId} className="mb-2 text-xl font-bold">{active.title}</h2>

@@ -1,26 +1,30 @@
 import {
   AI_REQUEST_CANCELLED,
-  AI_TASK_BUSY,
   aiRequestManager
 } from '../aiRequestManager'
 
 describe('global AI request manager', () => {
-  it('allows only one active AI task', async () => {
-    let release: (() => void) | undefined
+  it('allows independent AI tasks to run concurrently', async () => {
+    let releaseFirst: (() => void) | undefined
+    let releaseSecond: (() => void) | undefined
     const first = aiRequestManager.run(
       { task: 'phase-analysis' },
-      () => new Promise<void>(resolve => { release = resolve })
+      () => new Promise<void>(resolve => { releaseFirst = resolve })
+    )
+    const second = aiRequestManager.run(
+      { task: 'assistant-chat', sessionId: 'session-1' },
+      () => new Promise<void>(resolve => { releaseSecond = resolve })
     )
 
     await Promise.resolve()
 
-    await expect(aiRequestManager.run(
-      { task: 'book-tags' },
-      async () => undefined
-    )).rejects.toThrow(AI_TASK_BUSY)
-
-    release?.()
+    expect(aiRequestManager.getSnapshot().activeTasks).toHaveLength(2)
+    releaseFirst?.()
     await first
+    expect(aiRequestManager.getSnapshot().activeTasks).toHaveLength(1)
+    releaseSecond?.()
+    await second
+    expect(aiRequestManager.getSnapshot().active).toBeNull()
   })
 
   it('aborts the active network request', async () => {

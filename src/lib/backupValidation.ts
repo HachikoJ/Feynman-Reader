@@ -136,6 +136,7 @@ export function normalizeSettings(
         theme: item.theme === 'dark' ? 'dark' : 'light',
         hideApiKeyAlert: optionalBoolean(item.hideApiKeyAlert, false),
         aiDataConsent: optionalBoolean(item.aiDataConsent, false),
+        assistantMemoryEnabled: optionalBoolean(item.assistantMemoryEnabled, true),
         quotes: quotesRaw.map((quote, index) => normalizeQuote(quote, `设置.quotes[${index}]`)),
         quotesInitialized: optionalBoolean(item.quotesInitialized, false)
       })

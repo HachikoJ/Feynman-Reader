@@ -9,16 +9,21 @@
 ![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
 ![本地优先](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%BC%98%E5%85%88-22c55e)
 
-[English](README.en.md) · [在线体验](https://www.deline.top) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
+[English](README.en.md) · [个人官网](https://www.deline.top) · [进入费曼读书助手](https://reader.deline.top/) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
 
 **读完不算懂，能讲清楚才算。**
 
 费曼读书助手不是再帮你总结一本书，而是让你把书里的内容讲给 AI 听。AI 会先看你的解释，再从 3 个不同角色的角度追问你，直到你真的知道自己哪里没懂、该怎么改。
 
-**产品访问：** [https://www.deline.top](https://www.deline.top)
+**产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
+
+费曼读书助手现在独立部署在 `reader.deline.top`，根路径 `/` 直接进入产品；`/reader/` 作为兼容入口保留。官网位于 `www.deline.top`，产品中的“官网”按钮会返回官网主路由。
 
 > [!IMPORTANT]
 > **这是一个本地优先的学习产品。** 本产品不提供云端存储、同步与恢复服务，学习记录和 API Key 默认保存在用户自己的浏览器里。清理网站数据、卸载浏览器或设备异常可能造成数据丢失，请根据应用提醒及时导出备份。调用 AI 前，需要先阅读并同意隐私政策；TokenDance / TokenPay 是推荐渠道，DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线，届时旧官方 Key 也不再支持。
+
+> [!WARNING]
+> `www.deline.top/reader/` 与 `reader.deline.top/` 属于不同浏览器存储源。若旧地址已有书籍、设置或学习记录，请先在旧地址的“设置 > 数据管理”导出备份，再在新产品域名导入；308 跳转本身不会迁移 localStorage 或 IndexedDB。
 
 ## GitHub 传播素材
 
@@ -166,7 +171,7 @@ npm run dev
 2. 阅读隐私政策，滚动到底部后勾选同意。
 3. 创建一本书或上传资料，开始第一次“讲给 AI 听”的练习。
 
-DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存相关配置，届时旧官方 Key 不再支持。根据 TokenDance 官方确认，`v4flash0731` 在高峰时段路由到火山方舟端口时最高约可省 20%；智能路由到 DeepSeek 官方、阿里、百度等其他端口时不保证优惠，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准，不承诺永久或长期有效。
+DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存相关配置，届时旧官方 Key 不再支持。根据 TokenDance 官方确认，`v4flash0731` 峰时火山方舟端口提供限时优惠，最高约可省 20%，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用线路、时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准。
 
 ## 技术栈
 
@@ -178,7 +183,7 @@ DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存�
 
 ## 项目资料
 
-- [产品方案](docs/product/submission/Product_Plan_ZH.md)：需求来源、用户、核心流程、产品边界和复盘。
+- [产品方案](docs/product/submission/Product_Plan_ZH.md)：需求来源、用户、核心流程和产品边界。
 - [AI 工作流程](docs/product/submission/AI_Workflow_ZH.md)：模型与规则如何分工，以及数据边界。
 - [产品说明](docs/product/submission/Product_Guide_ZH.md)：建议体验路径、真实 Safari 截图索引和功能边界。
 - [增长方案](docs/product/submission/Growth_Plan_ZH.md)：增长策略、定价、Token 成本控制与 PMF 验证。
@@ -199,30 +204,6 @@ AI 生成的分析、评分和建议仅用于学习辅助，不保证事实准�
 ## GitHub 关注度
 
 [![Star History Chart](https://api.star-history.com/svg?repos=HachikoJ/Feynman-Reader&type=Date)](https://star-history.com/#HachikoJ/Feynman-Reader&Date)
-
-早期浏览器端的 10 次试用与激活机制存在刷新误计次、清理本地存储即可绕过等问题，既影响体验，也不具备可靠的授权能力。相关客户端实现已从当前源码和生产构建中移除，当前版本不会扣减试用次数或要求激活。
-
-## 更新记录
-
-### 2026-08-27
-
-- 新增一次性 TokenDance 合作接入介绍，完整说明 OAuth、账户服务、智能路由及峰时火山方舟端口最高约省 20% 的适用条件。
-- 用户进入产品后不再重复展示合作介绍；已完成 API 配置时仅保留轻量合作连接状态。
-- TokenDance OAuth 回调不再被合作介绍或新手引导打断，可直接处理授权结果。
-
-### 2026-07-12
-
-- 增加首次强制数据风险告知，并在存在学习数据且长期未备份时再次提醒导出。
-- 加强 IndexedDB 写入确认、多标签页版本冲突保护、导入校验和异常恢复，减少静默覆盖与假成功。
-- 修复隐私政策返回逻辑，以及 API Key 为空、格式错误或未同意数据传输时缺少失败反馈的问题。
-- 统一教学模拟、3 角色问答、已读状态和综合得分规则；3 题未全部通过时不生成完成评分。
-
-### 2026-07-11
-
-- 完善角色问答：统一为 3 个角色，逐题保留未通过回答和改进建议。
-- 修复学习完成判断：3 题没有全部通过时，不计算综合得分或标记为已读。
-- 优化隐私同意、设置布局、密钥显示、数据管理和 Markdown 渲染体验。
-- 补充真实 Safari 截图、交互流程图和产品操作录屏。
 
 ## 开源授权
 

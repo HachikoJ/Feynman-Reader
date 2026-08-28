@@ -40,6 +40,12 @@ test.describe('应用启动和导航', () => {
     // 检查设置页面加载
     await expect(page.getByRole('heading', { name: '设置', exact: true })).toBeVisible()
   })
+
+  test('兼容路径会回到独立产品根地址', async ({ page }) => {
+    await page.goto('/reader/?view=settings&tokendance_callback=1')
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page).toHaveTitle(/费曼读书助手/)
+  })
 })
 
 test.describe('书籍管理', () => {

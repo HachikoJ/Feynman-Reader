@@ -38,10 +38,12 @@ import MobileSwipeCard from './MobileSwipeCard'
 import { VirtualList } from './VirtualList'
 import { showAppAlert } from '@/lib/appDialog'
 import { tokendanceRecoveryMessage } from '@/lib/tokendance'
+import { openAssistantWithPrompt } from '@/lib/assistantEvents'
 
 interface Props {
   lang: Language
   onSelectBook: (book: Book) => void
+  onOpenSettings?: () => void
 }
 
 type TabFilter = 'all' | BookStatus
@@ -65,7 +67,7 @@ export function getBookshelfProgressPercentage(book: Pick<Book, 'currentPhase'>)
   return Math.min(100, Math.max(0, (book.currentPhase / LEARNING_PHASES.length) * 100))
 }
 
-export default function Bookshelf({ lang, onSelectBook }: Props) {
+export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props) {
   const [books, setBooks] = useState<Book[]>([])
   const [activeTab, setActiveTab] = useState<TabFilter>('all')
 
@@ -139,7 +141,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
     const updateVirtualListMetrics = () => {
       const mobile = window.innerWidth < 640
       setVirtualListMetrics({
-        itemHeight: mobile ? 270 : 210,
+        itemHeight: mobile ? 178 : 132,
         height: Math.max(420, Math.min(mobile ? 620 : 720, Math.round(window.innerHeight * 0.68)))
       })
     }
@@ -215,7 +217,10 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
   // AI 生成标签
   const handleGenerateTags = async (bookId: string, bookName: string, author?: string, description?: string) => {
     const settings = getSettings()
-    if (!settings.apiKey) return
+    if (!settings.apiKey || !settings.aiDataConsent) {
+      onOpenSettings?.()
+      return
+    }
 
     setTagGenerationError(null)
     setGeneratingTags(true)
@@ -739,9 +744,9 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         color: 'bg-amber-600',
         onAction: () => openEditModal(book)
       }}
-      className={virtualized ? 'h-[258px] pb-3 sm:h-[198px]' : ''}
+      className={virtualized ? 'h-[170px] pb-2 sm:h-[124px]' : ''}
     >
-      <div className={`card card-hover relative flex gap-3 sm:gap-4 ${virtualized ? 'h-full overflow-hidden' : ''}`}>
+      <div className={`card card-hover relative flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-3 ${virtualized ? 'h-full overflow-hidden' : ''}`}>
         {batchMode && (
           <div className="flex items-center">
             <input
@@ -754,126 +759,126 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           </div>
         )}
 
-        <button
-          type="button"
-          className="relative h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
-          onClick={() => handleSelectBook(book)}
-          aria-label={lang === 'zh' ? `打开《${book.name}》` : `Open ${book.name}`}
-        >
-          {getSafeImageSrc(book.cover) ? (
-            <img src={getSafeImageSrc(book.cover)!} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center">{getStatusIcon(book.status, 30)}</span>
-          )}
-          {book.isSample && (
-            <span
-              className="absolute right-1.5 top-1.5 flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/90 bg-[var(--accent)] px-1 text-[10px] font-bold leading-none text-white shadow-lg"
-              aria-label={lang === 'zh' ? '示例书籍' : 'Sample book'}
-            >
-              {lang === 'zh' ? '示例' : 'Sample'}
-            </span>
-          )}
-        </button>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="truncate text-base font-semibold sm:text-lg">{book.name}</h3>
-              </div>
-              {book.author && <p className="truncate text-sm text-[var(--text-secondary)]">{book.author}</p>}
-            </div>
-            <span className={`inline-flex flex-shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold ${
-              book.status === 'unread'
-                ? 'border-gray-500/45 bg-gray-500/15 text-gray-600 dark:text-gray-300'
-                : book.status === 'reading'
-                  ? 'border-amber-500/45 bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                  : 'border-emerald-500/45 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-            }`}>
-              {getStatusIcon(book.status, 14)}
-              {t(lang, `bookshelf.status.${book.status}`)}
-            </span>
-          </div>
-
-          {book.description && <p className="mt-1 line-clamp-1 text-sm text-[var(--text-secondary)]">{book.description}</p>}
-
-          <div className="mt-2 flex max-h-6 flex-wrap items-center gap-1 overflow-hidden">
-            {book.tags?.length ? (
-              <>
-                {book.tags.slice(0, 3).map(tag => (
-                  <span key={`${tag.category}:${tag.name}`} className="rounded bg-[var(--accent)]/10 px-2 py-0.5 text-xs text-[var(--accent)]">
-                    {tag.name}
-                  </span>
-                ))}
-                {book.tags.length > 3 && <span className="text-xs text-[var(--text-secondary)]">+{book.tags.length - 3}</span>}
-                <button
-                  type="button"
-                  onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
-                  className="ml-1 text-[var(--text-secondary)] hover:text-[var(--accent)]"
-                  disabled={generatingTags}
-                  title={t(lang, 'bookshelf.tags.regenerate')}
-                >
-                  <AppIcon name="refresh" size={14} />
-                </button>
-              </>
+        <div className="flex min-w-0 flex-1 gap-3">
+          <button
+            type="button"
+            className="relative h-20 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
+            onClick={() => handleSelectBook(book)}
+            aria-label={lang === 'zh' ? `打开《${book.name}》` : `Open ${book.name}`}
+          >
+            {getSafeImageSrc(book.cover) ? (
+              <img src={getSafeImageSrc(book.cover)!} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
             ) : (
-              <button
-                type="button"
-                onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
-                className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline"
-                disabled={generatingTags}
-              >
-                <AppIcon name="tag" size={14} />
-                {generatingTags ? t(lang, 'bookshelf.tags.generating') : (lang === 'zh' ? '生成标签' : 'Generate tags')}
-              </button>
+              <span className="flex h-full w-full items-center justify-center">{getStatusIcon(book.status, 24)}</span>
             )}
-          </div>
-
-          <div className="mt-3 flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="text-[var(--text-secondary)]">{t(lang, 'bookshelf.progress')}</span>
-                <span>{book.currentPhase}/{LEARNING_PHASES.length}</span>
-              </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${getBookshelfProgressPercentage(book)}%` }} />
-              </div>
-            </div>
-            {book.bestScore > 0 && (
-              <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold ${
-                book.bestScore >= 60
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-              }`}>
-                <AppIcon name="target" size={14} />
-                {book.bestScore}{lang === 'zh' ? '分' : ''}
+            {book.isSample && (
+              <span
+                className="absolute right-1 top-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white/90 bg-[var(--accent)] px-0.5 text-[9px] font-bold leading-none text-white shadow-md"
+                aria-label={lang === 'zh' ? '示例书籍' : 'Sample book'}
+              >
+                {lang === 'zh' ? '示例' : 'Sample'}
               </span>
             )}
-          </div>
+          </button>
 
-          {!batchMode && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => handleSelectBook(book)} className="btn-primary py-1.5 text-sm">
-                <AppIcon name="bookOpen" size={15} />
-                {book.status === 'unread' ? t(lang, 'bookshelf.startReading') : t(lang, 'bookshelf.continueReading')}
-              </button>
-              <button type="button" onClick={() => openEditModal(book)} className="btn-secondary py-1.5 text-sm">
-                <AppIcon name="edit" tone="amber" size={14} />
-                {lang === 'zh' ? '编辑' : 'Edit'}
-              </button>
-              <button type="button" onClick={() => handleDeleteBook(book)} className="btn-secondary border-red-400/30 py-1.5 text-sm text-red-500 hover:border-red-400">
-                <AppIcon name="trash" size={14} />
-                {lang === 'zh' ? '删除' : 'Delete'}
-              </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className="min-w-0 max-w-full truncate text-base font-semibold">{book.name}</h3>
+              {book.author && <span className="min-w-0 truncate text-xs text-[var(--text-secondary)]">· {book.author}</span>}
+              <span className={`inline-flex flex-shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-semibold ${
+                book.status === 'unread'
+                  ? 'border-gray-500/40 bg-gray-500/10 text-gray-600 dark:text-gray-300'
+                  : book.status === 'reading'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              }`}>
+                {getStatusIcon(book.status, 13)}
+                {t(lang, `bookshelf.status.${book.status}`)}
+              </span>
+              {book.bestScore > 0 && (
+                <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold ${
+                  book.bestScore >= 60
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                }`}>
+                  <AppIcon name="target" size={13} />
+                  {book.bestScore}{lang === 'zh' ? '分' : ''}
+                </span>
+              )}
+              <span
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--bg-secondary)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]"
+                aria-label={`${t(lang, 'bookshelf.progress')} ${book.currentPhase}/${LEARNING_PHASES.length}`}
+              >
+                <span>{book.currentPhase}/{LEARNING_PHASES.length}</span>
+                <span className="flex items-center gap-0.5" aria-hidden="true">
+                  {LEARNING_PHASES.map((_, index) => (
+                    <span
+                      key={index}
+                      className={`h-1.5 w-2.5 rounded-sm ${index < book.currentPhase ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'}`}
+                    />
+                  ))}
+                </span>
+              </span>
             </div>
-          )}
+
+            {book.description && <p className="mt-1 hidden truncate text-xs text-[var(--text-secondary)] sm:block">{book.description}</p>}
+
+            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1 overflow-hidden">
+                {book.tags?.length ? (
+                  <>
+                    {book.tags.map(tag => (
+                      <span key={`${tag.category}:${tag.name}`} className="shrink-0 rounded bg-[var(--accent)]/10 px-1.5 py-0.5 text-xs text-[var(--accent)]">
+                        {tag.name}
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent)]"
+                      disabled={generatingTags}
+                      title={t(lang, 'bookshelf.tags.regenerate')}
+                      aria-label={t(lang, 'bookshelf.tags.regenerate')}
+                    >
+                      <AppIcon name="refresh" size={13} />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
+                    className="inline-flex h-7 shrink-0 items-center gap-1 rounded px-1.5 text-xs text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                    disabled={generatingTags}
+                  >
+                    <AppIcon name="tag" size={13} />
+                    {generatingTags ? t(lang, 'bookshelf.tags.generating') : (lang === 'zh' ? '生成标签' : 'Generate tags')}
+                  </button>
+                )}
+            </div>
+          </div>
         </div>
+
+        {!batchMode && (
+          <div className="flex shrink-0 items-center justify-end gap-1.5 sm:ml-auto sm:border-l sm:border-[var(--border)] sm:pl-3">
+            <button type="button" onClick={() => handleSelectBook(book)} className="btn-primary min-h-11 whitespace-nowrap px-3 py-1.5 text-xs sm:min-h-9">
+              <AppIcon name="bookOpen" size={14} />
+              {book.status === 'unread' ? t(lang, 'bookshelf.startReading') : t(lang, 'bookshelf.continueReading')}
+            </button>
+            <button type="button" onClick={() => openEditModal(book)} className="btn-secondary min-h-11 whitespace-nowrap px-2.5 py-1.5 text-xs sm:min-h-9">
+              <AppIcon name="edit" tone="amber" size={14} />
+              {lang === 'zh' ? '编辑' : 'Edit'}
+            </button>
+            <button type="button" onClick={() => handleDeleteBook(book)} className="btn-secondary min-h-11 whitespace-nowrap border-red-400/30 px-2.5 py-1.5 text-xs text-red-500 hover:border-red-400 sm:min-h-9">
+              <AppIcon name="trash" size={14} />
+              {lang === 'zh' ? '删除' : 'Delete'}
+            </button>
+          </div>
+        )}
       </div>
     </MobileSwipeCard>
   )
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="bookshelf-page mx-auto max-w-7xl">
       {tagGenerationError && (
         <div role="alert" className="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
           <AlertCircle size={19} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
@@ -889,95 +894,62 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         </div>
       )}
 
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">{t(lang, 'bookshelf.title')}</h1>
-          <p className="text-[var(--text-secondary)] text-sm mt-1">
-            {lang === 'zh'
-              ? `共 ${stats.total} 本书，已读 ${stats.finished} 本`
-              : `${stats.total} books, ${stats.finished} finished`}
-          </p>
-
+      <div className="mb-3 grid gap-3 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,36rem)] lg:items-center">
+        <div className="flex min-w-0 items-end justify-between gap-3 lg:block">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold sm:text-3xl">{t(lang, 'bookshelf.title')}</h1>
+            <p className="mt-1 truncate text-xs text-[var(--text-secondary)] sm:text-sm">
+              {lang === 'zh'
+                ? `${stats.total} 本 · ${stats.reading} 本在读 · ${stats.finished} 本已读`
+                : `${stats.total} books · ${stats.reading} reading · ${stats.finished} finished`}
+            </p>
+          </div>
+          {books.length > 0 && (
+            <button onClick={() => setShowCharts(!showCharts)} className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--accent)] lg:mt-2">
+              <ChartNoAxesCombined size={15} aria-hidden="true" />
+              {lang === 'zh' ? '书架分析' : 'Analytics'}
+              {showCharts ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+            </button>
+          )}
         </div>
-        <button data-testid="add-book-button" onClick={() => setShowAddModal(true)} className="btn-primary shrink-0">
-          <AppIcon name="plus" size={17} />
-          <span className="hidden sm:inline">{t(lang, 'bookshelf.addBook')}</span>
-          <span className="sm:hidden">{lang === 'zh' ? '添加' : 'Add'}</span>
-        </button>
+        {reviewBook && (
+          <section className="min-w-0 rounded-lg border border-amber-300/70 bg-amber-50/70 px-3 py-2 shadow-sm dark:border-amber-400/30 dark:bg-amber-400/10" aria-labelledby="today-review-title">
+            <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+              <button type="button" onClick={() => onSelectBook(reviewBook)} className="relative flex h-14 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/80 text-amber-600 shadow-sm dark:bg-white/10 dark:text-amber-300" aria-label={lang === 'zh' ? `打开《${reviewBook.name}》` : `Open ${reviewBook.name}`}>
+                {getSafeImageSrc(reviewBook.cover) ? <img src={getSafeImageSrc(reviewBook.cover)!} alt="" className="h-full w-full object-cover" /> : <AppIcon name="bookOpen" size={20} aria-hidden="true" />}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                  <span className="motion-safe:animate-pulse h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
+                  <span className="truncate">{lang === 'zh' ? '今天该复习了 · 费曼复习提醒' : 'Time to review · Feynman review'}</span>
+                </div>
+                <h2 id="today-review-title" className="truncate text-sm font-semibold leading-5 text-[var(--text-primary)]">{reviewPrompt || (lang === 'zh' ? `继续《${reviewBook.name}》的理解练习` : `Continue learning ${reviewBook.name}`)}</h2>
+                <p className="truncate text-xs leading-5 text-[var(--text-secondary)]">{lang === 'zh' ? `${reviewBook.name} · ${getNextLearningStep(reviewBook)} · 5 分钟` : `${reviewBook.name} · ${getNextLearningStep(reviewBook)} · 5 min`}</p>
+              </div>
+              <div className="col-span-2 grid grid-cols-2 gap-1.5 sm:col-span-1 sm:flex sm:shrink-0 sm:items-center">
+                <button type="button" onClick={() => onSelectBook(reviewBook)} className="btn-primary min-h-10 shrink-0 whitespace-nowrap px-2.5 text-xs"><AppIcon name="arrowRight" size={15} aria-hidden="true" /><span>{reviewBook.isSample ? (lang === 'zh' ? '查看示例' : 'Explore') : (lang === 'zh' ? '开始复习' : 'Review')}</span></button>
+                <button type="button" onClick={() => openAssistantWithPrompt(lang === 'zh' ? `请根据《${reviewBook.name}》的学习记录，为我安排今天的费曼复习：先指出最值得复述的记录，再给出 5 分钟练习步骤。` : `Based on my learning history for ${reviewBook.name}, plan today's Feynman review: choose the best item to explain again and give me a five-minute practice plan.`)} className="btn-secondary min-h-10 shrink-0 gap-1.5 whitespace-nowrap border-amber-300/70 px-2.5 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-300/30 dark:text-amber-200 dark:hover:bg-amber-400/20" aria-label={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'} title={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'}><AppIcon name="sparkles" size={15} /><span>{lang === 'zh' ? '小助手安排' : 'Ask Assistant'}</span></button>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
 
-      {reviewBook && (
-        <section className="mb-6 border-y border-[var(--border)] py-5" aria-labelledby="today-review-title">
-          <div className="grid items-center gap-4 sm:grid-cols-[88px_minmax(0,1fr)_auto]">
-            <button
-              type="button"
-              onClick={() => onSelectBook(reviewBook)}
-              className="relative hidden aspect-[3/4] w-[88px] overflow-hidden rounded-lg bg-[var(--bg-secondary)] sm:block"
-              aria-label={lang === 'zh' ? `打开《${reviewBook.name}》` : `Open ${reviewBook.name}`}
-            >
-              {getSafeImageSrc(reviewBook.cover) ? (
-                <img src={getSafeImageSrc(reviewBook.cover)!} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="flex h-full items-center justify-center">{getStatusIcon(reviewBook.status, 28)}</span>
-              )}
-            </button>
-            <div className="min-w-0">
-              <div className="mb-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-[var(--accent)]">
-                <AppIcon name="refresh" size={15} aria-hidden="true" />
-                <span>{lang === 'zh' ? '今日复习' : 'Today\'s review'}</span>
-                {reviewBook.isSample && (
-                  <span className="rounded-md bg-[var(--accent)]/10 px-2 py-0.5 text-xs">
-                    {lang === 'zh' ? '完整示例' : 'Complete sample'}
-                  </span>
-                )}
-              </div>
-              <h2 id="today-review-title" className="text-xl font-semibold">
-                {reviewPrompt || (lang === 'zh' ? `继续《${reviewBook.name}》的理解练习` : `Continue learning ${reviewBook.name}`)}
-              </h2>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                {lang === 'zh' ? `${reviewBook.name} · ${getNextLearningStep(reviewBook)} · 预计 5 分钟` : `${reviewBook.name} · ${getNextLearningStep(reviewBook)} · about 5 min`}
-              </p>
-              {reviewBook.isSample && (
-                <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                  {lang === 'zh' ? '已备好六阶段分析、笔记、教学模拟与角色问答，无需配置即可查看。' : 'Six phases, notes, teaching practice, and persona Q&A are ready to explore without setup.'}
-                </p>
-              )}
-            </div>
-            <button type="button" onClick={() => onSelectBook(reviewBook)} className="btn-primary w-full shrink-0 sm:w-auto">
-              <AppIcon name="arrowRight" size={17} aria-hidden="true" />
-              {reviewBook.isSample
-                ? (lang === 'zh' ? '查看完整示例' : 'Explore sample')
-                : (lang === 'zh' ? '开始复习' : 'Start review')}
-            </button>
-          </div>
-        </section>
-      )}
+      {showCharts && books.length > 0 && <div className="mb-3"><LibraryAnalytics books={books} lang={lang} /></div>}
 
-      {books.length > 0 && (
-        <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--border)] pb-4 text-sm">
-          <span><strong className="mr-1 text-base">{stats.total}</strong>{lang === 'zh' ? '本书' : 'books'}</span>
-          <span><strong className="mr-1 text-base text-amber-600 dark:text-amber-400">{stats.reading}</strong>{lang === 'zh' ? '在读' : 'reading'}</span>
-          <span><strong className="mr-1 text-base text-emerald-600 dark:text-emerald-400">{stats.finished}</strong>{lang === 'zh' ? '已读' : 'finished'}</span>
-          <span><strong className="mr-1 text-base">{Math.round(stats.avgScore) || '-'}</strong>{lang === 'zh' ? '平均分' : 'avg score'}</span>
-          <button onClick={() => setShowCharts(!showCharts)} className="ml-auto inline-flex min-h-11 items-center gap-1 text-[var(--accent)] hover:underline">
-            {showCharts ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
-            <ChartNoAxesCombined size={16} aria-hidden="true" />
-            {lang === 'zh' ? '详细分析' : 'Analytics'}
-          </button>
-          {showCharts && <div className="w-full"><LibraryAnalytics books={books} lang={lang} /></div>}
-        </div>
-      )}
-
-      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="bookshelf-toolbar mb-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)]/80 p-2 shadow-sm backdrop-blur-sm">
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {books.length > 0 && (
-          <div className="relative w-full lg:max-w-sm">
+          <div className="relative w-28 shrink-0 sm:min-w-0 sm:flex-1 sm:max-w-56">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"><AppIcon name="search" size={16} /></span>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onFocus={() => setShowSearchHistory(searchHistory.length > 0 && !searchQuery)}
-                placeholder={lang === 'zh' ? '搜索书名、作者、标签...' : 'Search books, authors, tags...'}
-                className="input-field w-full !pr-10"
+                placeholder={lang === 'zh' ? '搜索' : 'Search'}
+                className="input-field min-h-11 w-full !py-2 !pl-9 !pr-9 text-sm"
+                aria-label={lang === 'zh' ? '搜索书籍' : 'Search books'}
               />
               {searchQuery && (
                 <button
@@ -1013,34 +985,39 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               )}
           </div>
         )}
-        <div className="flex flex-wrap gap-2 lg:justify-end">
-          <button onClick={() => setShowBookLists(true)} className="btn-secondary flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 gap-1">
+          <button data-testid="add-book-button" onClick={() => setShowAddModal(true)} className="btn-primary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={t(lang, 'bookshelf.addBook')} title={t(lang, 'bookshelf.addBook')}>
+            <AppIcon name="plus" size={17} />
+            <span className="hidden lg:inline">{t(lang, 'bookshelf.addBook')}</span>
+          </button>
+          <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '上传文档' : 'Upload document'} title={lang === 'zh' ? '上传文档' : 'Upload Document'}>
+            <AppIcon name="upload" tone="blue" size={17} /><span className="hidden lg:inline">{lang === 'zh' ? '上传文档' : 'Upload Doc'}</span>
+          </button>
+          <button onClick={() => setShowBookLists(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '管理书单' : 'Manage lists'} title={lang === 'zh' ? '书单' : 'Lists'}>
             <AppIcon name="bookMarked" tone="violet" size={17} />
-            {lang === 'zh' ? '书单' : 'Lists'}
+            <span className="hidden lg:inline">{lang === 'zh' ? '书单' : 'Lists'}</span>
           </button>
           {books.length > 0 && (
             <button
               onClick={toggleBatchMode}
-              className={batchMode ? "btn-primary" : "btn-secondary"}
+              className={`${batchMode ? "btn-primary" : "btn-secondary"} h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5`}
+              aria-label={lang === 'zh' ? (batchMode ? '退出批量管理' : '批量管理') : (batchMode ? 'Exit batch mode' : 'Batch manage')}
+              title={lang === 'zh' ? (batchMode ? '退出批量' : '批量管理') : (batchMode ? 'Exit Batch' : 'Batch')}
             >
               <AppIcon name={batchMode ? 'check' : 'clipboard'} size={17} />
-              {lang === 'zh' ? (batchMode ? '退出批量' : '批量管理') : (batchMode ? 'Exit Batch' : 'Batch')}
+              <span className="hidden lg:inline">{lang === 'zh' ? (batchMode ? '退出批量' : '批量管理') : (batchMode ? 'Exit Batch' : 'Batch')}</span>
             </button>
           )}
-          <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary flex items-center gap-2">
-            <AppIcon name="upload" tone="blue" size={17} />{lang === 'zh' ? '上传文档' : 'Upload Doc'}
-          </button>
         </div>
-      </div>
+        </div>
 
-      {/* Tabs & View Toggle */}
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 gap-1 overflow-x-auto rounded-lg bg-[var(--bg-secondary)] p-1">
+        <div className="mt-2 flex min-w-0 items-center gap-1.5 overflow-x-auto border-t border-[var(--border)] pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-max gap-1 rounded-lg bg-[var(--bg-secondary)] p-1">
           {tabs.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`tab ${activeTab === tab.key ? 'active' : ''}`}
+              className={`tab min-h-10 whitespace-nowrap px-2.5 text-xs sm:px-3 ${activeTab === tab.key ? 'active' : ''}`}
             >
               {tab.label}
               <span className="ml-1 opacity-60">({tab.count})</span>
@@ -1048,10 +1025,20 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           ))}
         </div>
         
-        <div className="flex gap-1 p-1 bg-[var(--bg-secondary)] rounded-lg">
+        {allTags.length > 0 && (
+          <button
+            onClick={() => setShowTagFilter(!showTagFilter)}
+            className={`inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs transition-colors ${showTagFilter || selectedCategory || selectedTag ? 'bg-[var(--accent)]/10 text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'}`}
+          >
+            <Tag size={15} aria-hidden="true" />
+            {t(lang, 'bookshelf.tags.title')}
+            {(selectedCategory || selectedTag) && <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-label={lang === 'zh' ? '筛选已启用' : 'Filter active'} />}
+          </button>
+        )}
+        <div className="ml-auto flex shrink-0 gap-1 rounded-lg bg-[var(--bg-secondary)] p-1">
           <button
             onClick={() => setViewMode('grid')}
-            className={`flex h-11 w-11 items-center justify-center rounded ${viewMode === 'grid' ? 'bg-[var(--accent)] text-white' : ''}`}
+            className={`flex h-10 w-10 items-center justify-center rounded ${viewMode === 'grid' ? 'bg-[var(--accent)] text-white' : ''}`}
             aria-label={lang === 'zh' ? '网格视图' : 'Grid view'}
             title={lang === 'zh' ? '网格视图' : 'Grid view'}
           >
@@ -1059,13 +1046,14 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`flex h-11 w-11 items-center justify-center rounded ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : ''}`}
+            className={`flex h-10 w-10 items-center justify-center rounded ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : ''}`}
             aria-label={lang === 'zh' ? '列表视图' : 'List view'}
             title={lang === 'zh' ? '列表视图' : 'List view'}
           >
             <List size={18} aria-hidden="true" />
           </button>
         </div>
+      </div>
       </div>
 
       {/* 批量操作工具栏 */}
@@ -1098,35 +1086,14 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         </div>
       )}
 
-      {/* Tag Filter */}
       {allTags.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <button
-              onClick={() => setShowTagFilter(!showTagFilter)}
-              className="text-sm text-[var(--accent)] hover:underline flex items-center gap-1"
-            >
-              {showTagFilter ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
-              <Tag size={16} className="text-violet-500" aria-hidden="true" />
-              {t(lang, 'bookshelf.tags.title')}
-              {(selectedCategory || selectedTag) && (
-                <span className="ml-2 px-2 py-0.5 bg-[var(--accent)]/20 rounded text-xs">
-                  {lang === 'zh' ? '已筛选' : 'Filtered'}
-                </span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => setShowTagManagement(true)}
-              className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] flex items-center gap-1"
-            >
-              <AppIcon name="settings" tone="muted" size={16} />
-              {lang === 'zh' ? '管理标签' : 'Manage Tags'}
-            </button>
-          </div>
-          
+        <div className="mb-3">
           {showTagFilter && (
-            <div className="card p-4 animate-fade-in">
+            <div className="animate-fade-in rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">{lang === 'zh' ? '筛选书架' : 'Filter shelf'}</span>
+                <button onClick={() => setShowTagManagement(true)} className="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent)]"><AppIcon name="settings" tone="muted" size={15} />{lang === 'zh' ? '管理标签' : 'Manage tags'}</button>
+              </div>
               {/* 分类筛选 */}
               <div className="mb-3">
                 <div className="text-xs text-[var(--text-secondary)] mb-2">{t(lang, 'bookshelf.tags.category')}</div>
@@ -1196,10 +1163,10 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
         </div>
       ) : viewMode === 'grid' ? (
         // Grid View
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="bookshelf-room grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 sm:gap-x-4 md:grid-cols-4 lg:grid-cols-5">
           {filteredBooks.map(book => (
+            <div key={book.id} className="bookshelf-grid-item">
             <MobileSwipeCard
-              key={book.id}
               disabled={batchMode}
               leftAction={{
                 icon: 'bookOpen',
@@ -1215,7 +1182,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               }}
               className="h-full"
             >
-            <div className="card card-hover h-full p-0 overflow-hidden group relative">
+            <div className="bookshelf-book group relative h-full">
               {/* 批量选择复选框 */}
               {batchMode && (
                 <div className="absolute top-2 left-2 z-10">
@@ -1231,7 +1198,7 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
               
               {/* Cover */}
               <div
-                className="aspect-[3/4] bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20 relative cursor-pointer"
+                className="bookshelf-book-cover relative aspect-[3/4] cursor-pointer bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
                 onClick={() => handleSelectBook(book)}
               >
                 {getSafeImageSrc(book.cover) ? (
@@ -1242,31 +1209,41 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                     <span className="text-sm text-center text-[var(--text-secondary)] line-clamp-2">{book.name}</span>
                   </div>
                 )}
-                
-                {/* Status Badge - 左上角，带阴影和边框 */}
-                <div className={`absolute ${batchMode ? 'top-2 left-9' : 'top-2 left-2'} inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold shadow-lg border-2 ${
-                  book.status === 'unread' 
-                    ? 'bg-gray-500 text-white border-gray-600' 
+
+                <div className={`absolute ${batchMode ? 'left-8' : 'left-1.5'} top-1.5 inline-flex items-center gap-1 rounded-md border border-white/70 px-1.5 py-1 text-[10px] font-semibold text-white shadow-md backdrop-blur-sm sm:text-xs ${
+                  book.status === 'unread'
+                    ? 'bg-gray-600/90'
                     : book.status === 'reading'
-                      ? 'bg-yellow-500 text-white border-yellow-600'
-                      : 'bg-green-500 text-white border-green-600'
+                      ? 'bg-amber-500/90'
+                      : 'bg-emerald-600/90'
                 }`}>
-                  {getStatusIcon(book.status, 14, true)}
+                  {getStatusIcon(book.status, 12, true)}
                   {t(lang, `bookshelf.status.${book.status}`)}
                 </div>
 
                 {book.isSample && (
                   <div
-                    className="absolute right-2 top-2 z-10 flex h-14 w-14 items-center justify-center rounded-full border-2 border-white/90 bg-[var(--accent)] px-1 text-xs font-bold leading-none text-white shadow-lg"
+                    className="absolute right-1.5 top-1.5 z-10 flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/90 bg-[var(--accent)] px-1 text-[10px] font-bold leading-none text-white shadow-md sm:h-12 sm:w-12 sm:text-xs"
                     aria-label={lang === 'zh' ? '示例书籍' : 'Sample book'}
                   >
                     {lang === 'zh' ? '示例' : 'Sample'}
                   </div>
                 )}
 
+                {book.bestScore > 0 && (
+                  <div className={`absolute bottom-1.5 right-1.5 z-10 inline-flex items-center gap-1 rounded-md border border-white/80 px-2 py-1 text-xs font-semibold shadow-md backdrop-blur-sm ${
+                    book.bestScore >= 60
+                      ? 'bg-emerald-500/90 text-white'
+                      : 'bg-amber-500/90 text-white'
+                  }`}>
+                    <AppIcon name="target" size={13} />
+                    {book.bestScore}{lang === 'zh' ? '分' : ''}
+                  </div>
+                )}
+
                 {/* Hover Actions - 右上角小图标 */}
                 {!batchMode && (
-                  <div className={`absolute right-2 ${book.isSample ? 'top-[4.5rem] flex-col' : 'top-2'} flex gap-1 opacity-0 transition-opacity group-hover:opacity-100`}>
+                  <div className={`absolute right-2 ${book.isSample ? 'top-[4rem]' : 'top-2'} hidden flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 sm:flex`}>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleSelectBook(book) }}
                       className="w-8 h-8 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-sm hover:scale-110 transition-transform"
@@ -1290,54 +1267,19 @@ export default function Bookshelf({ lang, onSelectBook }: Props) {
                     </button>
                   </div>
                 )}
+
               </div>
 
               {/* Info */}
-              <div className="p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <h3 className="truncate text-sm font-semibold">{book.name}</h3>
-                  </div>
-                  {book.bestScore > 0 && (
-                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold ${
-                      book.bestScore >= 60
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                    }`}>
-                      <AppIcon name="target" size={13} />
-                      {book.bestScore}{lang === 'zh' ? '分' : ''}
-                    </span>
-                  )}
+              <div className="bookshelf-book-info">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold">{book.name}</h3>
                 </div>
-                {book.author && <p className="text-xs text-[var(--text-secondary)] truncate">{book.author}</p>}
-                {book.description && <p className="text-xs text-[var(--text-secondary)] mt-1 line-clamp-2">{book.description}</p>}
-                
-                {/* Tags */}
-                {book.tags && book.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {book.tags.slice(0, 2).map(tag => (
-                      <span 
-                        key={`${tag.category}:${tag.name}`}
-                        className="px-1.5 py-0.5 bg-[var(--accent)]/10 text-[var(--accent)] rounded text-xs"
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                    {book.tags.length > 2 && (
-                      <span className="text-xs text-[var(--text-secondary)]">+{book.tags.length - 2}</span>
-                    )}
-                  </div>
-                )}
-                
-                {/* Progress */}
-                <div className="mt-2">
-                  <div className="progress-bar h-1">
-                    <div className="progress-fill" style={{ width: `${getBookshelfProgressPercentage(book)}%` }} />
-                  </div>
-                </div>
+                {book.author && <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">{book.author}</p>}
               </div>
             </div>
             </MobileSwipeCard>
+            </div>
           ))}
         </div>
       ) : (

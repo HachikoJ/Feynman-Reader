@@ -8,7 +8,9 @@
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
 ![Local-first](https://img.shields.io/badge/data-local--first-22c55e)
 
-[Live demo](https://www.deline.top) · [中文 README](README.md) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
+[Personal site](https://www.deline.top) · [Open Feynman Reader](https://reader.deline.top/) · [中文 README](README.md) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
+
+Feynman Reader is deployed independently at `reader.deline.top`, where `/` opens the product directly. `/reader/` remains as a compatibility path. The brand site is `www.deline.top`, and the in-product Website button returns to that main route.
 
 **Reading is not understanding until you can explain it.**
 
@@ -43,7 +45,10 @@ Open <http://localhost:8080>. You can inspect the sample book without an API key
 
 The app does not provide cloud storage, sync, or recovery. Clearing browser data can delete learning records, so export backups when prompted. API keys are kept locally and should never be shared in issues, screenshots, or logs.
 
-According to TokenDance's official clarification, `v4flash0731` can be up to about 20% cheaper when peak-hour requests use the Volcengine Ark route. The offer is not guaranteed when smart routing selects DeepSeek official, Alibaba, Baidu, or another port; users can set route preferences in the TokenDance interface. Actual prices, eligible periods, and campaign end dates follow [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731) and later notices, and are not promised to be permanent or long-term. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
+> [!WARNING]
+> `www.deline.top/reader/` and `reader.deline.top/` are different browser storage origins. If the old address contains books, settings, or learning history, export a backup from Settings > Data Management before the redirect, then import it on the new product domain. A 308 redirect does not migrate localStorage or IndexedDB.
+
+According to TokenDance's official clarification, `v4flash0731` offers limited-time savings of up to about 20% on the Volcengine Ark route at peak hours, and users can set route preferences in TokenDance. Actual prices, eligible routes, periods, and offer dates follow [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731) and subsequent notices. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
 
 ## Development Checks
 
@@ -58,21 +63,13 @@ git diff --check
 ## Documentation
 
 - [Product materials](docs/product/submission/README.md)
-- [Privacy policy](https://www.deline.top/privacy)
+- [Privacy policy](https://reader.deline.top/privacy/)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
 ## Project Status
 
 This is an actively maintained personal project becoming a public product. Voice input, OCR, cloud sync, and automated review scheduling are not part of the current release.
-
-## Latest Update
-
-### August 27, 2026
-
-- Added a one-time TokenDance partner introduction covering OAuth, account services, smart routing, and the conditions for up to about 20% peak-hour savings on the Volcengine Ark route.
-- The introduction stays dismissed after entry, while configured users only see a lightweight partner connection status.
-- TokenDance OAuth callbacks now open Settings without welcome or onboarding interruptions.
 
 ## License
 

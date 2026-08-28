@@ -1,11 +1,12 @@
 #!/bin/bash
 set -Eeuo pipefail
 
-PROJECT_DIR="/root/.openclaw/workspace/Feynman-Reader"
-WEB_ROOT="/var/www/feynman-reader"
-DEPLOY_ROOT="/var/www/feynman-reader-deploy"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${FEYNMAN_READER_PROJECT_DIR:-$SCRIPT_DIR}"
+WEB_ROOT="${FEYNMAN_READER_WEB_ROOT:-/var/www/feynman-reader}"
+DEPLOY_ROOT="${FEYNMAN_READER_DEPLOY_ROOT:-/var/www/feynman-reader-deploy}"
 RELEASES_DIR="$DEPLOY_ROOT/releases"
-NGINX_CONFIG="/etc/nginx/conf.d/deline.top.conf"
+NGINX_CONFIG="/etc/nginx/conf.d/reader.deline.top.conf"
 NGINX_SECURITY_CONFIG="/etc/nginx/conf.d/00-feynman-security-headers.conf"
 RELEASES_TO_KEEP=5
 CHUNK_RETENTION_DAYS=14
@@ -29,8 +30,8 @@ atomic_switch() {
 }
 
 restore_nginx_configs() {
-  if [[ -f "$CONFIG_BACKUP_DIR/deline.top.conf" ]]; then
-    install -m 644 "$CONFIG_BACKUP_DIR/deline.top.conf" "$NGINX_CONFIG"
+  if [[ -f "$CONFIG_BACKUP_DIR/reader.deline.top.conf" ]]; then
+    install -m 644 "$CONFIG_BACKUP_DIR/reader.deline.top.conf" "$NGINX_CONFIG"
   else
     rm -f "$NGINX_CONFIG"
   fi
@@ -109,10 +110,10 @@ pm2 delete feynman-reader 2>/dev/null || true
 pm2 save --force >/dev/null 2>&1 || true
 
 echo "5. 原子更新并校验 Nginx 配置..."
-[[ -f "$NGINX_CONFIG" ]] && cp -a "$NGINX_CONFIG" "$CONFIG_BACKUP_DIR/deline.top.conf"
+[[ -f "$NGINX_CONFIG" ]] && cp -a "$NGINX_CONFIG" "$CONFIG_BACKUP_DIR/reader.deline.top.conf"
 [[ -f "$NGINX_SECURITY_CONFIG" ]] && cp -a "$NGINX_SECURITY_CONFIG" "$CONFIG_BACKUP_DIR/00-feynman-security-headers.conf"
 install -m 644 "$PROJECT_DIR/00-feynman-security-headers.conf" "$NGINX_SECURITY_CONFIG.new"
-install -m 644 "$PROJECT_DIR/deline.top.conf" "$NGINX_CONFIG.new"
+install -m 644 "$PROJECT_DIR/reader.deline.top.conf" "$NGINX_CONFIG.new"
 mv -f "$NGINX_SECURITY_CONFIG.new" "$NGINX_SECURITY_CONFIG"
 mv -f "$NGINX_CONFIG.new" "$NGINX_CONFIG"
 CONFIGS_INSTALLED=1
@@ -134,7 +135,7 @@ SWITCHED=1
 systemctl reload nginx
 
 echo "7. 验证公网首页、新旧 Chunk 与 HTTPS 安全响应头..."
-RESPONSE_HEADERS="$(curl -fsSI --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 20 "https://www.deline.top/?release=$RELEASE_ID")"
+RESPONSE_HEADERS="$(curl -fsSI --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 20 "https://reader.deline.top/?release=$RELEASE_ID")"
 REQUIRED_HEADERS=(
   "Content-Security-Policy"
   "X-Frame-Options"
@@ -158,9 +159,9 @@ if [[ -z "$new_chunk" ]]; then
   exit 1
 fi
 NEW_CHUNK_URL="/${new_chunk#"$PROJECT_DIR/out"/}"
-curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://www.deline.top$NEW_CHUNK_URL?release=$RELEASE_ID" >/dev/null
+curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.deline.top$NEW_CHUNK_URL?release=$RELEASE_ID" >/dev/null
 if [[ -n "$OLD_CHUNK_URL" ]]; then
-  curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://www.deline.top$OLD_CHUNK_URL?release=$RELEASE_ID" >/dev/null
+  curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.deline.top$OLD_CHUNK_URL?release=$RELEASE_ID" >/dev/null
 fi
 
 echo "8. 保留最近 $RELEASES_TO_KEEP 个可回滚版本..."
@@ -175,5 +176,5 @@ CONFIGS_INSTALLED=0
 trap - EXIT
 
 echo "=========================================="
-echo "部署完成：https://www.deline.top"
+echo "部署完成：https://reader.deline.top"
 echo "=========================================="

@@ -1,6 +1,6 @@
-# SafeLine 接入方案
+# SafeLine 接入方案（reader.deline.top）
 
-这份文档用于把 SafeLine 放到 `deline.top` 前面，保护公网网页入口，同时保持费曼读书助手的正常使用。项目是静态站，书籍、上传文档和笔记保存在用户浏览器本地，浏览器会直接访问 `api.deepseek.com`；SafeLine 只能保护 `deline.top` 的网页和静态资源，不能代理或读取用户发往 DeepSeek 的请求。
+这份文档用于把 SafeLine 放到 `reader.deline.top` 前面，保护费曼读书助手产品入口。品牌官网由独立项目负责，入口是 `www.deline.top`。本项目是静态站，书籍、上传文档和笔记保存在用户浏览器本地，浏览器会直接访问 `api.deepseek.com`；SafeLine 只能保护 `reader.deline.top` 的网页和静态资源，不能代理或读取用户发往 DeepSeek 的请求。
 
 ## 推荐拓扑
 
@@ -44,7 +44,7 @@ SafeLine 和站点 Nginx 不能同时抢占同一台机器的 80/443 端口。�
 
 5. 用 Safari、Chrome 和移动端各完成一次首次引导、书架打开、文档解析、阶段学习页面加载。AI 请求应继续直接访问 `https://api.deepseek.com`，不能因为 WAF 配置改变 CSP 或浏览器跨域行为。
 6. 观察至少一个完整高峰周期的 SafeLine 命中日志和源站 4xx/5xx 日志。对误报只做单条、按路径和条件明确的放行，不关闭整类 Web 攻击防护。
-7. 再切换 `www.deline.top` 和 `deline.top` 的 DNS 或入口。切换期间保留旧源站，验证失败时只回退 DNS/入口，不删除旧发布目录。
+7. 最后切换 `reader.deline.top` 的 DNS 或入口。`www.deline.top` 和裸域 `deline.top` 由官网项目管理，不要在本项目部署脚本中覆盖它们。切换期间保留旧源站，验证失败时只回退 DNS/入口，不删除旧发布目录。
 
 ## 回滚条件
 

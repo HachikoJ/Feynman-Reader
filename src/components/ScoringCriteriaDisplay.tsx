@@ -63,7 +63,7 @@ export default function ScoringCriteriaDisplay({ lang, compact = false, embedded
                     <div key={idx} className="flex items-start gap-2">
                       <span className={`px-1.5 py-0.5 rounded text-white text-xs ${
                         level.range[1] >= 85 ? 'bg-green-500' :
-                        level.range[1] >= 70 ? 'bg-blue-500' :
+                        level.range[1] >= 70 ? 'bg-[var(--accent)]' :
                         level.range[1] >= 50 ? 'bg-yellow-500' :
                         'bg-red-500'
                       }`}>
@@ -138,9 +138,9 @@ export default function ScoringCriteriaDisplay({ lang, compact = false, embedded
                 >
                   <div className="flex items-center gap-3">
                     <span className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      criteria.dimension === 'accuracy' ? 'bg-blue-500/20 text-blue-400' :
+                      criteria.dimension === 'accuracy' ? 'bg-[var(--accent)]/20 text-[var(--accent)]' :
                       criteria.dimension === 'completeness' ? 'bg-green-500/20 text-green-400' :
-                      'bg-purple-500/20 text-purple-400'
+                      'bg-[var(--accent-secondary)]/20 text-[var(--accent-secondary)]'
                     }`}>
                       <AppIcon {...dimensionIcon(criteria.dimension)} size={20} />
                     </span>
@@ -165,7 +165,7 @@ export default function ScoringCriteriaDisplay({ lang, compact = false, embedded
                           key={idx}
                           className={`p-3 rounded-lg border-2 ${
                             level.range[1] >= 85 ? 'border-green-500/30 bg-green-500/5' :
-                            level.range[1] >= 70 ? 'border-blue-500/30 bg-blue-500/5' :
+                            level.range[1] >= 70 ? 'border-[var(--accent)]/30 bg-[var(--accent)]/5' :
                             level.range[1] >= 50 ? 'border-yellow-500/30 bg-yellow-500/5' :
                             'border-red-500/30 bg-red-500/5'
                           }`}
@@ -173,7 +173,7 @@ export default function ScoringCriteriaDisplay({ lang, compact = false, embedded
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                               level.range[1] >= 85 ? 'bg-green-500 text-white' :
-                              level.range[1] >= 70 ? 'bg-blue-500 text-white' :
+                              level.range[1] >= 70 ? 'bg-[var(--accent)] text-white' :
                               level.range[1] >= 50 ? 'bg-yellow-500 text-white' :
                               'bg-red-500 text-white'
                             }`}>

@@ -69,7 +69,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       iconTone: 'sky',
       tips: [
         { text: '系统使用 DeepSeek V4 Flash；TokenDance 峰时火山方舟端口最高约省 20%', emphasis: '最高约省 20%', tone: 'emerald' },
-        { text: '智能路由到其他端口时不保证优惠，可在 TokenDance 设置路由偏好', emphasis: '不保证优惠', tone: 'amber' },
+        { text: '限时优惠当前适用于峰时火山方舟端口，可在 TokenDance 设置路由偏好', emphasis: '限时优惠', tone: 'amber' },
         { text: 'API Key 仅保存在当前浏览器网站数据中', emphasis: '仅保存在当前浏览器', tone: 'emerald' },
         { text: '计费以 TokenDance 官方实时标准及后续通知为准', emphasis: '官方实时标准及后续通知', tone: 'amber' }
       ]
@@ -105,7 +105,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       iconTone: 'sky',
       tips: [
         { text: 'For DeepSeek V4 Flash, TokenDance offers up to about 20% off on the Volcengine Ark route during peak hours', emphasis: 'up to about 20% off', tone: 'emerald' },
-        { text: 'The offer is not guaranteed when smart routing selects another port; route preferences can be set in TokenDance', emphasis: 'not guaranteed', tone: 'amber' },
+        { text: 'Limited-time savings currently apply to the Volcengine Ark route at peak hours; route preferences can be set in TokenDance', emphasis: 'Limited-time savings', tone: 'amber' },
         { text: 'Your API key is stored only in this browser site data', emphasis: 'only in this browser', tone: 'emerald' },
         { text: 'Billing follows TokenDance official real-time pricing and subsequent notices', emphasis: 'official real-time pricing', tone: 'amber' }
       ]
@@ -115,26 +115,32 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
 
 const toneClasses: Record<TipTone, string> = {
   accent: 'text-[var(--accent)]',
-  emerald: 'text-emerald-600 dark:text-emerald-400',
-  amber: 'text-amber-600 dark:text-amber-400',
-  sky: 'text-sky-600 dark:text-sky-400'
+  emerald: 'brand-emphasis-mint',
+  amber: 'brand-emphasis-sun',
+  sky: 'text-[var(--accent)]'
 }
 
 const iconBackgroundClasses: Record<TipTone, string> = {
   accent: 'bg-[var(--accent)]/12 text-[var(--accent)]',
-  emerald: 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400',
-  amber: 'bg-amber-500/12 text-amber-600 dark:text-amber-400',
-  sky: 'bg-sky-500/12 text-sky-600 dark:text-sky-400'
+  emerald: 'bg-[var(--success)]/12 text-[var(--success)]',
+  amber: 'bg-[var(--warning)]/16 brand-emphasis-sun',
+  sky: 'bg-[var(--accent)]/12 text-[var(--accent)]'
 }
 
-function HighlightedTip({ tip }: { tip: OnboardingTip }) {
+function HighlightedTip({ tip, tokenDanceStep = false }: { tip: OnboardingTip; tokenDanceStep?: boolean }) {
   const emphasisIndex = tip.text.indexOf(tip.emphasis)
   if (emphasisIndex < 0) return <span className="text-sm leading-6">{tip.text}</span>
+
+  const tokenDanceEmphasisClass = tip.emphasis.includes('20%')
+    ? 'brand-emphasis-coral'
+    : tip.emphasis.includes('限时优惠') || tip.emphasis.includes('Limited-time')
+      ? 'brand-emphasis-sun'
+      : 'text-[var(--text-primary)]'
 
   return (
     <span className="text-sm leading-6">
       {tip.text.slice(0, emphasisIndex)}
-      <strong className={`font-bold ${toneClasses[tip.tone || 'accent']}`}>
+      <strong className={`font-bold ${tokenDanceStep ? tokenDanceEmphasisClass : toneClasses[tip.tone || 'accent']}`}>
         {tip.emphasis}
       </strong>
       {tip.text.slice(emphasisIndex + tip.emphasis.length)}
@@ -210,15 +216,17 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
   const StepIcon = step.icon
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className="card max-h-[90vh] w-full max-w-xl overflow-y-auto p-6 animate-fade-in md:p-8">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className={`brand-dialog max-h-[calc(100dvh-1rem)] w-full max-w-xl overflow-y-auto rounded-xl p-5 animate-fade-in sm:max-h-[90vh] sm:p-6 md:p-8 ${currentStep === steps.length - 1 ? 'tokendance-surface' : ''}`}>
         {/* 进度指示器 */}
         <div className="flex gap-2 mb-6">
           {steps.map((_, idx) => (
             <div
               key={idx}
               className={`flex-1 h-2 rounded-full transition-colors ${
-                idx <= currentStep ? 'bg-[var(--accent)]' : 'bg-[var(--bg-secondary)]'
+                idx <= currentStep
+                  ? (currentStep === steps.length - 1 ? 'bg-[var(--text-primary)]' : 'bg-[var(--accent)]')
+                  : 'bg-[var(--bg-secondary)]'
               }`}
             />
           ))}
@@ -226,7 +234,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
 
         {/* 步骤内容 */}
         <div className="text-center mb-6">
-          <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg ${iconBackgroundClasses[step.iconTone]}`}>
+          <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg ${currentStep === steps.length - 1 ? 'tokendance-icon' : iconBackgroundClasses[step.iconTone]}`}>
             <StepIcon size={32} strokeWidth={1.8} aria-hidden="true" />
           </div>
           <h2 id="onboarding-title" className="text-2xl font-bold mb-3">{step.title}</h2>
@@ -236,8 +244,8 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
           <div className="space-y-2 border-y border-[var(--border)] py-4 text-left">
             {step.tips.map((tip, idx) => (
               <div key={idx} className="flex items-start gap-2.5">
-                <Check size={17} strokeWidth={2.5} className="mt-1 shrink-0 text-[var(--accent)]" aria-hidden="true" />
-                <HighlightedTip tip={tip} />
+                <Check size={17} strokeWidth={2.5} className={`mt-1 shrink-0 ${currentStep === steps.length - 1 ? 'text-[var(--text-primary)]' : 'text-[var(--accent)]'}`} aria-hidden="true" />
+                <HighlightedTip tip={tip} tokenDanceStep={currentStep === steps.length - 1} />
               </div>
             ))}
           </div>

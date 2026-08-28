@@ -10,12 +10,18 @@ jest.mock('../db', () => ({
 
 import { initDB, indexedDB } from '../db'
 import {
+  addAssistantAttachment,
   appendAssistantMessage,
   clearAssistantSessions,
   compactAssistantHistory,
+  compactAssistantContext,
+  createAssistantBranchSession,
   createAssistantSession,
   deleteAssistantSession,
   getAssistantSessions,
+  MAX_ASSISTANT_ATTACHMENT_CHARS,
+  removeAssistantAttachment,
+  truncateAssistantMessages,
   updateAssistantSession,
   type AssistantMessage
 } from '../assistantSessions'
@@ -38,6 +44,7 @@ describe('assistant session persistence', () => {
     const first = await createAssistantSession({ title: '  追风筝的人  ', bookId: 'book-1' })
     expect(first.title).toBe('追风筝的人')
     expect(first.bookId).toBe('book-1')
+    expect(first.attachments).toEqual([])
 
     mockGet.mockResolvedValueOnce({ key: 'assistant-sessions', sessions: [first] })
     const withMessage = await appendAssistantMessage(first.id, { role: 'user', content: '  这本书的核心冲突是什么？ ' })
@@ -93,5 +100,142 @@ describe('assistant session persistence', () => {
     })
     const sessions = await getAssistantSessions()
     expect(sessions.map(session => session.id)).toEqual(['new', 'old'])
+  })
+
+  it('adds and removes a session attachment', async () => {
+    const session = await createAssistantSession()
+    mockGet.mockResolvedValueOnce({ key: 'assistant-sessions', sessions: [session] })
+    const attached = await addAssistantAttachment(session.id, {
+      fileName: ' notes.txt ',
+      fileType: ' text/plain ',
+      content: ' attachment content '
+    })
+    expect(attached.attachments[0]).toMatchObject({
+      fileName: 'notes.txt',
+      fileType: 'text/plain',
+      content: 'attachment content'
+    })
+
+    mockGet.mockResolvedValueOnce({ key: 'assistant-sessions', sessions: [attached] })
+    const removed = await removeAssistantAttachment(session.id, attached.attachments[0].id)
+    expect(removed.attachments).toEqual([])
+  })
+
+  it('supports replacing attachments through the general session update', async () => {
+    const session = await createAssistantSession()
+    mockGet.mockResolvedValueOnce({ key: 'assistant-sessions', sessions: [session] })
+    const updated = await updateAssistantSession(session.id, {
+      attachments: [{
+        id: 'attachment',
+        fileName: 'book-notes.txt',
+        fileType: 'text/plain',
+        content: 'notes',
+        createdAt: 1
+      }]
+    })
+    expect(updated.attachments).toHaveLength(1)
+  })
+
+  it('enforces attachment count, single-content and total-content limits', async () => {
+    const session = await createAssistantSession()
+    await expect(addAssistantAttachment(session.id, {
+      fileName: 'too-long.txt',
+      fileType: 'text/plain',
+      content: 'x'.repeat(MAX_ASSISTANT_ATTACHMENT_CHARS + 1)
+    })).rejects.toThrow('ASSISTANT_ATTACHMENT_TOO_LARGE')
+
+    const fiveAttachments = Array.from({ length: 5 }, (_, index) => ({
+      id: `attachment-${index}`,
+      fileName: `${index}.txt`,
+      fileType: 'text/plain',
+      content: 'x',
+      createdAt: index
+    }))
+    mockGet.mockResolvedValueOnce({
+      key: 'assistant-sessions',
+      sessions: [{ ...session, attachments: fiveAttachments }]
+    })
+    await expect(addAssistantAttachment(session.id, {
+      fileName: 'sixth.txt', fileType: 'text/plain', content: 'x'
+    })).rejects.toThrow('ASSISTANT_ATTACHMENT_LIMIT_REACHED')
+
+    mockGet.mockResolvedValueOnce({
+      key: 'assistant-sessions',
+      sessions: [{ ...session, attachments: [
+        { id: 'one', fileName: 'one.txt', fileType: 'text/plain', content: 'x'.repeat(12000), createdAt: 1 },
+        { id: 'two', fileName: 'two.txt', fileType: 'text/plain', content: 'x'.repeat(12000), createdAt: 2 },
+        { id: 'three', fileName: 'three.txt', fileType: 'text/plain', content: 'x'.repeat(6000), createdAt: 3 }
+      ] }]
+    })
+    await expect(addAssistantAttachment(session.id, {
+      fileName: 'over-total.txt', fileType: 'text/plain', content: 'x'
+    })).rejects.toThrow('ASSISTANT_ATTACHMENT_TOTAL_TOO_LARGE')
+  })
+
+  it('normalizes malformed attachments and clips legacy data to safe limits', async () => {
+    mockGet.mockResolvedValue({
+      key: 'assistant-sessions',
+      sessions: [{
+        id: 'session',
+        title: '附件',
+        messages: [],
+        createdAt: 1,
+        updatedAt: 1,
+        attachments: [
+          { id: 'one', fileName: ' one.txt ', fileType: ' text/plain ', content: 'x'.repeat(15000), createdAt: 1 },
+          { id: 'bad', fileName: '', fileType: 'text/plain', content: 'bad', createdAt: 2 },
+          { id: 'two', fileName: 'two.txt', fileType: 'text/plain', content: 'y'.repeat(12000), createdAt: 3 },
+          { id: 'three', fileName: 'three.txt', fileType: 'text/plain', content: 'z'.repeat(12000), createdAt: 4 }
+        ]
+      }]
+    })
+    const [session] = await getAssistantSessions()
+    expect(session.attachments).toHaveLength(3)
+    expect(session.attachments[0]).toMatchObject({ fileName: 'one.txt', fileType: 'text/plain' })
+    expect(session.attachments[0].content).toHaveLength(12000)
+    expect(session.attachments.reduce((sum, attachment) => sum + attachment.content.length, 0)).toBe(30000)
+  })
+
+  it('truncates a conversation at an edited user message', async () => {
+    const session = await createAssistantSession()
+    mockGet.mockResolvedValueOnce({ key: 'assistant-sessions', sessions: [{
+      ...session,
+      messages: [
+        { id: 'u1', role: 'user', content: 'first', createdAt: 1 },
+        { id: 'a1', role: 'assistant', content: 'answer', createdAt: 2 },
+        { id: 'u2', role: 'user', content: 'edit me', createdAt: 3 }
+      ]
+    }] })
+    const truncated = await truncateAssistantMessages(session.id, 'u2')
+    expect(truncated.messages.map(message => message.id)).toEqual(['u1', 'a1'])
+  })
+
+  it('creates an independent branch through the selected assistant reply', async () => {
+    const session = await createAssistantSession({ title: '原会话' })
+    mockGet.mockResolvedValueOnce({ key: 'assistant-sessions', sessions: [{
+      ...session,
+      messages: [
+        { id: 'u1', role: 'user', content: 'first', createdAt: 1 },
+        { id: 'a1', role: 'assistant', content: 'answer', createdAt: 2 },
+        { id: 'u2', role: 'user', content: 'later', createdAt: 3 }
+      ]
+    }] })
+    const branch = await createAssistantBranchSession(session.id, 'a1')
+    expect(branch.id).not.toBe(session.id)
+    expect(branch.title).toBe('原会话 · 分支')
+    expect(branch.messages.map(message => message.id)).toEqual(['u1', 'a1'])
+  })
+
+  it('summarizes older turns while preserving recent message boundaries', () => {
+    const messages: AssistantMessage[] = Array.from({ length: 8 }, (_, index) => ({
+      id: String(index),
+      role: index % 2 ? 'assistant' : 'user',
+      content: `${index}`.repeat(12),
+      createdAt: index
+    }))
+    const compacted = compactAssistantContext(messages, 80)
+    expect(compacted.omittedCount).toBeGreaterThan(0)
+    expect(compacted.summary).toContain('用户')
+    expect(compacted.messages.at(-1)?.id).toBe('7')
   })
 })

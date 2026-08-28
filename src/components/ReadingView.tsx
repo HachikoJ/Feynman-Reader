@@ -16,6 +16,7 @@ import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
 import MarkdownRenderer from './MarkdownRenderer'
 import SourceEvidence from './SourceEvidence'
+import CopyContentButton from './CopyContentButton'
 import BookRecommendations from './BookRecommendations'
 import {
   clampCompletedPhaseCount,
@@ -591,14 +592,24 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const phase = LEARNING_PHASES[currentPhase]
   const practiceRecords = book.practiceRecords || []
+  const practiceHistoryText = practiceRecords
+    .slice()
+    .reverse()
+    .map((record, index) => [
+      `${lang === 'zh' ? '实践记录' : 'Practice Record'} ${index + 1}`,
+      `${lang === 'zh' ? '得分' : 'Score'}: ${record.scores.overall}`,
+      `${lang === 'zh' ? '教学输出' : 'Teaching Output'}:\n${record.content}`,
+      `${lang === 'zh' ? 'AI 点评' : 'AI Review'}:\n${record.aiReview}`
+    ].join('\n\n'))
+    .join('\n\n---\n\n')
   const completedPhaseCount = clampCompletedPhaseCount(book.currentPhase, LEARNING_PHASES.length)
   const practiceComplete = book.bestScore >= 60
 
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="text-[var(--text-secondary)] text-sm">{t(lang, 'reading.currentBook')}</p>
           <h1 className="text-2xl font-bold">《{book.name}》</h1>
           {book.isSample && (
@@ -607,7 +618,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             </p>
           )}
           {metadataEnrichmentStatus === 'loading' && (
-            <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-[var(--accent)]">
               <AppIcon name="refresh" tone="blue" size={13} className="animate-spin" />
               {lang === 'zh' ? '正在自动补全作者、简介和标签' : 'Completing author, summary, and tags'}
             </p>
@@ -626,7 +637,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             </p>
           )}
         </div>
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 self-end sm:self-auto">
           <button onClick={() => setShowBookOrganizer(true)} className="btn-secondary flex items-center gap-2 text-sm py-2">
             <AppIcon name="bookMarked" tone="violet" size={17} />
             {lang === 'zh' ? '整理' : 'Organize'}
@@ -636,24 +647,27 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       </div>
 
       {/* Tabs */}
-      <div ref={readingTabsRef} className="scroll-mt-24 flex gap-2 mb-6 p-1 bg-[var(--bg-secondary)] rounded-xl">
+      <div ref={readingTabsRef} className="mb-6 grid scroll-mt-24 grid-cols-4 gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 sm:gap-2">
         {[
-          { key: 'phase' as TabType, label: lang === 'zh' ? '阶段学习' : 'Learning', icon: 'library' as AppIconName, tone: 'blue' as const },
-          { key: 'practice' as TabType, label: lang === 'zh' ? '费曼实践' : 'Practice', icon: 'graduation' as AppIconName, tone: 'green' as const },
-          { key: 'notes' as TabType, label: lang === 'zh' ? '我的笔记' : 'Notes', icon: 'note' as AppIconName, tone: 'amber' as const },
-          { key: 'recommendations' as TabType, label: lang === 'zh' ? '相关推荐' : 'Recommendations', icon: 'bookOpen' as AppIconName, tone: 'violet' as const }
+          { key: 'phase' as TabType, label: lang === 'zh' ? '阶段学习' : 'Learning', mobileLabel: lang === 'zh' ? '阶段学习' : 'Learn', icon: 'library' as AppIconName, tone: 'blue' as const },
+          { key: 'practice' as TabType, label: lang === 'zh' ? '费曼实践' : 'Practice', mobileLabel: lang === 'zh' ? '费曼实践' : 'Practice', icon: 'graduation' as AppIconName, tone: 'green' as const },
+          { key: 'notes' as TabType, label: lang === 'zh' ? '我的笔记' : 'Notes', mobileLabel: lang === 'zh' ? '我的笔记' : 'Notes', icon: 'note' as AppIconName, tone: 'amber' as const },
+          { key: 'recommendations' as TabType, label: lang === 'zh' ? '相关推荐' : 'Recommendations', mobileLabel: lang === 'zh' ? '相关推荐' : 'Related', icon: 'bookOpen' as AppIconName, tone: 'violet' as const }
         ].map(tab => (
           <button
             key={tab.key}
+            data-testid={`reading-tab-${tab.key}`}
+            aria-label={tab.label}
             onClick={() => handleTabChange(tab.key)}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg transition-all ${
+            className={`flex min-w-0 items-center justify-center rounded-lg px-1 py-3 text-xs transition-all sm:gap-2 sm:px-2 sm:text-sm ${
               activeTab === tab.key 
                 ? 'bg-[var(--accent)] text-white' 
                 : 'hover:bg-[var(--bg-card)]'
             }`}
           >
-            <AppIcon name={tab.icon} tone={activeTab === tab.key ? 'inherit' : tab.tone} size={18} />
-            <span>{tab.label}</span>
+            <AppIcon name={tab.icon} tone={activeTab === tab.key ? 'inherit' : tab.tone} size={18} className="hidden sm:block" />
+            <span className="whitespace-nowrap sm:hidden">{tab.mobileLabel}</span>
+            <span className="hidden whitespace-nowrap sm:inline">{tab.label}</span>
           </button>
         ))}
       </div>
@@ -873,8 +887,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             {/* 教学模拟成绩 */}
             <div 
               onClick={handleTeachingCardClick}
-              className={`card bg-gradient-to-br from-blue-500/10 to-purple-500/10 border-2 border-blue-500/30 transition-all ${
-                practiceRecords.length > 0 ? 'cursor-pointer hover:border-blue-500/60 hover:shadow-lg hover:scale-[1.02]' : ''
+              className={`card border-2 border-[var(--accent)]/25 bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent-secondary)]/8 transition-all ${
+                practiceRecords.length > 0 ? 'cursor-pointer hover:border-[var(--accent)]/55 hover:shadow-lg hover:scale-[1.02]' : ''
               }`}
             >
               <div className="flex items-center justify-between mb-3">
@@ -892,7 +906,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               {practiceRecords.length > 0 ? (
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-3xl font-bold text-blue-400 mb-1">
+                    <div className="mb-1 text-3xl font-bold text-[var(--accent)]">
                       {Math.max(...practiceRecords.map(r => r.scores.overall))}
                     </div>
                     <div className="text-xs text-[var(--text-secondary)]">
@@ -917,8 +931,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               )}
               
               {practiceRecords.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-blue-500/20 text-center">
-                  <span className="text-xs text-blue-400">
+                <div className="mt-3 border-t border-[var(--accent)]/20 pt-3 text-center">
+                  <span className="text-xs text-[var(--accent)]">
                     <span className="inline-flex items-center gap-1">{lang === 'zh' ? '点击查看详细记录' : 'Click to view details'}<AppIcon name="arrowRight" size={13} /></span>
                   </span>
                 </div>
@@ -1025,25 +1039,25 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
           {/* 完成提示 */}
           {!practiceComplete && (
-            <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-400 rounded-xl p-5 shadow-sm">
+            <div className="rounded-xl border-2 border-[var(--accent)]/30 bg-gradient-to-r from-[var(--accent)]/8 to-[var(--success)]/8 p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-cyan-100 flex items-center justify-center flex-shrink-0">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/12">
                     <AppIcon name="clipboard" tone="cyan" size={20} />
                   </div>
                   <div>
-                    <h3 className="text-cyan-700 font-semibold text-base mb-0.5">
+                    <h3 className="mb-0.5 text-base font-semibold text-[var(--accent)]">
                       {lang === 'zh' ? '阅读完成条件' : 'Completion Requirements'}
                     </h3>
-                    <p className="text-gray-600 text-sm">
+                    <p className="text-sm text-[var(--text-secondary)]">
                       {lang === 'zh' 
                         ? '同一学习会话：教学模拟 60分+ ｜ 角色问答全部 60分+'
                         : 'Same session: Teaching 60+ | All Q&A 60+'}
                     </p>
                   </div>
                 </div>
-                <div className="px-3 py-1.5 bg-cyan-100 rounded-lg border border-cyan-300">
-                  <span className="text-cyan-700 text-xs font-medium">
+                <div className="rounded-lg border border-[var(--warning)]/55 bg-[var(--warning)]/18 px-3 py-1.5">
+                  <span className="brand-emphasis-sun text-xs">
                     {lang === 'zh' ? '待完成' : 'Pending'}
                   </span>
                 </div>
@@ -1110,13 +1124,26 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           {/* 实践记录 - 移到教学模拟下方，默认折叠 */}
           {practiceRecords.length > 0 && (
             <div className="card" ref={practiceHistoryRef}>
-              <button
-                onClick={() => setShowPracticeHistory(!showPracticeHistory)}
-                className="w-full flex items-center justify-between p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
-              >
-                <h3 className="flex items-center gap-2 font-semibold"><AppIcon name="chart" tone="blue" size={18} />{t(lang, 'practice.history')} ({practiceRecords.length})</h3>
-                <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showPracticeHistory ? 'rotate-180' : ''}`} />
-              </button>
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setShowPracticeHistory(!showPracticeHistory)}
+                  className="min-w-0 flex-1 flex items-center gap-2 rounded-lg p-2 text-left transition-colors hover:bg-[var(--bg-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]/50"
+                >
+                  <h3 className="min-w-0 flex items-center gap-2 font-semibold"><AppIcon name="chart" tone="blue" size={18} />{t(lang, 'practice.history')} ({practiceRecords.length})</h3>
+                </button>
+                {showPracticeHistory && (
+                  <CopyContentButton content={practiceHistoryText} lang={lang} label={lang === 'zh' ? '复制实践记录' : 'Copy practice records'} />
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowPracticeHistory(!showPracticeHistory)}
+                  className="inline-flex min-h-10 min-w-10 items-center justify-center mr-1 rounded-lg transition-colors hover:bg-[var(--bg-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
+                  aria-label={lang === 'zh' ? (showPracticeHistory ? '收起实践记录' : '展开实践记录') : (showPracticeHistory ? 'Collapse practice records' : 'Expand practice records')}
+                >
+                  <AppIcon name="chevronDown" tone="muted" size={18} className={`transition-transform duration-200 ${showPracticeHistory ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
               
               {showPracticeHistory && (
                 <div className="mt-4 space-y-4 animate-fade-in">
@@ -1185,11 +1212,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           )}
 
           {/* 角色问答 */}
-          <QAPractice 
-            book={book} 
-            apiKey={apiKey} 
-            lang={lang} 
-            quotes={quotes} 
+          <QAPractice
+            book={book}
+            apiKey={apiKey}
+            needsAiConfiguration={needsAiConfiguration}
+            lang={lang}
+            quotes={quotes}
             onBookUpdate={handleBookUpdate}
             showHistory={qaShowHistory}
             onShowHistoryChange={setQaShowHistory}
@@ -1309,6 +1337,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               }}
               loadingRecommendations={loadingRecommendations}
               onLoadingChange={setLoadingRecommendations}
+              onOpenSettings={onOpenSettings}
+              needsAiConfiguration={needsAiConfiguration}
             />
           )}
         </div>

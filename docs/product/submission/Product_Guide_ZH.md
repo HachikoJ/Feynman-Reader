@@ -23,7 +23,7 @@ npm run dev
 
 ## 当前产品图集
 
-以下历史截图均从 `https://www.deline.top` 的产品版本在 Safari 中采集。当前默认示例书为《追风筝的人》；最新桌面和移动端截图见 `docs/product/screenshots/01-bookshelf-desktop.png` 与 `docs/product/screenshots/02-bookshelf-mobile.png`。
+以下截图展示当前产品界面；正式访问地址为 `https://reader.deline.top`。当前默认示例书为《追风筝的人》；最新桌面和移动端截图见 `docs/product/screenshots/01-bookshelf-desktop.png` 与 `docs/product/screenshots/02-bookshelf-mobile.png`。
 
 | 文件 | 展示重点 |
 | --- | --- |
@@ -37,14 +37,13 @@ npm run dev
 | `screenshots/08-settings-local-first-safari.png` | 本地 API Key、隐私同意、数据管理和金句管理。 |
 | `screenshots/09-privacy-policy-safari.png` | 独立隐私政策页与数据传输说明。 |
 
-角色问答和教学模拟截图均来自实际学习记录，不使用旧产品名的历史截图，也不伪造 AI 生成内容。
+角色问答和教学模拟截图均来自实际学习记录，不伪造 AI 生成内容。
 
 ## 产品边界说明
 
 - 当前支持文本教学模拟，不支持语音输入或语音转写。
 - 当前主流程是顺序 6 阶段；学习模式选择尚未对用户开放。
 - 当前版本暂不提供自动复习提醒或复习调度服务。
-- 浏览器端试用/激活实现已移除，当前不会因刷新或重新打开页面扣减次数，也不会弹出激活页面。
 - 本产品不提供云端存储、同步与恢复服务；书籍和学习记录保存在当前浏览器，用户需要按提醒定期导出备份。
 - API Key 为空、格式不正确或未确认 AI 数据传输时，设置不会保存，并会定位到需要处理的项目。
 - 多标签页同时编辑时会检测数据版本冲突，避免旧页面静默覆盖较新的学习记录。

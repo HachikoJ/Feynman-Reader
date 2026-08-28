@@ -7,6 +7,8 @@ import {
   ArrowUpRight,
   AlertTriangle,
   Check,
+  CircleCheck,
+  CircleX,
   Database,
   Download,
   Eye,
@@ -15,6 +17,8 @@ import {
   Gauge,
   HardDrive,
   Languages,
+  Mail,
+  MessageCircle,
   Moon,
   Pencil,
   Quote,
@@ -25,7 +29,8 @@ import {
   Wallet,
   RefreshCw,
   ExternalLink,
-  Megaphone
+  Megaphone,
+  Sparkles
 } from 'lucide-react'
 import {
   AppSettings,
@@ -64,6 +69,7 @@ import { createTokendanceAuthorizationUrl, exchangeTokendanceCode, fetchTokendan
 import { deepSeekSunsetMessage, isTokenDanceOnly } from '@/lib/aiProviderPolicy'
 import { DEEPSEEK_OFFICIAL_CHANNEL_SUNSET } from '@/lib/deepseek'
 import { isAIConfigurationComplete } from '@/lib/startupPrompt'
+import { clearAssistantMemories, deleteAssistantMemory, getAssistantMemories, type AssistantMemory } from '@/lib/assistantMemory'
 
 // P0 新增：IndexedDB 支持
 import {
@@ -125,6 +131,9 @@ export default function Settings({
 
   // 数据导出/导入相关状态
   const [showDataManagement, setShowDataManagement] = useState(false)
+  const [showAssistantMemoryManager, setShowAssistantMemoryManager] = useState(false)
+  const [assistantMemories, setAssistantMemories] = useState<AssistantMemory[]>([])
+  const [loadingAssistantMemories, setLoadingAssistantMemories] = useState(false)
   const [lastBackupAt, setLastBackupAt] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
   const [pendingBackupDownload, setPendingBackupDownload] = useState<{
@@ -675,6 +684,33 @@ export default function Settings({
     }
   }
 
+  const loadAssistantMemoryManager = async () => {
+    setLoadingAssistantMemories(true)
+    try {
+      setAssistantMemories(await getAssistantMemories())
+    } finally {
+      setLoadingAssistantMemories(false)
+    }
+  }
+
+  const toggleAssistantMemory = async (enabled: boolean) => {
+    const persisted = { ...getSettings(), assistantMemoryEnabled: enabled }
+    saveSettings(persisted)
+    await flushPendingStoreWrites()
+    setSettings(current => ({ ...current, assistantMemoryEnabled: enabled }))
+    onSettingsChange(persisted)
+  }
+
+  const exportAssistantMemories = () => {
+    const payload = JSON.stringify({ version: 1, exportedAt: Date.now(), memories: assistantMemories }, null, 2)
+    const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `feynman-assistant-memory-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   const addQuote = () => {
     if (!newQuoteText.trim()) return
     setQuoteStatus(null)
@@ -1050,7 +1086,7 @@ export default function Settings({
             type="button"
             onClick={() => handleLanguageChange(lang === 'zh' ? 'en' : 'zh')}
             disabled={savingQuickSetting || saving || updatingAiPrivacy}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
             aria-label={lang === 'zh' ? 'Switch to English' : '切换至中文'}
             title={lang === 'zh' ? 'Switch to English' : '切换至中文'}
           >
@@ -1060,7 +1096,7 @@ export default function Settings({
             type="button"
             onClick={() => void persistQuickSetting('theme', settings.theme === 'dark' ? 'light' : 'dark')}
             disabled={savingQuickSetting || saving || updatingAiPrivacy}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] text-amber-500 hover:bg-[var(--bg-secondary)]"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--border)] text-amber-500 hover:bg-[var(--bg-secondary)]"
             aria-label={settings.theme === 'dark'
               ? (lang === 'zh' ? '切换至浅色主题' : 'Switch to light theme')
               : (lang === 'zh' ? '切换至深色主题' : 'Switch to dark theme')}
@@ -1079,9 +1115,9 @@ export default function Settings({
         <button
           type="button"
           onClick={onOpenMigrationNotice}
-          className="mb-4 flex w-full items-start gap-3 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-left text-sm hover:bg-sky-500/10"
+          className="tokendance-panel mb-4 flex w-full items-start gap-3 rounded-lg p-3 text-left text-sm transition-colors hover:bg-[color-mix(in_srgb,var(--bg-card)_86%,var(--text-primary)_14%)]"
         >
-          <Megaphone size={18} className="mt-0.5 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden="true" />
+          <Megaphone size={18} className="mt-0.5 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />
           <span className="min-w-0">
             <span className="block font-semibold">{lang === 'zh' ? '查看渠道迁移说明' : 'View provider migration notice'}</span>
             <span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">
@@ -1100,7 +1136,7 @@ export default function Settings({
 
       <div className="space-y-4">
         {/* API Key */}
-        <div className="card p-4">
+        <div className={`card p-4 ${activeProvider === 'tokendance' ? 'tokendance-surface' : ''}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <label className="block text-sm font-medium">{lang === 'zh' ? 'AI 接入渠道' : 'AI provider'}</label>
             <div className="flex flex-wrap items-center gap-2">
@@ -1132,7 +1168,7 @@ export default function Settings({
                 </p>
               </div>
               {activeProvider === 'tokendance' && (
-                <a href="https://tokendance.space/models/deepseek-v4-flash-0731" target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-300">
+                <a href="https://tokendance.space/models/deepseek-v4-flash-0731" target="_blank" rel="noopener noreferrer" className="brand-emphasis-coral text-xs hover:underline">
                   {lang === 'zh' ? '峰时火山方舟端口最高约省 20% · 查看实时价目' : 'Up to ~20% off the Volcengine Ark route at peak · Live pricing'}
                 </a>
               )}
@@ -1158,41 +1194,41 @@ export default function Settings({
                 role="radio"
                 aria-checked={activeProvider === provider}
                 onClick={() => updateSetting('aiProvider', provider)}
-                className={`rounded-lg border p-3 text-left transition ${activeProvider === provider ? 'border-[var(--accent)] bg-[var(--accent)]/10' : 'border-[var(--border)] hover:bg-[var(--bg-secondary)]'}`}
+                className={`rounded-lg border p-3 text-left transition ${activeProvider === provider ? (provider === 'tokendance' ? 'tokendance-panel' : 'border-[var(--accent)] bg-[var(--accent)]/10') : 'border-[var(--border)] hover:bg-[var(--bg-secondary)]'}`}
               >
                 {provider === 'tokendance' && <img src="https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg" alt="TokenDance" className="mb-2 h-7 w-auto max-w-[150px] object-contain object-left" />}
                 <span className="flex flex-wrap items-center gap-2 font-medium">
                   {provider === 'tokendance' ? 'TokenDance / TokenPay' : (lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API')}
                   {provider === 'tokendance' && (
-                    <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                    <span className="brand-offer-badge !px-2 !py-0.5 !text-[11px]">
                       {lang === 'zh' ? '峰时最高约省 20%' : 'Up to ~20% off at peak'}
                     </span>
                   )}
                 </span>
-                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{provider === 'tokendance' ? (lang === 'zh' ? 'OAuth、余额与充值；峰时火山方舟端口有条件优惠，并支持智能路由。' : 'OAuth, balance, and top-up, with a conditional peak-hour offer on the Volcengine Ark route and smart routing.') : (lang === 'zh' ? '使用 DeepSeek 官方控制台和账单，不含 TokenDance 峰时端口优惠。' : 'Use the official DeepSeek console and billing without TokenDance route offers.')}</span>
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{provider === 'tokendance' ? (lang === 'zh' ? 'OAuth、余额与充值；峰时火山方舟端口提供限时优惠，并支持智能路由。' : 'OAuth, balance, and top-up, with limited-time savings on the Volcengine Ark route at peak hours and smart routing.') : (lang === 'zh' ? '使用 DeepSeek 官方控制台与账单管理。' : 'Use the official DeepSeek console and billing.')}</span>
               </button>
             ))}
           </div>
           {activeProvider === 'tokendance' && (
-            <div className="mb-4 rounded-lg border border-emerald-500/35 bg-emerald-500/5 p-3" role="note">
+            <div className="brand-offer mb-4 rounded-lg p-4" role="note">
               <div className="flex flex-wrap items-start gap-2">
-                <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">
-                  {lang === 'zh' ? '峰时优惠' : 'Peak-hour offer'}
+                <span className="brand-offer-badge shrink-0">
+                  {lang === 'zh' ? '限时优惠' : 'Limited-time savings'}
                 </span>
                 <div className="min-w-0 flex-1 text-sm">
-                  <p className="font-medium text-emerald-800 dark:text-emerald-200">
+                  <p className="brand-emphasis-coral text-base">
                     {lang === 'zh' ? 'DeepSeek V4 Flash（v4flash0731）峰时路由到火山方舟端口，最高约省 20%' : 'Up to about 20% off DeepSeek V4 Flash (v4flash0731) when peak-hour traffic uses the Volcengine Ark route'}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                     {lang === 'zh'
-                      ? '这是有条件的端口优惠，不是所有请求的固定折扣。TokenDance 会智能路由；切换到 DeepSeek 官方、阿里或百度等其他端口时不保证优惠，实际价格和活动期限以官方实时价目与通知为准。'
-                      : 'This is a conditional route offer, not a fixed discount for every request. TokenDance uses smart routing; requests routed to DeepSeek official, Alibaba, Baidu, or other ports are not guaranteed to receive the offer. Actual prices and campaign dates follow TokenDance official pricing and notices.'}
+                      ? 'TokenDance 当前为 DeepSeek V4 Flash 峰时火山方舟端口提供限时优惠，并支持智能路由与路由偏好设置。适用线路、价格、时段和活动期限以官方实时价目与通知为准。'
+                      : 'TokenDance currently provides limited-time savings for the DeepSeek V4 Flash Volcengine Ark route at peak hours, with smart routing and route preference controls. Eligible routes, pricing, periods, and offer dates follow TokenDance official live pricing and notices.'}
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                    <a href="https://tokendance.space/models/deepseek-v4-flash-0731" target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+                  <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs">
+                    <a href="https://tokendance.space/models/deepseek-v4-flash-0731" target="_blank" rel="noopener noreferrer" className="tokendance-link inline-flex min-h-11 items-center rounded-md px-1 hover:underline">
                       {lang === 'zh' ? '查看 V4 Flash 实时价目' : 'View live V4 Flash pricing'}
                     </a>
-                    <a href="https://tokendance.space" target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+                    <a href="https://tokendance.space" target="_blank" rel="noopener noreferrer" className="tokendance-link inline-flex min-h-11 items-center rounded-md px-1 hover:underline">
                       {lang === 'zh' ? '前往 TokenDance 设置路由偏好' : 'Set route preferences in TokenDance'}
                     </a>
                   </div>
@@ -1217,7 +1253,7 @@ export default function Settings({
             </ol>
           )}
           {activeProvider === 'tokendance' && (
-            <div className="mb-4 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+            <div className="tokendance-panel mb-4 rounded-lg p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="font-medium">TokenDance OAuth</p>
@@ -1245,18 +1281,14 @@ export default function Settings({
             <button
               type="button"
               onClick={() => setShowKey(!showKey)}
-              className="absolute right-11 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="absolute right-9 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-black/5 hover:text-[var(--text-primary)]"
               aria-label={showKey ? (lang === 'zh' ? '隐藏 API Key' : 'Hide API key') : (lang === 'zh' ? '显示 API Key' : 'Show API key')}
             >
               {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          <p className="text-xs text-[var(--text-secondary)] mb-2">{activeProvider === 'tokendance' ? (lang === 'zh' ? '仅保存在当前浏览器网站数据中；完整 Key 只在授权交换时返回。价格以 TokenDance 官方实时计费标准及后续通知为准。' : 'Stored only in this browser site data; the full key is returned once during OAuth exchange. Pricing follows TokenDance official real-time billing and subsequent notices.') : t(lang, 'settings.apiKeyHelp')}</p>
-          {activeProvider === 'tokendance' && (
-            <ul className="mb-3 space-y-1 text-xs leading-5 text-[var(--text-secondary)]">
-              <li>• {lang === 'zh' ? '新分析所需的书籍信息、上传原文、问题与回答会由浏览器直接发送至 TokenDance。' : 'Book details, uploaded source text, questions, and answers needed for new AI work are sent directly from your browser to TokenDance.'}</li>
-              <li>• {lang === 'zh' ? 'TokenDance 按官方实时标准计费，本应用不代收费用；调用带有应用归因，TokenDance 可能向作者分润。' : 'TokenDance bills at its official real-time rates; this app does not collect payment. Calls carry app attribution and TokenDance may share revenue with the author.'}</li>
-            </ul>
+          {activeProvider !== 'tokendance' && (
+            <p className="mb-2 text-xs text-[var(--text-secondary)]">{t(lang, 'settings.apiKeyHelp')}</p>
           )}
           <label className="mt-3 flex items-start gap-3 text-sm text-[var(--text-secondary)] cursor-pointer">
             <input
@@ -1308,7 +1340,7 @@ export default function Settings({
               href={activeProvider === 'tokendance' ? 'https://tokendance.space/docs/api-key-oauth' : 'https://platform.deepseek.com/api_keys'}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 whitespace-nowrap text-sm text-[var(--accent)] hover:underline"
+              className={`inline-flex min-h-11 items-center gap-1 rounded-md text-sm ${activeProvider === 'tokendance' ? 'tokendance-link hover:underline' : 'text-[var(--accent)] hover:bg-[var(--bg-secondary)]'}`}
             >
               {activeProvider === 'tokendance' ? (lang === 'zh' ? '查看 TokenDance 授权文档' : 'View TokenDance OAuth docs') : t(lang, 'settings.getApiKey')}
               <ArrowUpRight size={15} className="shrink-0" aria-hidden="true" />
@@ -1328,7 +1360,7 @@ export default function Settings({
           {activeProvider === 'tokendance' && aiConfigurationComplete && (
             <div className="mt-4 border-t border-[var(--border)] pt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2"><Wallet size={17} className="text-sky-500" aria-hidden="true" /><span className="font-medium">{lang === 'zh' ? 'TokenDance 账户' : 'TokenDance account'}</span></div>
+                <div className="flex items-center gap-2"><Wallet size={17} className="text-[var(--text-primary)]" aria-hidden="true" /><span className="font-medium">{lang === 'zh' ? 'TokenDance 账户' : 'TokenDance account'}</span></div>
                 <button type="button" onClick={() => void handleTokendanceBalance()} disabled={loadingTokendanceBalance} className="btn-secondary inline-flex items-center gap-1.5 text-sm"><RefreshCw size={14} className={loadingTokendanceBalance ? 'animate-spin' : ''} aria-hidden="true" />{lang === 'zh' ? '刷新余额' : 'Refresh balance'}</button>
               </div>
               {tokendanceBalance && <p className="mt-2 text-sm">{lang === 'zh' ? `可用余额：${(tokendanceBalance.balance / 1_000_000).toFixed(2)} 元` : `Available balance: ¥${(tokendanceBalance.balance / 1_000_000).toFixed(2)}`}</p>}
@@ -1341,12 +1373,61 @@ export default function Settings({
                 </button>
               </div>
               {tokendancePayment && (
-                <div className="mt-3 border-t border-[var(--border)] pt-3" role="status">
-                  <p className="text-sm font-medium">
-                    {lang === 'zh'
-                      ? `充值状态：${tokendancePayment.status === 'paid' ? '已到账' : tokendancePayment.status === 'pending' ? '等待支付' : '未完成'}`
-                      : `Payment status: ${tokendancePayment.status}`}
-                  </p>
+                <div
+                  className="mt-3 border-t border-[var(--border)] pt-3"
+                  role={tokendancePayment.status === 'failed' || tokendancePayment.status === 'closed' || tokendancePayment.status === 'refunded' ? 'alert' : 'status'}
+                  aria-live={tokendancePayment.status === 'failed' || tokendancePayment.status === 'closed' || tokendancePayment.status === 'refunded' ? 'assertive' : 'polite'}
+                >
+                  {tokendancePayment.status === 'paid' ? (
+                    <div className="flex items-start gap-3 rounded-lg border border-emerald-500/60 bg-emerald-500/10 p-3 text-emerald-800 dark:text-emerald-200">
+                      <CircleCheck size={22} className="mt-0.5 shrink-0" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="text-base font-bold">
+                          {lang === 'zh' ? '充值已到账' : 'Top-up received'}
+                        </p>
+                        <p className="mt-1 text-sm">
+                          {lang === 'zh'
+                            ? `充值金额 ¥${tokendancePayment.amount} 已到账，余额已更新。`
+                            : `Your ¥${tokendancePayment.amount} top-up has arrived and the balance is updated.`}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (tokendancePayment.status === 'failed' || tokendancePayment.status === 'closed' || tokendancePayment.status === 'refunded') ? (
+                    <div className="rounded-lg border border-rose-500/60 bg-rose-500/10 p-3 text-rose-800 dark:text-rose-200">
+                      <div className="flex items-start gap-3">
+                        <CircleX size={22} className="mt-0.5 shrink-0" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <p className="text-base font-bold">
+                            {lang === 'zh'
+                              ? `充值${tokendancePayment.status === 'closed' ? '已取消' : tokendancePayment.status === 'refunded' ? '已退款' : '失败'}`
+                              : `Top-up ${tokendancePayment.status === 'closed' ? 'cancelled' : tokendancePayment.status === 'refunded' ? 'refunded' : 'failed'}`}
+                          </p>
+                          <p className="mt-1 text-sm">
+                            {lang === 'zh' ? '本次充值未完成，如需帮助请联系客服处理。' : 'This top-up was not completed. Contact support if you need help.'}
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-semibold">
+                            <a
+                              href="mailto:18682408521@163.com"
+                              aria-label={lang === 'zh' ? '联系客服：18682408521@163.com' : 'Contact support: 18682408521@163.com'}
+                              className="inline-flex min-h-11 min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-rose-500/40 bg-white/50 px-2 underline decoration-current/40 underline-offset-2 hover:bg-white/80 hover:decoration-current dark:bg-black/20 dark:hover:bg-black/30"
+                            >
+                              <Mail size={15} aria-hidden="true" />
+                              <span>{lang === 'zh' ? '联系客服：' : 'Contact support: '}</span>
+                              <span className="whitespace-nowrap">18682408521@163.com</span>
+                            </a>
+                            <span className="inline-flex min-h-11 items-center gap-1.5">
+                              <MessageCircle size={15} aria-hidden="true" />
+                              <span>{lang === 'zh' ? '微信：hostrow' : 'WeChat: hostrow'}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium">
+                      {lang === 'zh' ? '充值状态：等待支付' : 'Payment status: Waiting for payment'}
+                    </p>
+                  )}
                   {tokendancePayment.status === 'pending' && (
                     <div className="mt-3">
                       <div className="hidden sm:block">
@@ -1389,7 +1470,7 @@ export default function Settings({
           >
             <div>
               <h3 className="flex items-center gap-2 font-medium text-left">
-                <Database size={18} className="text-sky-500" aria-hidden="true" />
+                <Database size={18} className="text-[var(--accent)]" aria-hidden="true" />
                 {lang === 'zh' ? '数据管理' : 'Data Management'}
               </h3>
               <p className="text-sm text-[var(--text-secondary)] text-left">
@@ -1425,6 +1506,40 @@ export default function Settings({
             <ArrowUpRight size={18} className="text-[var(--text-secondary)]" aria-hidden="true" />
           </button>
 
+        </div>
+
+        <div className="card p-4 sm:col-span-2">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="flex items-center gap-2 font-medium">
+                <Sparkles size={18} className="text-[var(--accent-secondary)]" aria-hidden="true" />
+                {lang === 'zh' ? '费曼小助手记忆' : 'Feynman Assistant memory'}
+              </h3>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                {lang === 'zh' ? '只保存你明确要求记住的偏好，保存在当前浏览器，独立于书籍历史记录。' : 'Only explicit “remember this” preferences are stored in this browser, separately from book history.'}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-3 sm:justify-end">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.assistantMemoryEnabled !== false}
+                onClick={() => void toggleAssistantMemory(settings.assistantMemoryEnabled === false)}
+                className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${settings.assistantMemoryEnabled === false ? 'bg-[var(--border)]' : 'bg-[var(--accent)]'}`}
+                aria-label={lang === 'zh' ? '切换费曼小助手长期记忆' : 'Toggle assistant memory'}
+              >
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${settings.assistantMemoryEnabled === false ? 'left-1' : 'left-6'}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowAssistantMemoryManager(true); void loadAssistantMemoryManager() }}
+                className="inline-flex min-h-10 items-center gap-1.5 text-sm text-[var(--accent)] hover:underline"
+              >
+                <Eye size={15} aria-hidden="true" />
+                {lang === 'zh' ? '查看与管理已保存记忆' : 'View and manage saved memories'}
+              </button>
+            </div>
+          </div>
         </div>
         </div>
 
@@ -1589,6 +1704,42 @@ export default function Settings({
         </div>
       )}
 
+      {showAssistantMemoryManager && (
+        <div className="modal-overlay" onClick={() => setShowAssistantMemoryManager(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={lang === 'zh' ? '费曼小助手记忆管理' : 'Feynman Assistant memory'}
+            className="modal-content max-w-lg max-h-[85vh] overflow-y-auto p-5"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold">{lang === 'zh' ? '费曼小助手记忆' : 'Feynman Assistant memory'}</h2>
+                <p className="mt-1 text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '这些内容只用于个性化回答，可随时删除。' : 'Used only to personalize replies. You can remove them at any time.'}</p>
+              </div>
+              <button type="button" onClick={() => setShowAssistantMemoryManager(false)} className="btn-secondary px-3 py-2" aria-label={lang === 'zh' ? '关闭' : 'Close'}><X size={18} aria-hidden="true" /></button>
+            </div>
+            {loadingAssistantMemories ? <p className="py-8 text-center text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '正在读取…' : 'Loading…'}</p> : assistantMemories.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '还没有保存的记忆。对小助手说“请记住……”即可添加。' : 'No saved memories yet. Tell the assistant “remember that…” to add one.'}</div>
+            ) : (
+              <div className="space-y-2">
+                {assistantMemories.map(memory => (
+                  <div key={memory.id} className="flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
+                    <p className="min-w-0 flex-1 text-sm leading-5">{memory.content}</p>
+                    <button type="button" onClick={async () => { await deleteAssistantMemory(memory.id); setAssistantMemories(current => current.filter(item => item.id !== memory.id)) }} className="icon-button h-9 w-9 shrink-0 text-red-500" aria-label={lang === 'zh' ? '删除记忆' : 'Delete memory'} title={lang === 'zh' ? '删除记忆' : 'Delete memory'}><Trash2 size={15} aria-hidden="true" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={exportAssistantMemories} disabled={!assistantMemories.length} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm disabled:opacity-50"><Download size={15} aria-hidden="true" />{lang === 'zh' ? '导出记忆' : 'Export memories'}</button>
+              <button type="button" onClick={async () => { if (!assistantMemories.length) return; const confirmed = await showAppConfirm({ title: lang === 'zh' ? '清空记忆' : 'Clear memories', message: lang === 'zh' ? '将删除费曼小助手保存的全部偏好，书籍和会话不会受影响。' : 'This removes all assistant preferences. Books and conversations are not affected.', confirmText: lang === 'zh' ? '清空' : 'Clear', cancelText: lang === 'zh' ? '取消' : 'Cancel', tone: 'danger' }); if (!confirmed) return; await clearAssistantMemories(); setAssistantMemories([]) }} disabled={!assistantMemories.length} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm text-red-500 disabled:opacity-50"><Trash2 size={15} aria-hidden="true" />{lang === 'zh' ? '清空全部' : 'Clear all'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDataManagement && (
         <div className="modal-overlay" onClick={closeDataManagement}>
           <div
@@ -1657,7 +1808,7 @@ export default function Settings({
 
             <div className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-lg mb-3">
               <div className="flex items-center gap-2">
-                <HardDrive size={20} className="text-violet-500" aria-hidden="true" />
+                <HardDrive size={20} className="text-[var(--accent-secondary)]" aria-hidden="true" />
                 <div>
                   <div className="text-sm font-medium">{lang === 'zh' ? '存储方式' : 'Storage'}</div>
                   <div className="text-xs text-[var(--text-secondary)]">
@@ -1703,9 +1854,9 @@ export default function Settings({
               </div>
             </div>}
 
-            <div className="mb-3 rounded-lg border border-sky-500/30 bg-sky-500/10 p-3">
+            <div className="mb-3 rounded-lg border border-[var(--accent)]/25 bg-[var(--accent)]/8 p-3">
               <div className="mb-2 flex items-center gap-2">
-                <Gauge size={18} className="text-sky-500" aria-hidden="true" />
+                <Gauge size={18} className="text-[var(--accent)]" aria-hidden="true" />
                 <span className="text-sm font-medium">{lang === 'zh' ? 'AI Token 实际用量' : 'Actual AI Token Usage'}</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
@@ -1716,7 +1867,7 @@ export default function Settings({
                 <span>{lang === 'zh' ? '输出 Token' : 'Output tokens'}</span>
                 <strong className="text-right text-[var(--text-primary)]">{aiUsageSummary.completionTokens.toLocaleString()}</strong>
                 <span>{lang === 'zh' ? '合计 Token' : 'Total tokens'}</span>
-                <strong className="text-right text-sky-600 dark:text-sky-300">{aiUsageSummary.totalTokens.toLocaleString()}</strong>
+                <strong className="text-right text-[var(--accent)]">{aiUsageSummary.totalTokens.toLocaleString()}</strong>
               </div>
               <p className="mt-2 text-xs text-[var(--text-secondary)]">
                 {lang === 'zh'
@@ -1743,7 +1894,7 @@ export default function Settings({
                 disabled={migrating || importing || clearingData}
                 className="btn-secondary flex flex-1 items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Upload size={16} className="text-sky-500" aria-hidden="true" />
+                <Upload size={16} className="text-[var(--accent)]" aria-hidden="true" />
                 {lang === 'zh' ? '导入数据' : 'Import'}
               </button>
               <button
@@ -1764,7 +1915,7 @@ export default function Settings({
                     ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                     : dataOperationStatus.type === 'error'
                       ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300'
-                      : 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                      : 'border-[var(--accent)]/35 bg-[var(--accent)]/8 text-[var(--accent)]'
                 }`}
               >
                 {dataOperationStatus.message}
@@ -1772,8 +1923,8 @@ export default function Settings({
             )}
 
             {pendingBackupDownload && (
-              <div role="status" className="mt-3 rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 text-sm">
-                <p className="font-medium text-sky-700 dark:text-sky-300">
+              <div role="status" className="mt-3 rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/8 p-3 text-sm">
+                <p className="font-medium text-[var(--accent)]">
                   {lang === 'zh' ? '请确认备份文件是否已保存' : 'Confirm that the backup file was saved'}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
@@ -1802,7 +1953,7 @@ export default function Settings({
           <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
             <h2 className="text-xl font-bold mb-4">
               <span className="flex items-center gap-2">
-                <Upload size={20} className="text-sky-500" aria-hidden="true" />
+                <Upload size={20} className="text-[var(--accent)]" aria-hidden="true" />
                 {lang === 'zh' ? '导入数据' : 'Import Data'}
               </span>
             </h2>

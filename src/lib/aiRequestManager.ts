@@ -14,15 +14,17 @@ export interface ActiveAITask extends AIRequestContext {
 
 export interface AITaskSnapshot {
   active: ActiveAITask | null
+  activeTasks: ActiveAITask[]
   cancelling: boolean
 }
 
 type AITaskListener = () => void
 
 class AIRequestManager {
-  private controller: AbortController | null = null
+  private controllers = new Map<string, AbortController>()
+  private tasks = new Map<string, ActiveAITask>()
   private listeners = new Set<AITaskListener>()
-  private snapshot: AITaskSnapshot = { active: null, cancelling: false }
+  private snapshot: AITaskSnapshot = { active: null, activeTasks: [], cancelling: false }
 
   getSnapshot = (): AITaskSnapshot => this.snapshot
 
@@ -32,8 +34,6 @@ class AIRequestManager {
   }
 
   async run<T>(context: AIRequestContext, execute: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    if (this.snapshot.active) throw new Error(AI_TASK_BUSY)
-
     const controller = new AbortController()
     const active: ActiveAITask = {
       ...context,
@@ -41,8 +41,9 @@ class AIRequestManager {
       startedAt: Date.now()
     }
 
-    this.controller = controller
-    this.setSnapshot({ active, cancelling: false })
+    this.controllers.set(active.id, controller)
+    this.tasks.set(active.id, active)
+    this.publishSnapshot()
 
     try {
       const result = await execute(controller.signal)
@@ -54,10 +55,9 @@ class AIRequestManager {
       }
       throw error
     } finally {
-      if (this.controller === controller) {
-        this.controller = null
-        this.setSnapshot({ active: null, cancelling: false })
-      }
+      this.controllers.delete(active.id)
+      this.tasks.delete(active.id)
+      this.publishSnapshot()
     }
   }
 
@@ -65,16 +65,15 @@ class AIRequestManager {
     context: AIRequestContext,
     execute: (signal: AbortSignal) => Promise<AsyncIterable<T>>
   ): AsyncGenerator<T> {
-    if (this.snapshot.active) throw new Error(AI_TASK_BUSY)
-
     const controller = new AbortController()
     const active: ActiveAITask = {
       ...context,
       id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       startedAt: Date.now()
     }
-    this.controller = controller
-    this.setSnapshot({ active, cancelling: false })
+    this.controllers.set(active.id, controller)
+    this.tasks.set(active.id, active)
+    this.publishSnapshot()
 
     try {
       const stream = await execute(controller.signal)
@@ -86,25 +85,35 @@ class AIRequestManager {
       if (controller.signal.aborted) throw new Error(AI_REQUEST_CANCELLED, { cause: error })
       throw error
     } finally {
-      if (this.controller === controller) {
-        this.controller = null
-        this.setSnapshot({ active: null, cancelling: false })
-      }
+      this.controllers.delete(active.id)
+      this.tasks.delete(active.id)
+      this.publishSnapshot()
     }
   }
 
   cancelActive(): boolean {
-    if (!this.controller || !this.snapshot.active) return false
+    const active = this.snapshot.active
+    const controller = active ? this.controllers.get(active.id) : null
+    if (!controller || !active) return false
     if (this.snapshot.cancelling) return true
 
     this.setSnapshot({ ...this.snapshot, cancelling: true })
-    this.controller.abort()
+    controller.abort()
     return true
   }
 
   private setSnapshot(snapshot: AITaskSnapshot): void {
     this.snapshot = snapshot
     this.listeners.forEach(listener => listener())
+  }
+
+  private publishSnapshot(): void {
+    const activeTasks = [...this.tasks.values()].sort((left, right) => right.startedAt - left.startedAt)
+    this.setSnapshot({
+      active: activeTasks[0] || null,
+      activeTasks,
+      cancelling: false
+    })
   }
 }
 
