@@ -19,27 +19,32 @@ export function isAccountRequired(now = new Date()): boolean {
 }
 
 export async function getAccount(): Promise<AccountState> {
-  const response = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
-  if (response.ok) {
-    const data = await response.json() as { user?: AccountUser | null }
-    return { user: data.user ?? null, configured: true }
+  try {
+    const response = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })
+    if (response.ok) {
+      const data = await response.json() as { user?: AccountUser | null }
+      return { user: data.user ?? null, configured: true }
+    }
+    return { user: null, configured: response.status !== 503 }
+  } catch {
+    // A transient browser/network failure must not turn the login page into a runtime error.
+    return { user: null, configured: false }
   }
-  return { user: null, configured: response.status !== 503 }
 }
 
 export async function logout(): Promise<void> {
-  const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+  const response = await fetch('/api/auth/logout/', { method: 'POST', credentials: 'include' })
   if (!response.ok && response.status !== 204) throw new Error('退出登录失败。')
 }
 
 export async function getApiKeyStatus(): Promise<{ configured: boolean; masked: string }> {
-  const response = await fetch('/api/account/api-key', { credentials: 'include', cache: 'no-store' })
+  const response = await fetch('/api/account/api-key/', { credentials: 'include', cache: 'no-store' })
   if (!response.ok) throw new Error((await response.json().catch(() => null) as { error?: string } | null)?.error || '无法读取 API Key 状态。')
   return response.json() as Promise<{ configured: boolean; masked: string }>
 }
 
 export async function saveApiKey(apiKey: string): Promise<void> {
-  const response = await fetch('/api/account/api-key', {
+  const response = await fetch('/api/account/api-key/', {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -49,12 +54,12 @@ export async function saveApiKey(apiKey: string): Promise<void> {
 }
 
 export async function deleteApiKey(): Promise<void> {
-  const response = await fetch('/api/account/api-key', { method: 'DELETE', credentials: 'include' })
+  const response = await fetch('/api/account/api-key/', { method: 'DELETE', credentials: 'include' })
   if (!response.ok) throw new Error((await response.json().catch(() => null) as { error?: string } | null)?.error || 'API Key 删除失败。')
 }
 
 export async function importLocalData(payload: unknown): Promise<{ booksImported: number }> {
-  const response = await fetch('/api/account/import', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  const response = await fetch('/api/account/import/', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
   const data = await response.json().catch(() => ({})) as { error?: string; booksImported?: number }
   if (!response.ok) throw new Error(data.error || '本地数据导入失败。')
   return { booksImported: data.booksImported || 0 }
