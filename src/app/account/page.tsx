@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, EyeOff, ExternalLink, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
-import { deleteApiKey, getAccount, getApiKeyStatus, saveApiKey, type AccountUser } from '@/lib/accountClient'
+import { ArrowLeft, Check, EyeOff, ExternalLink, LogOut, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { deleteApiKey, getAccount, getApiKeyStatus, logout, saveApiKey, type AccountUser } from '@/lib/accountClient'
 
 export default function AccountPage() {
   const [user, setUser] = useState<AccountUser | null>(null)
@@ -36,13 +36,20 @@ export default function AccountPage() {
     finally { setBusy(false) }
   }
 
+  const handleLogout = async () => {
+    if (busy) return
+    setBusy(true); setError(null); setMessage(null)
+    try { await logout(); window.location.href = '/login' }
+    catch (reason) { setError(reason instanceof Error ? reason.message : '退出登录失败。'); setBusy(false) }
+  }
+
   return <main className="mx-auto min-h-screen max-w-2xl bg-[var(--bg-primary)] px-4 py-8">
     <Link href="/" className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm text-[var(--accent)]"><ArrowLeft size={16} aria-hidden="true" />返回费曼读书助手</Link>
     <h1 className="text-2xl font-bold">账号与安全</h1>
     <section className="card mt-6 p-5">
       <h2 className="flex items-center gap-2 text-lg font-semibold"><ShieldCheck size={19} aria-hidden="true" />登录方式</h2>
       <p className="mt-3 text-sm text-[var(--text-secondary)]">{user ? `当前账号：${user.email || user.phone || '观猹账号已连接'}` : '尚未读取到登录账号。'}</p>
-      {user ? <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">当前使用观猹账号登录。</p> : <a href="/api/auth/tokendance/start" className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2">使用观猹登录 <ExternalLink size={16} aria-hidden="true" /></a>}
+      {user ? <><p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">当前使用观猹账号登录。</p><button type="button" onClick={() => void handleLogout()} disabled={busy} className="btn-secondary mt-4 inline-flex min-h-11 items-center gap-2"><LogOut size={16} aria-hidden="true" />退出登录</button></> : <a href="/login" className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2">前往登录 <ExternalLink size={16} aria-hidden="true" /></a>}
     </section>
     <section className="card mt-4 p-5">
       <h2 className="text-lg font-semibold">TokenDance API Key</h2>

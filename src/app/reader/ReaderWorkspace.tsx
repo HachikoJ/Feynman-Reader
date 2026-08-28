@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { AlertTriangle, CircleHelp, ExternalLink, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CircleHelp, ExternalLink, RefreshCw, UserRound } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import {
   AppSettings,
@@ -357,6 +357,15 @@ export default function Home() {
                 >
                   <ExternalLink size={15} aria-hidden="true" />
                   {lang === 'zh' ? '官网' : 'Website'}
+                </a>
+                <a
+                  href="/login"
+                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] sm:px-3"
+                  aria-label={lang === 'zh' ? '登录或打开账号中心' : 'Log in or open account center'}
+                  title={lang === 'zh' ? '登录/账号' : 'Login / Account'}
+                >
+                  <UserRound size={15} aria-hidden="true" />
+                  {lang === 'zh' ? '登录' : 'Log in'}
                 </a>
                 <button
                   onClick={() => {
