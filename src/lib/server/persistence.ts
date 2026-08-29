@@ -14,7 +14,20 @@ export interface PersistenceAdapter extends AuthStore {
   saveApiKey(record: ApiKeyRecord): Promise<void>
   getApiKey(userId: string, provider: 'tokendance'): Promise<ApiKeyRecord | null>
   deleteApiKey(userId: string, provider: 'tokendance'): Promise<void>
-  importUserData?(userId: string, payload: unknown): Promise<{ booksImported: number }>
+  importUserData?(userId: string, payload: unknown): Promise<{ booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }>
+  getUserDataSummary?(userId: string): Promise<UserDataSummary>
+}
+
+export interface UserDataSummary {
+  books: number
+  notes: number
+  practices: number
+  qaRecords: number
+  aiUsageRecords: number
+  lists: number
+  relations: number
+  lastImportAt: string | null
+  lastSyncAt: string | null
 }
 
 /**

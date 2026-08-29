@@ -31,14 +31,14 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
         content: `本应用使用浏览器的 IndexedDB 功能来存储您的主要数据：
 
 • 主要应用数据存储在您的设备本地
-• 本应用当前不提供学习数据的云端托管或跨设备同步服务
+• 未登录时学习数据保存在浏览器 IndexedDB；登录观猹账号后，可从账号中心主动导入到 Supabase 云端
 • 使用 AI 功能时，相关输入会从您的浏览器直接传输给您选择的 AI 服务
 • 您可以通过"数据管理"功能导出备份
 • 备份数据较大时会自动拆分为多个分卷，导入时需一次选择同组全部分卷
 • 备份文件不加密，包含书籍原文、笔记、教学实践、角色问答和 AI Token 用量记录，但不包含 API Key
 • 清理浏览器缓存或网站数据、卸载重装、浏览器更新或重置、切换设备或浏览器用户配置，均可能导致数据永久丢失
 
-本平台当前不提供学习数据的云端存储、同步与恢复服务，因此无法恢复未导出的本地数据。请您主动、定期导出备份；因未及时备份造成的数据丢失需由用户自行承担。`
+未登录时，本平台无法恢复清理浏览器数据后丢失的本地数据。登录后主动导入的数据会保存在与账号绑定的 Supabase 云端空间，并可在账号中心查看统计；云端导入不是自动实时同步，仍建议您主动、定期导出备份。`
       },
       {
         title: '3. API Key 使用',
@@ -142,14 +142,14 @@ TokenDance 将按照其服务条款和隐私政策处理相关服务数据。`
         content: `This app uses your browser's IndexedDB to store its primary data:
 
 • Primary application data is stored locally on your device
-• This app currently does not provide cloud hosting or cross-device sync for learning data
+• Signed-out learning data stays in browser IndexedDB; after Watcha sign-in, users can explicitly import it to account-scoped Supabase storage
 • When you use AI features, relevant input is transmitted directly from your browser to the selected AI service
 • You can export backups via "Data Management"
 • Large backups are automatically split into multiple parts; select every part from the same set together when importing
 • Backup files are not encrypted and include book text, notes, teaching practice, persona Q&A, and AI token usage records, but exclude the API key
 • Clearing browser cache or site data, reinstalling, updating or resetting the browser, or switching devices or browser profiles may permanently delete your data
 
-The platform currently does not provide cloud storage, sync, or recovery services for learning data and therefore cannot recover local data that was not exported. Export backups proactively and regularly; users are responsible for losses caused by missing backups.`
+Signed-out data cannot be recovered after browser storage is cleared. Imported cloud data is scoped to the signed-in account and visible through the account center; cloud import is not real-time sync. Export backups proactively and regularly.`
       },
       {
         title: '3. API Key Usage',

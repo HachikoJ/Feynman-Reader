@@ -12,6 +12,18 @@ export interface AccountState {
   configured: boolean
 }
 
+export interface UserDataSummary {
+  books: number
+  notes: number
+  practices: number
+  qaRecords: number
+  aiUsageRecords: number
+  lists: number
+  relations: number
+  lastImportAt: string | null
+  lastSyncAt: string | null
+}
+
 export const ACCOUNT_CUTOFF = new Date('2026-10-01T00:00:00+08:00')
 
 export function isAccountRequired(now = new Date()): boolean {
@@ -58,9 +70,21 @@ export async function deleteApiKey(): Promise<void> {
   if (!response.ok) throw new Error((await response.json().catch(() => null) as { error?: string } | null)?.error || 'API Key 删除失败。')
 }
 
-export async function importLocalData(payload: unknown): Promise<{ booksImported: number }> {
+export async function importLocalData(payload: unknown): Promise<{ booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }> {
   const response = await fetch('/api/account/import/', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-  const data = await response.json().catch(() => ({})) as { error?: string; booksImported?: number }
+  const data = await response.json().catch(() => ({})) as { error?: string; booksImported?: number; aiUsageImported?: number; listsImported?: number; relationsImported?: number }
   if (!response.ok) throw new Error(data.error || '本地数据导入失败。')
-  return { booksImported: data.booksImported || 0 }
+  return {
+    booksImported: data.booksImported || 0,
+    aiUsageImported: data.aiUsageImported || 0,
+    listsImported: data.listsImported || 0,
+    relationsImported: data.relationsImported || 0,
+  }
+}
+
+export async function getUserDataSummary(): Promise<UserDataSummary> {
+  const response = await fetch('/api/account/data/', { credentials: 'include', cache: 'no-store' })
+  const data = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(data.error || '无法读取云端数据。')
+  return data as UserDataSummary
 }

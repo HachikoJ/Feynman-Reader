@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Check, EyeOff, ExternalLink, LogOut, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
-import { deleteApiKey, getAccount, getApiKeyStatus, logout, saveApiKey, type AccountUser } from '@/lib/accountClient'
+import { deleteApiKey, getAccount, getApiKeyStatus, getUserDataSummary, importLocalData, logout, saveApiKey, type AccountUser, type UserDataSummary } from '@/lib/accountClient'
+import { exportAllData } from '@/lib/store'
 
 export default function AccountPage() {
   const [user, setUser] = useState<AccountUser | null>(null)
@@ -12,13 +13,27 @@ export default function AccountPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [cloudData, setCloudData] = useState<UserDataSummary | null>(null)
 
   useEffect(() => {
-    void Promise.all([getAccount(), getApiKeyStatus()]).then(([account, key]) => {
+    void Promise.all([getAccount(), getApiKeyStatus(), getUserDataSummary()]).then(([account, key, data]) => {
       setUser(account.user)
       setKeyStatus(key)
+      setCloudData(data)
     }).catch(reason => setError(reason instanceof Error ? reason.message : '账号服务暂时不可用。'))
   }, [])
+
+  const handleImport = async () => {
+    if (busy) return
+    setBusy(true); setError(null); setMessage(null)
+    try {
+      const result = await importLocalData(JSON.parse(exportAllData()))
+      const summary = await getUserDataSummary()
+      setCloudData(summary)
+      setMessage(`已将本机数据导入云端：${result.booksImported} 本书、${result.aiUsageImported} 条 AI 使用记录。`)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : '本机数据导入失败。') }
+    finally { setBusy(false) }
+  }
 
   const handleSave = async () => {
     if (!draftKey.trim() || busy) return
@@ -50,6 +65,20 @@ export default function AccountPage() {
       <h2 className="flex items-center gap-2 text-lg font-semibold"><ShieldCheck size={19} aria-hidden="true" />登录方式</h2>
       <p className="mt-3 text-sm text-[var(--text-secondary)]">{user ? `当前账号：${user.email || user.phone || '观猹账号已连接'}` : '尚未读取到登录账号。'}</p>
       {user ? <><p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">当前使用观猹账号登录。</p><button type="button" onClick={() => void handleLogout()} disabled={busy} className="btn-secondary mt-4 inline-flex min-h-11 items-center gap-2"><LogOut size={16} aria-hidden="true" />退出登录</button></> : <a href="/login" className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2">前往登录 <ExternalLink size={16} aria-hidden="true" /></a>}
+    </section>
+    <section className="card mt-4 p-5">
+      <h2 className="text-lg font-semibold">我的云端学习数据</h2>
+      {cloudData ? <>
+        <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.books}</strong><span className="text-[var(--text-secondary)]">本书</span></div>
+          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.notes}</strong><span className="text-[var(--text-secondary)]">条笔记</span></div>
+          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.practices + cloudData.qaRecords}</strong><span className="text-[var(--text-secondary)]">次练习</span></div>
+          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.aiUsageRecords}</strong><span className="text-[var(--text-secondary)]">次 AI 使用</span></div>
+        </div>
+        <p className="mt-4 text-xs text-[var(--text-secondary)]">{cloudData.lastSyncAt ? `最近同步：${new Date(cloudData.lastSyncAt).toLocaleString()}` : '云端还没有学习数据。'}</p>
+        <button type="button" onClick={() => void handleImport()} disabled={busy} className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2"><RefreshCw size={16} aria-hidden="true" />将本机数据导入云端</button>
+        <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">导入会合并或更新同 ID 的记录，不会上传 API Key 明文。</p>
+      </> : <p className="mt-3 text-sm text-[var(--text-secondary)]">正在读取云端数据...</p>}
     </section>
     <section className="card mt-4 p-5">
       <h2 className="text-lg font-semibold">TokenDance API Key</h2>

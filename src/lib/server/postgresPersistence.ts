@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { Pool, type QueryResultRow } from 'pg'
 import type { AuthSession, AuthUser } from './auth'
-import type { ApiKeyRecord, PersistenceAdapter } from './persistence'
+import type { ApiKeyRecord, PersistenceAdapter, UserDataSummary } from './persistence'
+import { normalizeImportData } from '@/lib/backupValidation'
 
 type UserRow = {
   id: string
@@ -176,6 +177,77 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
 
   async deleteApiKey(userId: string, provider: 'tokendance'): Promise<void> {
     await this.pool.query('delete from public.api_key_records where user_id = $1 and provider = $2', [userId, provider])
+  }
+
+  async getUserDataSummary(userId: string): Promise<UserDataSummary> {
+    const row = await this.one<{
+      books: string; notes: string; practices: string; qa_records: string; ai_usage_records: string;
+      lists: string; relations: string; last_import_at: Date | string | null; last_sync_at: Date | string | null
+    }>(`select
+      (select count(*) from public.user_books where user_id = $1 and deleted_at is null) as books,
+      (select coalesce(sum(jsonb_array_length(coalesce(data->'noteRecords', '[]'::jsonb))), 0) from public.user_books where user_id = $1 and deleted_at is null) as notes,
+      (select coalesce(sum(jsonb_array_length(coalesce(data->'practiceRecords', '[]'::jsonb))), 0) from public.user_books where user_id = $1 and deleted_at is null) as practices,
+      (select coalesce(sum(jsonb_array_length(coalesce(data->'qaPracticeRecords', '[]'::jsonb))), 0) from public.user_books where user_id = $1 and deleted_at is null) as qa_records,
+      (select count(*) from public.user_ai_usage where user_id = $1) as ai_usage_records,
+      (select count(*) from public.user_book_lists where user_id = $1) as lists,
+      (select count(*) from public.user_book_relations where user_id = $1) as relations,
+      (select last_import_at from public.user_data_state where user_id = $1) as last_import_at,
+      (select last_sync_at from public.user_data_state where user_id = $1) as last_sync_at`, [userId])
+    return {
+      books: Number(row?.books || 0), notes: Number(row?.notes || 0), practices: Number(row?.practices || 0),
+      qaRecords: Number(row?.qa_records || 0), aiUsageRecords: Number(row?.ai_usage_records || 0),
+      lists: Number(row?.lists || 0), relations: Number(row?.relations || 0),
+      lastImportAt: row?.last_import_at ? iso(row.last_import_at) : null,
+      lastSyncAt: row?.last_sync_at ? iso(row.last_sync_at) : null,
+    }
+  }
+
+  async importUserData(userId: string, payload: unknown): Promise<{ booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }> {
+    const normalized = normalizeImportData(payload)
+    if (!normalized.valid) throw new Error(normalized.error)
+    const data = normalized.data
+    const client = await this.pool.connect()
+    try {
+      await client.query('begin')
+      const settings = { ...data.settings, apiKey: '' }
+      await client.query(`insert into public.user_settings (user_id, data, version, updated_at) values ($1, $2::jsonb, 1, now())
+        on conflict (user_id) do update set data = excluded.data, version = public.user_settings.version + 1, updated_at = now()`, [userId, JSON.stringify(settings)])
+      for (const book of data.books) {
+        await client.query(`insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, deleted_at)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), null)
+          on conflict (user_id, book_id) do update set name=excluded.name, author=excluded.author, status=excluded.status,
+            current_phase=excluded.current_phase, best_score=excluded.best_score, data=excluded.data, updated_at=excluded.updated_at, deleted_at=null`,
+        [userId, book.id, book.name, book.author || null, book.status, book.currentPhase, book.bestScore, JSON.stringify(book), book.createdAt, book.updatedAt])
+      }
+      for (const record of data.aiUsageRecords) {
+        await client.query(`insert into public.user_ai_usage (user_id, record_id, book_id, session_id, task, model, prompt_tokens, completion_tokens, total_tokens, data, created_at)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, to_timestamp($11 / 1000.0))
+          on conflict (user_id, record_id) do update set data=excluded.data, updated_at=now()`,
+        [userId, record.id, record.bookId || null, record.sessionId || null, record.task, record.model, record.promptTokens, record.completionTokens, record.totalTokens, JSON.stringify(record), record.createdAt])
+      }
+      for (const list of data.bookLists) {
+        await client.query(`insert into public.user_book_lists (user_id, list_id, name, description, book_ids, created_at, updated_at)
+          values ($1, $2, $3, $4, $5::jsonb, to_timestamp($6 / 1000.0), to_timestamp($7 / 1000.0))
+          on conflict (user_id, list_id) do update set name=excluded.name, description=excluded.description, book_ids=excluded.book_ids, updated_at=excluded.updated_at`,
+        [userId, list.id, list.name, list.description || null, JSON.stringify(list.bookIds), list.createdAt, list.updatedAt])
+      }
+      for (const relation of data.bookRelations) {
+        await client.query(`insert into public.user_book_relations (user_id, relation_id, from_book_id, to_book_id, relation_type, note, created_at)
+          values ($1, $2, $3, $4, $5, $6, to_timestamp($7 / 1000.0))
+          on conflict (user_id, relation_id) do update set from_book_id=excluded.from_book_id, to_book_id=excluded.to_book_id, relation_type=excluded.relation_type, note=excluded.note`,
+        [userId, relation.id, relation.fromBookId, relation.toBookId, relation.type, relation.note || null, relation.createdAt])
+      }
+      await client.query(`insert into public.user_data_state (user_id, schema_version, sync_version, last_import_at, last_sync_at, updated_at)
+        values ($1, $2, 1, now(), now(), now()) on conflict (user_id) do update set schema_version=excluded.schema_version,
+        sync_version=public.user_data_state.sync_version + 1, last_import_at=now(), last_sync_at=now(), updated_at=now()`, [userId, data.version])
+      await client.query('commit')
+      return { booksImported: data.books.length, aiUsageImported: data.aiUsageRecords.length, listsImported: data.bookLists.length, relationsImported: data.bookRelations.length }
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    } finally {
+      client.release()
+    }
   }
 }
 

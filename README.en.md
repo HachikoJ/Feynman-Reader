@@ -22,7 +22,7 @@ Feynman Reader is an AI-assisted deep-reading workspace based on the Feynman tec
 - Guides each book through six sequential learning phases.
 - Stores teaching attempts, four-dimension scores, role-based questions, and revisions.
 - Supports PDF, Word, Excel, and text document input.
-- Works local-first with IndexedDB; books, notes, and settings stay in the browser by default.
+- Works local-first with optional cloud storage: books, notes, and settings stay in IndexedDB when signed out, and can be imported to the user's private Supabase data after Watcha sign-in.
 - Recommends TokenDance / TokenPay OAuth or API key setup for model access. DeepSeek's direct configuration channel is scheduled to retire on October 1, 2026; existing direct keys will no longer be supported after that date.
 
 ## Preview
@@ -43,7 +43,7 @@ Open <http://localhost:8080>. You can inspect the sample book without an API key
 
 ## Privacy, Cost, and Model Limits
 
-The app does not provide cloud storage, sync, or recovery. Clearing browser data can delete learning records, so export backups when prompted. API keys are kept locally and should never be shared in issues, screenshots, or logs.
+Signed-out data stays in the browser; after Watcha sign-in, users can import it to private Supabase storage and view account-scoped statistics. Clearing browser data can still delete local records, so export backups when prompted. API keys are encrypted server-side and never displayed in full.
 
 > [!WARNING]
 > `www.deline.top/reader/` and `reader.deline.top/` are different browser storage origins. Retired aliases do not host OAuth, token, or payment configuration; if an old alias still opens, stop entering sensitive information and contact the maintainer.

@@ -7,7 +7,7 @@
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
 ![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
-![本地优先](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%BC%98%E5%85%88-22c55e)
+![本地与云端](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%B8%8E%E4%BA%91%E7%AB%AF-22c55e)
 
 [English](README.en.md) · [个人官网](https://www.deline.top) · [进入费曼读书助手](https://reader.deline.top/) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
 
@@ -20,7 +20,7 @@
 费曼读书助手现在独立部署在 `reader.deline.top`，根路径 `/` 直接进入产品。官网位于 `www.deline.top`，产品中的“官网”按钮会返回官网主路由。已停用的 `/reader`、`/feynmanreader` 等旧入口返回 `410 Gone`。
 
 > [!IMPORTANT]
-> **这是一个本地优先的学习产品。** 本产品不提供云端存储、同步与恢复服务，学习记录和 API Key 默认保存在用户自己的浏览器里。清理网站数据、卸载浏览器或设备异常可能造成数据丢失，请根据应用提醒及时导出备份。调用 AI 前，需要先阅读并同意隐私政策；TokenDance / TokenPay 是推荐渠道，DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线，届时旧官方 Key 也不再支持。
+> **这是一个本地优先、可选云端同步的学习产品。** 未登录时，学习记录默认保存在浏览器 IndexedDB；登录观猹账号后，可在账号中心将本机数据导入 Supabase 云端，并查看自己的云端统计。API Key 由服务端加密保存，不会显示明文。清理浏览器数据前仍建议导出备份。调用 AI 前，需要先阅读并同意隐私政策；TokenDance / TokenPay 是推荐渠道，DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线，届时旧官方 Key 也不再支持。
 
 > [!WARNING]
 > `www.deline.top/reader/` 与 `reader.deline.top/` 属于不同浏览器存储源。旧入口已停用，不会承载 OAuth、Token 或支付配置；如果旧地址仍能打开，请立即停止输入敏感信息并联系维护者。
@@ -155,7 +155,7 @@ flowchart TD
 - 六阶段学习：按顺序完成背景、框架、拆解、批判、评价和连接。
 - 教学模拟：至少 200 字的个人解释、四维度评分、历史记录。
 - 角色问答：固定 3 题、逐题评分、原回答和改进建议、单题重答。
-- 本地优先：书籍、设置和学习记录默认保存到 IndexedDB；API Key 默认掩码展示。
+- 本地优先、可选云端：未登录时书籍、设置和学习记录保存到 IndexedDB；登录后可从账号中心导入到 Supabase。API Key 只在服务端加密保存并始终掩码展示。
 - 隐私同意：保存 Key 和调用 AI 前都需要确认数据传输同意，并强制阅读隐私政策到底部。
 
 ## 如何运行
