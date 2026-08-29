@@ -155,7 +155,7 @@ fi
 atomic_switch "$RELEASE_DIR"
 SWITCHED=1
 reload_application
-curl -fsS --retry 5 --retry-delay 2 --connect-timeout 5 --max-time 10 "http://127.0.0.1:8080/api/health/" | grep -q '"status":"ok"'
+curl -fsS --retry 5 --retry-connrefused --retry-delay 2 --connect-timeout 5 --max-time 10 "http://127.0.0.1:8080/api/health/" | grep -q '"status":"ok"'
 systemctl reload nginx
 
 echo "6. 验证公网首页、健康检查、新旧 Chunk 与 HTTPS 安全响应头..."
