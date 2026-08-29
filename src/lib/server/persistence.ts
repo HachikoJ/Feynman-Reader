@@ -16,6 +16,42 @@ export interface PersistenceAdapter extends AuthStore {
   deleteApiKey(userId: string, provider: 'tokendance'): Promise<void>
   importUserData?(userId: string, payload: unknown): Promise<{ booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }>
   getUserDataSummary?(userId: string): Promise<UserDataSummary>
+  exportUserData?(userId: string): Promise<unknown>
+  getMigrationState?(userId: string, activateWindow?: boolean): Promise<MigrationState>
+  migrateUserData?(userId: string, payload: unknown): Promise<MigrationResult>
+  listRecycleBin?(userId: string): Promise<RecycleBinItem[]>
+  softDeleteBook?(userId: string, bookId: string): Promise<void>
+  restoreBook?(userId: string, bookId: string): Promise<void>
+  permanentlyDeleteBook?(userId: string, bookId: string): Promise<void>
+  purgeRecycleBin?(userId: string): Promise<number>
+}
+
+export interface MigrationState {
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  version: number
+  startedAt: string | null
+  deadlineAt: string | null
+  completedAt: string | null
+  lastError: string | null
+  syncVersion: number
+}
+
+export interface MigrationResult {
+  status: 'completed'
+  migrationVersion: number
+  syncVersion: number
+  booksImported: number
+  aiUsageImported: number
+  listsImported: number
+  relationsImported: number
+}
+
+export interface RecycleBinItem {
+  bookId: string
+  name: string
+  author: string | null
+  deletedAt: string
+  purgeAt: string | null
 }
 
 export interface UserDataSummary {

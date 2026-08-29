@@ -417,11 +417,12 @@ export async function createDeepSeekClient(apiKey: string, provider?: 'tokendanc
   }
 
   const useTokendance = resolvedProvider === 'tokendance'
+  const useServerProxy = useTokendance && typeof window !== 'undefined'
   return new OpenAI({
-    baseURL: useTokendance ? TOKENDANCE_GATEWAY_URL : 'https://api.deepseek.com',
-    apiKey: apiKey,
+    baseURL: useServerProxy ? '/api/ai' : (useTokendance ? TOKENDANCE_GATEWAY_URL : 'https://api.deepseek.com'),
+    apiKey: useServerProxy ? 'server-managed' : apiKey,
     ...(useTokendance ? { defaultHeaders: { 'X-App-URL': TOKENDANCE_APP_URL } } : {}),
-    ...(useTokendance ? { fetch: createTokendanceFetch(), maxRetries: 0 } : {}),
+    ...(!useServerProxy && useTokendance ? { fetch: createTokendanceFetch(), maxRetries: 0 } : {}),
     dangerouslyAllowBrowser: true
   })
 }

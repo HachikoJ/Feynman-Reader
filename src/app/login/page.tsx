@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, LogIn, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
+import { ArrowLeft, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
 import { getAccount, type AccountUser } from '@/lib/accountClient'
 
 export default function LoginPage() {
@@ -26,9 +26,7 @@ export default function LoginPage() {
             <UserRound size={26} aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold">登录费曼读书助手</h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            使用观猹账号登录后，你的账号和学习数据可以与服务器安全关联。
-          </p>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">登录功能正在完善，近期即将开放。当前可以直接使用本地书架和学习功能。</p>
           {checking ? (
             <div className="mt-6 flex min-h-11 items-center justify-center text-sm text-[var(--text-secondary)]" role="status">
               <RefreshCw size={16} className="mr-2 animate-spin" aria-hidden="true" />正在检查登录状态
@@ -49,14 +47,9 @@ export default function LoginPage() {
               </Link>
             </div>
           ) : (
-            <>
-              <a href="/api/auth/tokendance/start/" className="btn-primary mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2">
-                <LogIn size={17} aria-hidden="true" />使用观猹登录<ExternalLink size={15} aria-hidden="true" />
-              </a>
-              <p className="mt-4 text-xs leading-5 text-[var(--text-secondary)]">
-                点击后会跳转到观猹官方授权页面。我们只申请基础账号信息，不读取手机号和邮箱。
-              </p>
-            </>
+            <div className="mt-6 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-4 text-sm leading-6 text-[var(--text-secondary)]" role="status">
+              登录入口暂未开放，近期完成后会第一时间上线。现在无需登录即可体验阅读和学习功能。
+            </div>
           )}
         </div>
       </section>

@@ -17,6 +17,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
     "verify:waf": "bash scripts/verify-safeline-rollout.sh",
+    "purge:recycle-bin": "node --experimental-strip-types scripts/purge-recycle-bin.mjs",
     "test:all": "npm run test && npm run test:e2e"
   },
   "dependencies": {

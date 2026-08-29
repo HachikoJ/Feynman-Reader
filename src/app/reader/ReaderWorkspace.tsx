@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { AlertTriangle, CircleHelp, ExternalLink, RefreshCw, UserRound } from 'lucide-react'
 import { logger } from '@/lib/logger'
+import { showAppAlert } from '@/lib/appDialog'
 import {
   AppSettings,
   Book,
@@ -112,7 +113,9 @@ export default function Home() {
       } catch (error) {
         logger.error('IndexedDB initialization failed:', error)
         if (!cancelled) {
-          setInitializationError(true)
+          // AuthGuard renders the login screen for an expired/missing session;
+          // do not replace it with a misleading local-storage error.
+          setInitializationError(!(error instanceof Error && error.message.includes('登录状态')))
           setMounted(true)
         }
         return
@@ -198,6 +201,16 @@ export default function Home() {
     localStorage.removeItem(ONBOARDING_COMPLETED_KEY)
     setShowApiKeyAlert(false)
     setShowOnboarding(true)
+  }
+
+  const handleLoginClick = () => {
+    void showAppAlert({
+      title: lang === 'zh' ? '登录功能即将开放' : 'Login is coming soon',
+      message: lang === 'zh'
+        ? '登录功能正在完善，近期即将开放。当前可以直接使用本地书架和学习功能。'
+        : 'Login is still being completed and will open soon. You can use the local bookshelf and learning features now.',
+      tone: 'info'
+    })
   }
 
   const handleOnboardingComplete = () => {
@@ -303,8 +316,8 @@ export default function Home() {
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
                 <span>
                   {lang === 'zh'
-                    ? '本地保存失败，当前页面中的最新修改可能在刷新后丢失。请勿刷新，并立即导出数据备份。'
-                    : 'Local saving failed. Recent changes may be lost after refresh. Do not refresh; export a backup now.'}
+                    ? '数据保存失败，当前页面中的最新修改可能在刷新后丢失。请勿刷新，并立即导出数据备份。'
+                    : 'Data saving failed. Recent changes may be lost after refresh. Do not refresh; export a backup now.'}
                 </span>
                 <button
                   type="button"
@@ -358,15 +371,16 @@ export default function Home() {
                   <ExternalLink size={15} aria-hidden="true" />
                   {lang === 'zh' ? '官网' : 'Website'}
                 </a>
-                <a
-                  href="/login"
+                <button
+                  type="button"
+                  onClick={handleLoginClick}
                   className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] sm:px-3"
-                  aria-label={lang === 'zh' ? '登录或打开账号中心' : 'Log in or open account center'}
-                  title={lang === 'zh' ? '登录/账号' : 'Login / Account'}
+                  aria-label={lang === 'zh' ? '登录功能近期开放' : 'Login coming soon'}
+                  title={lang === 'zh' ? '登录功能近期开放' : 'Login coming soon'}
                 >
                   <UserRound size={15} aria-hidden="true" />
-                  {lang === 'zh' ? '登录' : 'Log in'}
-                </a>
+                  {lang === 'zh' ? '登录（近期开放）' : 'Login (coming soon)'}
+                </button>
                 <button
                   onClick={() => {
                     setView('bookshelf')

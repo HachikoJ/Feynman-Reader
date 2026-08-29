@@ -44,7 +44,7 @@ import type {
 } from './bookRelations'
 import { getBookRelationIdentity } from './bookRelations'
 import { migrateToTokenDanceAfterSunset } from './aiProviderPolicy'
-import { createSampleBook, SAMPLE_BOOK_DATA_VERSION, SAMPLE_BOOK_SEEDED_KEY } from './sampleBook'
+import { createSampleBook, SAMPLE_BOOK_DATA_VERSION, SAMPLE_BOOK_ID, SAMPLE_BOOK_SEEDED_KEY } from './sampleBook'
 
 export type Theme = 'dark' | 'light' | 'cyber'
 export type BookStatus = 'unread' | 'reading' | 'finished'
@@ -179,6 +179,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   quotesInitialized: false
 }
 
+// Placeholder only: the real TokenDance key stays encrypted on the server.
+// Browser AI requests are sent through the authenticated server proxy.
+export const SERVER_MANAGED_API_KEY = 'server-managed'
+
 let settingsCache: AppSettings = DEFAULT_SETTINGS
 let booksCache: Book[] = []
 let aiUsageCache: AIUsageRecord[] = []
@@ -189,6 +193,8 @@ let settingsWriteQueue = Promise.resolve()
 let booksWriteQueue = Promise.resolve()
 let aiUsageWriteQueue = Promise.resolve()
 let bookOrganizationWriteQueue = Promise.resolve()
+let cloudWriteQueue = Promise.resolve()
+let cloudMode = false
 let persistenceErrors: unknown[] = []
 const persistenceErrorListeners = new Set<(error: unknown) => void>()
 const aiUsageListeners = new Set<() => void>()
@@ -201,6 +207,38 @@ function reportPersistenceError(error: unknown): void {
     } catch (listenerError) {
       logger.error('Persistence error listener failed:', listenerError)
     }
+  })
+}
+
+function queueCloudSnapshot(): void {
+  const payload = {
+    version: DATA_VERSION,
+    exportDate: Date.now(),
+    settings: { ...cloneForStorage(settingsCache), apiKey: '' },
+    books: cloneForStorage(booksCache.filter(book => !book.isSample && book.id !== 'sample-the-kite-runner')),
+    aiUsageRecords: cloneForStorage(aiUsageCache),
+    bookLists: cloneForStorage(bookListsCache),
+    bookRelations: cloneForStorage(bookRelationsCache),
+  }
+  cloudWriteQueue = cloudWriteQueue.then(async () => {
+    const response = await fetch('/api/account/import/', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) throw new Error('云端保存失败。')
+  }, async () => {
+    const response = await fetch('/api/account/import/', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) throw new Error('云端保存失败。')
+  }).catch(error => {
+    reportPersistenceError(error)
+    logger.error('Failed to persist cloud snapshot:', error)
   })
 }
 
@@ -294,6 +332,46 @@ export async function initializeStore(): Promise<void> {
   if (initializationPromise) return initializationPromise
 
   initializationPromise = (async () => {
+    // Logged-in production users use the server-backed snapshot. IndexedDB is
+    // intentionally skipped here; it is only read by the one-time migration flow.
+    if (process.env.NODE_ENV !== 'test') {
+      const accountResponse = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })
+      if (accountResponse.status === 401 || accountResponse.status === 403 || accountResponse.status === 503) {
+        cloudMode = false
+      } else {
+        if (!accountResponse.ok) throw new Error('登录状态已失效，请重新登录。')
+        const account = await accountResponse.json() as { user?: unknown }
+        if (!account.user) {
+          cloudMode = false
+        } else {
+          const cloudResponse = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+          if (!cloudResponse.ok) throw new Error('无法读取云端学习数据。')
+          const cloudPayload = await cloudResponse.json()
+          const normalized = normalizeImportData(cloudPayload)
+          if (!normalized.valid) throw new Error(normalized.error)
+          const data = normalized.data
+          cloudMode = true
+          let serverKeyConfigured = false
+          try {
+            const keyStatus = await fetch('/api/account/api-key/', { credentials: 'include', cache: 'no-store' })
+            serverKeyConfigured = keyStatus.ok && Boolean((await keyStatus.json() as { configured?: unknown }).configured)
+          } catch { /* account data remains usable when the key status endpoint is unavailable */ }
+          settingsCache = migrateToTokenDanceAfterSunset({ ...DEFAULT_SETTINGS, ...data.settings, apiKey: serverKeyConfigured ? SERVER_MANAGED_API_KEY : '' })
+          booksCache = data.books.filter(book => !book.isSample && book.id !== 'sample-the-kite-runner').map(normalizeBookLearningState)
+          if (booksCache.length === 0) booksCache = [createSampleBook()]
+          aiUsageCache = data.aiUsageRecords.slice(-MAX_AI_USAGE_RECORDS)
+          const bookIds = new Set(booksCache.map(book => book.id))
+          const normalizedLists = normalizeBookLists(data.bookLists, bookIds)
+          const normalizedRelations = normalizeBookRelations(data.bookRelations, bookIds)
+          if (!normalizedLists.valid) throw new Error(normalizedLists.error)
+          if (!normalizedRelations.valid) throw new Error(normalizedRelations.error)
+          bookListsCache = normalizedLists.data
+          bookRelationsCache = normalizedRelations.data
+          return
+        }
+      }
+    }
+
     await initDB()
     const [settings, books, aiUsageRecords, bookOrganization] = await Promise.all([
       getIndexedDBSettings(),
@@ -377,6 +455,20 @@ export function getSettings(): AppSettings {
 }
 
 export async function reloadSettingsFromPersistence(): Promise<AppSettings> {
+  if (cloudMode) {
+    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    if (!response.ok) throw new Error('无法读取云端设置。')
+    const payload = await response.json()
+    const normalized = normalizeImportData(payload)
+    if (!normalized.valid) throw new Error(normalized.error)
+    let serverKeyConfigured = false
+    try {
+      const keyStatus = await fetch('/api/account/api-key/', { credentials: 'include', cache: 'no-store' })
+      serverKeyConfigured = keyStatus.ok && Boolean((await keyStatus.json() as { configured?: unknown }).configured)
+    } catch { /* preserve settings when key status cannot be read */ }
+    settingsCache = migrateToTokenDanceAfterSunset({ ...DEFAULT_SETTINGS, ...normalized.data.settings, apiKey: serverKeyConfigured ? SERVER_MANAGED_API_KEY : '' })
+    return settingsCache
+  }
   await settingsWriteQueue
   const storedSettings = await getIndexedDBSettings()
   const quotes = storedSettings.quotes || (storedSettings as any).customQuotes || []
@@ -393,6 +485,10 @@ export async function reloadSettingsFromPersistence(): Promise<AppSettings> {
 export function saveSettings(settings: AppSettings): void {
   settingsCache = migrateToTokenDanceAfterSunset(settings)
   const snapshot = cloneForStorage(settingsCache)
+  if (cloudMode) {
+    queueCloudSnapshot()
+    return
+  }
   settingsWriteQueue = settingsWriteQueue
     .then(() => saveIndexedDBSettings(snapshot), () => saveIndexedDBSettings(snapshot))
     .catch(error => {
@@ -428,6 +524,10 @@ function persistBookOrganization(): void {
     lists: bookListsCache,
     relations: bookRelationsCache
   })
+  if (cloudMode) {
+    queueCloudSnapshot()
+    return
+  }
   bookOrganizationWriteQueue = bookOrganizationWriteQueue
     .then(() => saveIndexedDBBookOrganization(snapshot), () => saveIndexedDBBookOrganization(snapshot))
     .catch(error => {
@@ -562,7 +662,9 @@ export function addAIUsageRecord(record: Omit<AIUsageRecord, 'id'>): AIUsageReco
   const savedRecord: AIUsageRecord = { ...record, id: createLocalId() }
   aiUsageCache = [...aiUsageCache, savedRecord].slice(-MAX_AI_USAGE_RECORDS)
   const snapshot = cloneForStorage(aiUsageCache)
-  aiUsageWriteQueue = aiUsageWriteQueue
+  if (cloudMode) {
+    queueCloudSnapshot()
+  } else aiUsageWriteQueue = aiUsageWriteQueue
     .then(() => saveIndexedDBAIUsageRecords(snapshot), () => saveIndexedDBAIUsageRecords(snapshot))
     .catch(error => {
       reportPersistenceError(error)
@@ -575,7 +677,9 @@ export function addAIUsageRecord(record: Omit<AIUsageRecord, 'id'>): AIUsageReco
 export function replaceAIUsageRecords(records: AIUsageRecord[]): void {
   aiUsageCache = records.slice(-MAX_AI_USAGE_RECORDS)
   const snapshot = cloneForStorage(aiUsageCache)
-  aiUsageWriteQueue = aiUsageWriteQueue
+  if (cloudMode) {
+    queueCloudSnapshot()
+  } else aiUsageWriteQueue = aiUsageWriteQueue
     .then(() => saveIndexedDBAIUsageRecords(snapshot), () => saveIndexedDBAIUsageRecords(snapshot))
     .catch(error => {
       reportPersistenceError(error)
@@ -587,6 +691,10 @@ export function replaceAIUsageRecords(records: AIUsageRecord[]): void {
 export function saveBooks(books: Book[]): void {
   booksCache = books.map(normalizeBookLearningState)
   const snapshot = cloneForStorage(booksCache)
+  if (cloudMode) {
+    queueCloudSnapshot()
+    return
+  }
   booksWriteQueue = booksWriteQueue
     .then(() => saveIndexedDBBooks(snapshot), () => saveIndexedDBBooks(snapshot))
     .catch(error => {
@@ -597,6 +705,10 @@ export function saveBooks(books: Book[]): void {
 
 function persistBook(book: Book): void {
   const snapshot = cloneForStorage(book)
+  if (cloudMode) {
+    queueCloudSnapshot()
+    return
+  }
   booksWriteQueue = booksWriteQueue
     .then(() => saveIndexedDBBook(snapshot), () => saveIndexedDBBook(snapshot))
     .catch(error => {
@@ -607,6 +719,10 @@ function persistBook(book: Book): void {
 
 function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
   const snapshot = cloneForStorage(book)
+  if (cloudMode) {
+    queueCloudSnapshot()
+    return
+  }
   booksWriteQueue = booksWriteQueue
     .then(
       () => saveExistingIndexedDBBook(snapshot, expectedUpdatedAt),
@@ -620,6 +736,10 @@ function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
 
 function persistRestoredBook(book: Book): void {
   const snapshot = cloneForStorage(book)
+  if (cloudMode) {
+    queueCloudSnapshot()
+    return
+  }
   booksWriteQueue = booksWriteQueue
     .then(() => restoreDeletedIndexedDBBook(snapshot), () => restoreDeletedIndexedDBBook(snapshot))
     .catch(error => {
@@ -629,6 +749,10 @@ function persistRestoredBook(book: Book): void {
 }
 
 function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
+  if (cloudMode) {
+    queueCloudSnapshot()
+    return
+  }
   booksWriteQueue = booksWriteQueue
     .then(
       () => deleteExistingIndexedDBBook(id, expectedUpdatedAt),
@@ -641,7 +765,7 @@ function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
 }
 
 export async function flushPendingStoreWrites(): Promise<void> {
-  await Promise.all([settingsWriteQueue, booksWriteQueue, aiUsageWriteQueue, bookOrganizationWriteQueue])
+  await Promise.all([settingsWriteQueue, booksWriteQueue, aiUsageWriteQueue, bookOrganizationWriteQueue, cloudWriteQueue])
   if (persistenceErrors.length === 0) return
 
   const [error] = persistenceErrors.splice(0, persistenceErrors.length)
@@ -747,6 +871,8 @@ export function resetStoreCache(): void {
   booksWriteQueue = Promise.resolve()
   aiUsageWriteQueue = Promise.resolve()
   bookOrganizationWriteQueue = Promise.resolve()
+  cloudWriteQueue = Promise.resolve()
+  cloudMode = false
   persistenceErrors = []
 }
 
@@ -755,6 +881,15 @@ export function getBook(id: string): Book | undefined {
 }
 
 export async function reloadBookFromPersistence(id: string): Promise<Book | undefined> {
+  if (cloudMode) {
+    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    if (!response.ok) throw new Error('无法读取云端书籍。')
+    const normalized = normalizeImportData(await response.json())
+    if (!normalized.valid) throw new Error(normalized.error)
+    const remote = normalized.data.books.filter(book => !book.isSample && book.id !== SAMPLE_BOOK_ID).map(normalizeBookLearningState)
+    booksCache = remote.length > 0 ? remote : [createSampleBook()]
+    return booksCache.find(book => book.id === id)
+  }
   await booksWriteQueue
   const storedBook = await getIndexedDBBook(id)
 
@@ -772,6 +907,15 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
 }
 
 export async function reloadBooksFromPersistence(): Promise<Book[]> {
+  if (cloudMode) {
+    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    if (!response.ok) throw new Error('无法读取云端书架。')
+    const normalized = normalizeImportData(await response.json())
+    if (!normalized.valid) throw new Error(normalized.error)
+    const remote = normalized.data.books.filter(book => !book.isSample && book.id !== SAMPLE_BOOK_ID).map(normalizeBookLearningState)
+    booksCache = remote.length > 0 ? remote : [createSampleBook()]
+    return getBooks()
+  }
   await booksWriteQueue
   const storedBooks = await getIndexedDBBooks()
   booksCache = (Array.isArray(storedBooks) ? storedBooks : []).map(normalizeBookLearningState)
@@ -779,6 +923,20 @@ export async function reloadBooksFromPersistence(): Promise<Book[]> {
 }
 
 export async function reloadBookOrganizationFromPersistence(): Promise<BookOrganizationData> {
+  if (cloudMode) {
+    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    if (!response.ok) throw new Error('无法读取云端书单。')
+    const normalized = normalizeImportData(await response.json())
+    if (!normalized.valid) throw new Error(normalized.error)
+    const bookIds = new Set(booksCache.map(book => book.id))
+    const lists = normalizeBookLists(normalized.data.bookLists, bookIds)
+    const relations = normalizeBookRelations(normalized.data.bookRelations, bookIds)
+    if (!lists.valid) throw new Error(lists.error)
+    if (!relations.valid) throw new Error(relations.error)
+    bookListsCache = lists.data
+    bookRelationsCache = relations.data
+    return cloneForStorage({ lists: bookListsCache, relations: bookRelationsCache })
+  }
   await bookOrganizationWriteQueue
   const stored = await getIndexedDBBookOrganization()
   const bookIds = new Set(booksCache.map(book => book.id))

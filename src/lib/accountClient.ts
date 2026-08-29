@@ -24,10 +24,19 @@ export interface UserDataSummary {
   lastSyncAt: string | null
 }
 
-export const ACCOUNT_CUTOFF = new Date('2026-10-01T00:00:00+08:00')
+export interface MigrationState {
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  version: number
+  startedAt: string | null
+  deadlineAt: string | null
+  completedAt: string | null
+  lastError: string | null
+  syncVersion: number
+}
 
-export function isAccountRequired(now = new Date()): boolean {
-  return now.getTime() >= ACCOUNT_CUTOFF.getTime()
+// Keep this helper for callers that still import it while login is being completed.
+export function isAccountRequired(): boolean {
+  return false
 }
 
 export async function getAccount(): Promise<AccountState> {
@@ -87,4 +96,26 @@ export async function getUserDataSummary(): Promise<UserDataSummary> {
   const data = await response.json().catch(() => ({})) as { error?: string }
   if (!response.ok) throw new Error(data.error || '无法读取云端数据。')
   return data as UserDataSummary
+}
+
+export async function getCloudData(): Promise<unknown> {
+  const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+  const data = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(data.error || '无法读取云端学习数据。')
+  return data
+}
+
+export async function getMigrationState(activateWindow = false): Promise<MigrationState> {
+  const query = activateWindow ? '?activate=1' : ''
+  const response = await fetch(`/api/account/migration/${query}`, { credentials: 'include', cache: 'no-store' })
+  const data = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(data.error || '无法读取历史数据迁移状态。')
+  return data as MigrationState
+}
+
+export async function migrateLocalData(payload: unknown): Promise<MigrationState & { booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }> {
+  const response = await fetch('/api/account/migration/', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  const data = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(data.error || '历史数据迁移失败。')
+  return data as MigrationState & { booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }
 }

@@ -498,7 +498,10 @@ export function normalizeBookRelations(value: unknown, validBookIds?: Set<string
         ...(item.note !== undefined
           ? { note: stringValue(item.note, `${path}.note`, MAX_BOOK_RELATION_NOTE_LENGTH, false)?.trim() || undefined }
           : {}),
-        createdAt: timestamp(item.createdAt, `${path}.createdAt`)
+        createdAt: timestamp(item.createdAt, `${path}.createdAt`),
+        ...(item.updatedAt !== undefined
+          ? { updatedAt: timestamp(item.updatedAt, `${path}.updatedAt`) }
+          : {})
       }
     }).filter(relation => !validBookIds || (validBookIds.has(relation.fromBookId) && validBookIds.has(relation.toBookId)))
 

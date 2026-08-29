@@ -2,96 +2,69 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Check, EyeOff, ExternalLink, LogOut, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
-import { deleteApiKey, getAccount, getApiKeyStatus, getUserDataSummary, importLocalData, logout, saveApiKey, type AccountUser, type UserDataSummary } from '@/lib/accountClient'
-import { exportAllData } from '@/lib/store'
+import { useRouter } from 'next/navigation'
+import { Archive, ArrowLeft, Check, Cloud, Download, FileDown, EyeOff, LogOut, RefreshCw, RotateCcw, ShieldCheck, Trash2, Upload, UserRound } from 'lucide-react'
+import { deleteApiKey, getAccount, getApiKeyStatus, getCloudData, getUserDataSummary, importLocalData, logout, saveApiKey, type AccountUser, type UserDataSummary } from '@/lib/accountClient'
+
+interface RecycleBinItem { bookId: string; name: string; author: string | null; deletedAt: string; purgeAt: string | null }
+interface CloudBook { id: string; name: string; author?: string; status: string; currentPhase: number; updatedAt: number }
+
+function formatDate(value: string | null): string {
+  if (!value) return '暂无记录'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '暂无记录' : date.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function downloadJson(payload: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a'); anchor.href = url; anchor.download = fileName; anchor.click(); URL.revokeObjectURL(url)
+}
 
 export default function AccountPage() {
+  const router = useRouter()
   const [user, setUser] = useState<AccountUser | null>(null)
   const [keyStatus, setKeyStatus] = useState<{ configured: boolean; masked: string } | null>(null)
-  const [draftKey, setDraftKey] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [cloudData, setCloudData] = useState<UserDataSummary | null>(null)
+  const [draftKey, setDraftKey] = useState(''); const [message, setMessage] = useState<string | null>(null); const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false); const [cloudData, setCloudData] = useState<UserDataSummary | null>(null); const [cloudBooks, setCloudBooks] = useState<CloudBook[]>([]); const [recycleItems, setRecycleItems] = useState<RecycleBinItem[]>([]); const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    void Promise.all([getAccount(), getApiKeyStatus(), getUserDataSummary()]).then(([account, key, data]) => {
-      setUser(account.user)
-      setKeyStatus(key)
-      setCloudData(data)
-    }).catch(reason => setError(reason instanceof Error ? reason.message : '账号服务暂时不可用。'))
-  }, [])
-
-  const handleImport = async () => {
-    if (busy) return
-    setBusy(true); setError(null); setMessage(null)
-    try {
-      const result = await importLocalData(JSON.parse(exportAllData()))
-      const summary = await getUserDataSummary()
-      setCloudData(summary)
-      setMessage(`已将本机数据导入云端：${result.booksImported} 本书、${result.aiUsageImported} 条 AI 使用记录。`)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '本机数据导入失败。') }
-    finally { setBusy(false) }
+  const loadRecycleBin = async (): Promise<void> => {
+    const response = await fetch('/api/account/recycle-bin/', { credentials: 'include', cache: 'no-store' })
+    const data = await response.json().catch(() => ({})) as { error?: string; items?: RecycleBinItem[] }
+    if (!response.ok) throw new Error(data.error || '无法读取回收站。')
+    setRecycleItems(Array.isArray(data.items) ? data.items : [])
   }
 
-  const handleSave = async () => {
-    if (!draftKey.trim() || busy) return
-    setBusy(true); setError(null); setMessage(null)
-    try { await saveApiKey(draftKey.trim()); setDraftKey(''); setKeyStatus({ configured: true, masked: '已配置（不会显示完整密钥）' }); setMessage('API Key 已加密保存，页面不会显示明文。') }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'API Key 保存失败。') }
-    finally { setBusy(false) }
+  useEffect(() => { void getAccount().then(async account => { setUser(account.user); if (!account.user) return; const [key, data, full] = await Promise.all([getApiKeyStatus(), getUserDataSummary(), getCloudData()]); setKeyStatus(key); setCloudData(data); const books = (full as { books?: unknown }).books; setCloudBooks(Array.isArray(books) ? books.filter((book): book is CloudBook => Boolean(book && typeof book === 'object' && typeof (book as CloudBook).id === 'string' && typeof (book as CloudBook).name === 'string')).sort((a, b) => b.updatedAt - a.updatedAt) : []); await loadRecycleBin() }).catch(reason => setError(reason instanceof Error ? reason.message : '账号服务暂时不可用。')).finally(() => setLoading(false)) }, [])
+  const runBusy = async (action: () => Promise<void>): Promise<void> => { if (busy) return; setBusy(true); setError(null); setMessage(null); try { await action() } catch (reason) { setError(reason instanceof Error ? reason.message : '操作失败。') } finally { setBusy(false) } }
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    await runBusy(async () => {
+      const result = await importLocalData(JSON.parse(await file.text()))
+      setCloudData(await getUserDataSummary())
+      setMessage(`云端数据已合并：${result.booksImported} 本书、${result.aiUsageImported} 条 AI 使用记录。`)
+    })
   }
+  const handleCloudExport = async () => runBusy(async () => { downloadJson(await getCloudData(), `feynman-cloud-backup-${new Date().toISOString().slice(0, 10)}.json`); setMessage('云端数据备份已开始下载。API Key 不会包含在备份中。') })
+  const handleRecycleAction = async (item: RecycleBinItem, action: 'restore' | 'delete') => { if (busy || (action === 'delete' && !window.confirm(`永久删除《${item.name}》？此操作不可恢复。`))) return; await runBusy(async () => { const response = await fetch('/api/account/recycle-bin/', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookId: item.bookId, action }) }); const data = await response.json().catch(() => ({})) as { error?: string }; if (!response.ok) throw new Error(data.error || '回收站操作失败。'); await loadRecycleBin(); setCloudData(await getUserDataSummary()); setMessage(action === 'restore' ? `《${item.name}》已恢复到云端书架。` : `《${item.name}》已永久删除。`) }) }
+  const handleSave = async () => runBusy(async () => { if (!draftKey.trim()) return; await saveApiKey(draftKey.trim()); setDraftKey(''); setKeyStatus({ configured: true, masked: '已配置（不会显示完整密钥）' }); setMessage('TokenDance API Key 已加密保存，页面不会显示明文。') })
+  const handleDelete = async () => runBusy(async () => { await deleteApiKey(); setKeyStatus({ configured: false, masked: '' }); setMessage('TokenDance API Key 已删除。') })
+  const handleLogout = async () => runBusy(async () => { await logout(); router.push('/login') })
 
-  const handleDelete = async () => {
-    if (busy) return
-    setBusy(true); setError(null); setMessage(null)
-    try { await deleteApiKey(); setKeyStatus({ configured: false, masked: '' }); setMessage('API Key 已删除。') }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'API Key 删除失败。') }
-    finally { setBusy(false) }
-  }
+  if (loading) return <main className="flex min-h-screen items-center justify-center bg-[var(--bg-primary)] px-4" role="status"><RefreshCw size={17} className="mr-2 animate-spin text-[var(--accent)]" aria-hidden="true" />正在读取账号中心</main>
+  if (!user) return <main className="mx-auto flex min-h-screen max-w-md items-center bg-[var(--bg-primary)] px-4 py-8"><section className="card w-full p-6 text-center"><UserRound className="mx-auto text-[var(--accent)]" size={28} aria-hidden="true" /><h1 className="mt-3 text-xl font-bold">账号中心近期开放</h1><p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">登录功能正在完善，近期即将开放。云端书架和学习数据管理会在登录上线后启用。</p><Link href="/" className="btn-secondary mt-5 inline-flex min-h-11 items-center gap-2"><ArrowLeft size={16} aria-hidden="true" />返回读书助手</Link></section></main>
 
-  const handleLogout = async () => {
-    if (busy) return
-    setBusy(true); setError(null); setMessage(null)
-    try { await logout(); window.location.href = '/login' }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '退出登录失败。'); setBusy(false) }
-  }
-
-  return <main className="mx-auto min-h-screen max-w-2xl bg-[var(--bg-primary)] px-4 py-8">
-    <Link href="/" className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm text-[var(--accent)]"><ArrowLeft size={16} aria-hidden="true" />返回费曼读书助手</Link>
-    <h1 className="text-2xl font-bold">账号与安全</h1>
-    <section className="card mt-6 p-5">
-      <h2 className="flex items-center gap-2 text-lg font-semibold"><ShieldCheck size={19} aria-hidden="true" />登录方式</h2>
-      <p className="mt-3 text-sm text-[var(--text-secondary)]">{user ? `当前账号：${user.email || user.phone || '观猹账号已连接'}` : '尚未读取到登录账号。'}</p>
-      {user ? <><p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">当前使用观猹账号登录。</p><button type="button" onClick={() => void handleLogout()} disabled={busy} className="btn-secondary mt-4 inline-flex min-h-11 items-center gap-2"><LogOut size={16} aria-hidden="true" />退出登录</button></> : <a href="/login" className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2">前往登录 <ExternalLink size={16} aria-hidden="true" /></a>}
-    </section>
-    <section className="card mt-4 p-5">
-      <h2 className="text-lg font-semibold">我的云端学习数据</h2>
-      {cloudData ? <>
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.books}</strong><span className="text-[var(--text-secondary)]">本书</span></div>
-          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.notes}</strong><span className="text-[var(--text-secondary)]">条笔记</span></div>
-          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.practices + cloudData.qaRecords}</strong><span className="text-[var(--text-secondary)]">次练习</span></div>
-          <div className="rounded-lg bg-[var(--bg-secondary)] p-3"><strong className="block text-xl">{cloudData.aiUsageRecords}</strong><span className="text-[var(--text-secondary)]">次 AI 使用</span></div>
-        </div>
-        <p className="mt-4 text-xs text-[var(--text-secondary)]">{cloudData.lastSyncAt ? `最近同步：${new Date(cloudData.lastSyncAt).toLocaleString()}` : '云端还没有学习数据。'}</p>
-        <button type="button" onClick={() => void handleImport()} disabled={busy} className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2"><RefreshCw size={16} aria-hidden="true" />将本机数据导入云端</button>
-        <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">导入会合并或更新同 ID 的记录，不会上传 API Key 明文。</p>
-      </> : <p className="mt-3 text-sm text-[var(--text-secondary)]">正在读取云端数据...</p>}
-    </section>
-    <section className="card mt-4 p-5">
-      <h2 className="text-lg font-semibold">TokenDance API Key</h2>
-      <div className="mt-3 flex items-center gap-2 text-sm text-[var(--text-secondary)]"><EyeOff size={16} aria-hidden="true" />{keyStatus?.configured ? keyStatus.masked : '尚未配置'}</div>
-      <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">密钥只在服务端加密保存并在调用上游 API 时解密。管理员界面不会显示、导出或回显完整密钥。</p>
-      <label className="mt-4 block text-sm font-medium" htmlFor="account-api-key">新增或替换密钥</label>
-      <input id="account-api-key" type="password" autoComplete="new-password" value={draftKey} onChange={event => setDraftKey(event.target.value)} className="input-field mt-2" placeholder="粘贴后仅提交一次，不会回显" />
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={() => void handleSave()} disabled={busy || !draftKey.trim()} className="btn-primary inline-flex min-h-11 items-center gap-2">{busy ? <RefreshCw size={16} className="animate-spin" aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}保存密钥</button>
-        <button type="button" onClick={() => void handleDelete()} disabled={busy || !keyStatus?.configured} className="btn-secondary inline-flex min-h-11 items-center gap-2 text-red-500"><Trash2 size={16} aria-hidden="true" />删除密钥</button>
-      </div>
-      {message && <p role="status" className="mt-3 text-sm text-emerald-600">{message}</p>}
-      {error && <p role="alert" className="mt-3 text-sm text-red-500">{error}</p>}
-    </section>
+  return <main className="mx-auto min-h-screen max-w-5xl bg-[var(--bg-primary)] px-4 py-6 sm:px-6 sm:py-8">
+    <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/" className="inline-flex min-h-11 items-center gap-2 text-sm text-[var(--accent)]"><ArrowLeft size={16} aria-hidden="true" />返回费曼读书助手</Link><button type="button" onClick={() => void handleLogout()} disabled={busy} className="btn-secondary inline-flex min-h-10 items-center gap-2"><LogOut size={16} aria-hidden="true" />退出登录</button></div>
+    <header className="mt-6 border-b border-[var(--border)] pb-6"><p className="text-sm font-medium text-[var(--accent)]">费曼读书助手 · 账号中心</p><h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">管理你的阅读与学习数据</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">云端数据按观猹账号隔离保存，换设备登录即可继续学习。</p><nav className="mt-5 flex gap-2 overflow-x-auto pb-1 text-sm" aria-label="账号中心分区">{([['overview', '概览'], ['bookshelf', '云端书架'], ['recycle', '回收站'], ['data', '数据管理'], ['security', '安全设置']] as const).map(([id, label]) => <a key={id} href={`#${id}`} className="shrink-0 rounded-full border border-[var(--border)] px-3 py-2 text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]">{label}</a>)}</nav></header>
+    {(message || error) && <div className={`mt-5 rounded-lg border p-3 text-sm ${error ? 'border-red-500/30 bg-red-500/10 text-red-700' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'}`} role={error ? 'alert' : 'status'}>{error || message}</div>}
+    <section id="overview" className="scroll-mt-5 pt-6" aria-labelledby="overview-title"><div className="flex items-center gap-2"><ShieldCheck size={19} className="text-[var(--accent)]" aria-hidden="true" /><h2 id="overview-title" className="text-lg font-semibold">概览</h2></div><div className="card mt-3 flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs text-[var(--text-secondary)]">当前登录账号</p><p className="mt-1 font-semibold">{user.email || user.phone || '观猹账号已连接'}</p><p className="mt-1 text-xs text-[var(--text-secondary)]">登录方式：观猹 OAuth</p></div><div className="flex items-center gap-2 rounded-lg bg-[var(--accent)]/10 px-3 py-2 text-sm text-[var(--accent)]"><Cloud size={16} aria-hidden="true" />云端数据已启用</div></div></section>
+    <section id="bookshelf" className="scroll-mt-5 pt-8" aria-labelledby="bookshelf-title"><div className="flex items-center gap-2"><Archive size={19} className="text-[var(--accent)]" aria-hidden="true" /><h2 id="bookshelf-title" className="text-lg font-semibold">我的云端书架</h2></div><div className="card mt-3 p-5">{cloudData ? <><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[['books', cloudData.books, '本书'], ['notes', cloudData.notes, '条笔记'], ['practice', cloudData.practices + cloudData.qaRecords, '次练习'], ['ai', cloudData.aiUsageRecords, '次 AI 使用']].map(([, value, label]) => <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/60 p-3"><strong className="block text-xl">{value}</strong><span className="text-xs text-[var(--text-secondary)]">{label}</span></div>)}</div><div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[var(--text-secondary)]"><span>书单 {cloudData.lists}</span><span>书籍关系 {cloudData.relations}</span><span>最近同步 {formatDate(cloudData.lastSyncAt)}</span></div><div className="mt-5 border-t border-[var(--border)] pt-4">{cloudBooks.length === 0 ? <p className="text-sm text-[var(--text-secondary)]">云端书架还没有用户书籍。</p> : <ul className="divide-y divide-[var(--border)]">{cloudBooks.map(book => <li key={book.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div className="min-w-0"><p className="truncate font-medium">{book.name}</p><p className="mt-1 text-xs text-[var(--text-secondary)]">{book.author || '作者未知'} · {book.status === 'finished' ? '已完成' : book.status === 'reading' ? `学习中 · 阶段 ${book.currentPhase}/6` : '未开始'}</p></div><span className="shrink-0 text-xs text-[var(--text-secondary)]">{formatDate(new Date(book.updatedAt).toISOString())}</span></li>)}</ul>}</div></> : <p className="text-sm text-[var(--text-secondary)]">云端数据暂时无法读取。</p>}</div></section>
+    <section id="recycle" className="scroll-mt-5 pt-8" aria-labelledby="recycle-title"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Trash2 size={19} className="text-[var(--accent)]" aria-hidden="true" /><h2 id="recycle-title" className="text-lg font-semibold">回收站</h2></div><span className="text-xs text-[var(--text-secondary)]">删除后 7 天内可恢复，最长保留 30 天</span></div><div className="card mt-3 p-5">{recycleItems.length === 0 ? <div className="py-5 text-center text-sm text-[var(--text-secondary)]"><Trash2 className="mx-auto mb-2 opacity-50" size={22} aria-hidden="true" />回收站是空的</div> : <ul className="divide-y divide-[var(--border)]">{recycleItems.map(item => <li key={item.bookId} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="truncate font-medium">{item.name}</p><p className="mt-1 text-xs text-[var(--text-secondary)]">{item.author || '作者未知'} · 删除于 {formatDate(item.deletedAt)} · {item.purgeAt ? `将于 ${formatDate(item.purgeAt)} 清除` : '到期后清除'}</p></div><div className="flex shrink-0 gap-2"><button type="button" onClick={() => void handleRecycleAction(item, 'restore')} disabled={busy} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm"><RotateCcw size={15} aria-hidden="true" />恢复</button><button type="button" onClick={() => void handleRecycleAction(item, 'delete')} disabled={busy} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm text-red-600"><Trash2 size={15} aria-hidden="true" />永久删除</button></div></li>)}</ul>}</div></section>
+    <section id="data" className="scroll-mt-5 pt-8" aria-labelledby="data-title"><div className="flex items-center gap-2"><Download size={19} className="text-[var(--accent)]" aria-hidden="true" /><h2 id="data-title" className="text-lg font-semibold">数据管理</h2></div><div className="card mt-3 p-5"><p className="text-sm leading-6 text-[var(--text-secondary)]">云端备份不包含 API Key。导入会按记录 ID 和更新时间合并，较新的记录优先。IndexedDB 只在首次登录时用于历史迁移。</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => void handleCloudExport()} disabled={busy} className="btn-primary inline-flex min-h-11 items-center gap-2"><FileDown size={16} aria-hidden="true" />导出云端数据</button><label className={`btn-secondary inline-flex min-h-11 cursor-pointer items-center gap-2 ${busy ? 'pointer-events-none opacity-60' : ''}`}><Upload size={16} aria-hidden="true" />导入云端备份<input type="file" accept="application/json,.json" className="sr-only" onChange={handleImportFile} disabled={busy} /></label></div><p className="mt-3 text-xs text-[var(--text-secondary)]">首次登录检测到 IndexedDB 历史数据时，系统会优先引导迁移；迁移成功后本机历史数据会清除并保留迁移标记。</p></div></section>
+    <section id="security" className="scroll-mt-5 pt-8" aria-labelledby="security-title"><div className="flex items-center gap-2"><ShieldCheck size={19} className="text-[var(--accent)]" aria-hidden="true" /><h2 id="security-title" className="text-lg font-semibold">安全设置</h2></div><div className="card mt-3 p-5"><h3 className="font-medium">TokenDance API Key</h3><div className="mt-3 flex items-center gap-2 text-sm text-[var(--text-secondary)]"><EyeOff size={16} aria-hidden="true" />{keyStatus?.configured ? keyStatus.masked : '尚未配置'}</div><p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">密钥只在服务端加密保存，并在调用上游 API 时使用。不会显示、导出或回显完整密钥。</p><label className="mt-4 block text-sm font-medium" htmlFor="account-api-key">新增或替换密钥</label><input id="account-api-key" type="password" autoComplete="new-password" value={draftKey} onChange={event => setDraftKey(event.target.value)} className="input-field mt-2" placeholder="粘贴后仅提交一次，不会回显" /><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => void handleSave()} disabled={busy || !draftKey.trim()} className="btn-primary inline-flex min-h-11 items-center gap-2">{busy ? <RefreshCw size={16} className="animate-spin" aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}保存密钥</button><button type="button" onClick={() => void handleDelete()} disabled={busy || !keyStatus?.configured} className="btn-secondary inline-flex min-h-11 items-center gap-2 text-red-600"><Trash2 size={16} aria-hidden="true" />删除密钥</button></div></div></section>
+    <footer className="pb-8 pt-10 text-center text-xs text-[var(--text-secondary)]">账号数据仅对当前观猹账号可见 · <Link href="/privacy" className="text-[var(--accent)] hover:underline">隐私说明</Link></footer>
   </main>
 }

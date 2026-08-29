@@ -9,6 +9,7 @@ export interface BookRelation {
   type: BookRelationType
   note?: string
   createdAt: number
+  updatedAt?: number
 }
 
 export interface BookList {
