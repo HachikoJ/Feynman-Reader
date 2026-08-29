@@ -26,7 +26,7 @@ export default function LoginPage() {
             <UserRound size={26} aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold">登录费曼读书助手</h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">登录功能正在完善，近期即将开放。当前可以直接使用本地书架和学习功能。</p>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">观猹登录即将上线，敬请期待～</p>
           {checking ? (
             <div className="mt-6 flex min-h-11 items-center justify-center text-sm text-[var(--text-secondary)]" role="status">
               <RefreshCw size={16} className="mr-2 animate-spin" aria-hidden="true" />正在检查登录状态
@@ -48,7 +48,7 @@ export default function LoginPage() {
             </div>
           ) : (
             <div className="mt-6 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-4 text-sm leading-6 text-[var(--text-secondary)]" role="status">
-              登录入口暂未开放，近期完成后会第一时间上线。现在无需登录即可体验阅读和学习功能。
+              观猹登录即将上线，敬请期待～
             </div>
           )}
         </div>

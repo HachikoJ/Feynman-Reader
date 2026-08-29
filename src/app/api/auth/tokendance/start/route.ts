@@ -4,7 +4,7 @@ export const runtime = 'nodejs'
 
 export async function GET(): Promise<NextResponse> {
   return NextResponse.json(
-    { error: '登录功能正在完善，近期即将开放。' },
+    { error: '观猹登录即将上线，敬请期待～' },
     { status: 503, headers: { 'Cache-Control': 'no-store' } }
   )
 }

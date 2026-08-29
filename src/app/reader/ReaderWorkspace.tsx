@@ -205,9 +205,9 @@ export default function Home() {
 
   const handleLoginClick = () => {
     void showAppAlert({
-      title: lang === 'zh' ? '登录功能即将开放' : 'Login is coming soon',
+      title: lang === 'zh' ? '观猹登录即将上线' : 'Login is coming soon',
       message: lang === 'zh'
-        ? '登录功能正在完善，近期即将开放。当前可以直接使用本地书架和学习功能。'
+        ? '观猹登录即将上线，敬请期待～'
         : 'Login is still being completed and will open soon. You can use the local bookshelf and learning features now.',
       tone: 'info'
     })
