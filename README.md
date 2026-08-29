@@ -17,13 +17,8 @@
 
 **产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
 
-费曼读书助手现在独立部署在 `reader.deline.top`，根路径 `/` 直接进入产品。官网位于 `www.deline.top`，产品中的“官网”按钮会返回官网主路由。已停用的 `/reader`、`/feynmanreader` 等旧入口返回 `410 Gone`。
-
 > [!IMPORTANT]
 > **这是一个本地优先、可选云端同步的学习产品。** 未登录时，学习记录默认保存在浏览器 IndexedDB；登录观猹账号后，可在账号中心将本机数据导入 Supabase 云端，并查看自己的云端统计。API Key 由服务端加密保存，不会显示明文。清理浏览器数据前仍建议导出备份。调用 AI 前，需要先阅读并同意隐私政策；TokenDance / TokenPay 是推荐渠道，DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线，届时旧官方 Key 也不再支持。
-
-> [!WARNING]
-> `www.deline.top/reader/` 与 `reader.deline.top/` 属于不同浏览器存储源。旧入口已停用，不会承载 OAuth、Token 或支付配置；如果旧地址仍能打开，请立即停止输入敏感信息并联系维护者。
 
 ## GitHub 传播素材
 

@@ -10,8 +10,6 @@
 
 [Personal site](https://www.deline.top) · [Open Feynman Reader](https://reader.deline.top/) · [中文 README](README.md) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
 
-Feynman Reader is deployed independently at `reader.deline.top`, where `/` opens the product directly. Retired `/reader` and `/feynmanreader` aliases return `410 Gone`. The brand site is `www.deline.top`, and the in-product Website button returns to that main route.
-
 **Reading is not understanding until you can explain it.**
 
 Feynman Reader is an AI-assisted deep-reading workspace based on the Feynman technique. Instead of returning a passive summary, it asks you to teach the book in your own words, evaluates the explanation, and follows up from three different perspectives.
@@ -44,9 +42,6 @@ Open <http://localhost:8080>. You can inspect the sample book without an API key
 ## Privacy, Cost, and Model Limits
 
 Signed-out data stays in the browser; after Watcha sign-in, users can import it to private Supabase storage and view account-scoped statistics. Clearing browser data can still delete local records, so export backups when prompted. API keys are encrypted server-side and never displayed in full.
-
-> [!WARNING]
-> `www.deline.top/reader/` and `reader.deline.top/` are different browser storage origins. Retired aliases do not host OAuth, token, or payment configuration; if an old alias still opens, stop entering sensitive information and contact the maintainer.
 
 According to TokenDance's official clarification, `v4flash0731` offers limited-time savings of up to about 20% on the Volcengine Ark route at peak hours, and users can set route preferences in TokenDance. Actual prices, eligible routes, periods, and offer dates follow [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731) and subsequent notices. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
 
