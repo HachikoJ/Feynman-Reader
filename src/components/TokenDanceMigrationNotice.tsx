@@ -27,7 +27,7 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
         role="dialog"
         aria-modal="true"
         aria-labelledby="tokendance-migration-title"
-        className="brand-dialog tokendance-surface max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-xl"
+        className="brand-dialog tokendance-surface flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-xl"
       >
         <div className="brand-dialog-header flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
           <div>
@@ -49,7 +49,8 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
           </button>
         </div>
 
-        <div className="space-y-4 px-5 py-5 text-sm leading-6 sm:px-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 text-sm leading-6 sm:px-6">
+          <div className="space-y-4">
           <p>
             {isZh
               ? '感谢你一直使用费曼读书助手。本版本新增并优先推荐 TokenDance / TokenPay，支持 OAuth 授权、余额查询和充值。'
@@ -96,6 +97,10 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
             </div>
           </div>
 
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-[var(--border)] px-5 py-4 sm:px-6">
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
             <a href={pricingUrl} target="_blank" rel="noopener noreferrer" className="tokendance-link inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium hover:underline">
               {isZh ? '查看 TokenDance 实时价目' : 'View TokenDance live pricing'}

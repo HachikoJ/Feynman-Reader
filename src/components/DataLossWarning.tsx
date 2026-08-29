@@ -33,9 +33,10 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
         role="dialog"
         aria-modal="true"
         aria-labelledby="data-loss-warning-title"
-        className="brand-dialog w-full max-w-lg rounded-xl border-amber-500/40 p-5 md:p-6"
+        className="brand-dialog flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border-amber-500/40"
       >
-        <div className="mb-4 flex items-start gap-3">
+        <div className="shrink-0 border-b border-[var(--border)] p-5 md:p-6">
+          <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500">
             <AlertTriangle size={24} aria-hidden="true" />
           </div>
@@ -49,9 +50,11 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
                 : (isZh ? '本产品当前不提供云端存储、同步或恢复服务，学习数据仅保存在当前浏览器。' : 'This product currently does not provide cloud storage, sync, or recovery services. Learning data is stored only in this browser.')}
             </p>
           </div>
+          </div>
         </div>
 
-        <div className="space-y-3 text-sm leading-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 text-sm leading-6 md:p-6">
+          <div className="space-y-3">
           <div className="flex items-start gap-3">
             <HardDrive size={19} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
             <p>{isZh ? '书籍、笔记和学习记录仅保存在当前浏览器的本地存储中。' : 'Books, notes, and learning records are stored only in this browser.'}</p>
@@ -72,9 +75,9 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
                 : 'Export a backup regularly from Settings > Data Management. When learning data exists, the system reminds you 7 days after the last successful backup, but it does not back up automatically. The platform cannot recover unbacked-up data.'}
             </p>
           </div>
-        </div>
+          </div>
 
-        <label className={`mt-5 flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${
+          <label className={`mt-5 flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${
           confirmationError
             ? 'border-red-500/60 bg-red-500/10'
             : 'border-amber-500/30 bg-amber-500/10'
@@ -96,17 +99,18 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
               ? '我已了解数据仅保存在本地，并会主动、定期导出备份。'
               : 'I understand that data is stored locally and I will export backups regularly.'}
           </span>
-        </label>
+          </label>
 
-        {confirmationError && (
-          <p id="data-risk-confirmation-error" role="alert" className="mt-2 text-sm font-medium text-red-500">
-            {isZh
-              ? '请先勾选上方确认项，确认了解本地数据风险后再继续。'
-              : 'Please check the confirmation above before continuing.'}
-          </p>
-        )}
+          {confirmationError && (
+            <p id="data-risk-confirmation-error" role="alert" className="mt-2 text-sm font-medium text-red-500">
+              {isZh
+                ? '请先勾选上方确认项，确认了解本地数据风险后再继续。'
+                : 'Please check the confirmation above before continuing.'}
+            </p>
+          )}
+        </div>
 
-        <div className={`mt-5 grid grid-cols-1 gap-2 ${backupDue ? 'sm:grid-cols-2' : ''}`}>
+        <div className={`shrink-0 grid grid-cols-1 gap-2 border-t border-[var(--border)] p-5 md:p-6 ${backupDue ? 'sm:grid-cols-2' : ''}`}>
           {backupDue && (
             <button
               type="button"

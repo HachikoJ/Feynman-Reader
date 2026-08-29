@@ -713,15 +713,17 @@ export default function Settings({
 
   const addQuote = () => {
     if (!newQuoteText.trim()) return
-    setQuoteStatus(null)
     const newQuote: CustomQuote = {
       text: newQuoteText.trim(),
       author: newQuoteAuthor.trim() || (settings.language === 'zh' ? '自定义' : 'Custom'),
       isPreset: false
     }
-    updateSetting('quotes', [...settings.quotes, newQuote])
+    updateSetting('quotes', [newQuote, ...settings.quotes])
     setNewQuoteText('')
     setNewQuoteAuthor('')
+    setQuoteStatus(settings.language === 'zh'
+      ? '金句已添加到顶部，请点击“保存设置”完成保存。'
+      : 'Quote added to the top. Click “Save Settings” to finish saving.')
   }
 
   const removeQuote = (index: number) => {
@@ -1710,16 +1712,17 @@ export default function Settings({
             role="dialog"
             aria-modal="true"
             aria-label={lang === 'zh' ? '费曼小助手记忆管理' : 'Feynman Assistant memory'}
-            className="modal-content max-w-lg max-h-[85vh] overflow-y-auto p-5"
+            className="modal-content product-dialog max-w-lg max-h-[calc(100dvh-32px)]"
             onClick={event => event.stopPropagation()}
           >
-            <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="product-dialog-header">
               <div>
                 <h2 className="text-xl font-bold">{lang === 'zh' ? '费曼小助手记忆' : 'Feynman Assistant memory'}</h2>
                 <p className="mt-1 text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '这些内容只用于个性化回答，可随时删除。' : 'Used only to personalize replies. You can remove them at any time.'}</p>
               </div>
               <button type="button" onClick={() => setShowAssistantMemoryManager(false)} className="btn-secondary px-3 py-2" aria-label={lang === 'zh' ? '关闭' : 'Close'}><X size={18} aria-hidden="true" /></button>
             </div>
+            <div className="product-dialog-body">
             {loadingAssistantMemories ? <p className="py-8 text-center text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '正在读取…' : 'Loading…'}</p> : assistantMemories.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '还没有保存的记忆。对小助手说“请记住……”即可添加。' : 'No saved memories yet. Tell the assistant “remember that…” to add one.'}</div>
             ) : (
@@ -1732,7 +1735,8 @@ export default function Settings({
                 ))}
               </div>
             )}
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            </div>
+            <div className="product-dialog-footer">
               <button type="button" onClick={exportAssistantMemories} disabled={!assistantMemories.length} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm disabled:opacity-50"><Download size={15} aria-hidden="true" />{lang === 'zh' ? '导出记忆' : 'Export memories'}</button>
               <button type="button" onClick={async () => { if (!assistantMemories.length) return; const confirmed = await showAppConfirm({ title: lang === 'zh' ? '清空记忆' : 'Clear memories', message: lang === 'zh' ? '将删除费曼小助手保存的全部偏好，书籍和会话不会受影响。' : 'This removes all assistant preferences. Books and conversations are not affected.', confirmText: lang === 'zh' ? '清空' : 'Clear', cancelText: lang === 'zh' ? '取消' : 'Cancel', tone: 'danger' }); if (!confirmed) return; await clearAssistantMemories(); setAssistantMemories([]) }} disabled={!assistantMemories.length} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm text-red-500 disabled:opacity-50"><Trash2 size={15} aria-hidden="true" />{lang === 'zh' ? '清空全部' : 'Clear all'}</button>
             </div>
@@ -1746,10 +1750,10 @@ export default function Settings({
             role="dialog"
             aria-modal="true"
             aria-label={lang === 'zh' ? '数据管理' : 'Data Management'}
-            className="modal-content max-w-md max-h-[85vh] overflow-y-auto p-5"
+            className="modal-content product-dialog max-w-md max-h-[calc(100dvh-32px)]"
             onClick={event => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="product-dialog-header">
               <div>
                 <h2 className="text-xl font-bold">{lang === 'zh' ? '数据管理' : 'Data Management'}</h2>
                 <p className="text-sm text-[var(--text-secondary)]">
@@ -1770,6 +1774,7 @@ export default function Settings({
               </button>
             </div>
 
+            <div className="product-dialog-body">
             <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
               <div className="flex items-start gap-2.5">
                 <AlertTriangle size={19} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
@@ -1943,6 +1948,12 @@ export default function Settings({
               </div>
             )}
 
+            </div>
+            <div className="product-dialog-footer">
+              <button type="button" onClick={closeDataManagement} disabled={migrating || importing || clearingData || exporting} className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed">
+                {lang === 'zh' ? '完成' : 'Done'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1950,13 +1961,22 @@ export default function Settings({
       {/* 数据导入模态框 */}
       {showImportModal && (
         <div className="modal-overlay" onClick={closeImportModal}>
-          <div className="modal-content max-w-md" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={lang === 'zh' ? '导入数据' : 'Import Data'}
+            className="modal-content product-dialog max-w-md max-h-[calc(100dvh-32px)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="product-dialog-header product-dialog-header-compact">
+            <h2 className="text-xl font-bold">
               <span className="flex items-center gap-2">
                 <Upload size={20} className="text-[var(--accent)]" aria-hidden="true" />
                 {lang === 'zh' ? '导入数据' : 'Import Data'}
               </span>
             </h2>
+            </div>
+            <div className="product-dialog-body">
 
             {/* 文件选择 */}
             <div className="mb-4">
@@ -2042,7 +2062,9 @@ export default function Settings({
             )}
 
             {/* 按钮 */}
-            <div className="flex gap-2">
+            </div>
+            <div className="product-dialog-footer">
+            <div className="flex w-full gap-2">
               <button
                 onClick={closeImportModal}
                 className="btn-secondary flex-1"
@@ -2057,6 +2079,7 @@ export default function Settings({
               >
                 {importing ? (lang === 'zh' ? '导入中...' : 'Importing...') : (lang === 'zh' ? '导入' : 'Import')}
               </button>
+            </div>
             </div>
           </div>
         </div>

@@ -267,8 +267,8 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="brand-dialog flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-4">
+      <div className="brand-dialog flex max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-xl sm:max-h-[90vh]">
         {/* Header */}
         <div className="brand-dialog-header flex items-center justify-between border-b border-[var(--border)] p-6">
           <h2 className="text-xl font-bold text-[var(--text-primary)]">{text.title}</h2>
@@ -282,15 +282,15 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
           </button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
           {/* Sidebar Tabs */}
-          <div className="w-48 border-r border-[var(--border)] p-4">
-            <nav className="space-y-1">
+          <div className="shrink-0 border-b border-[var(--border)] p-3 md:w-48 md:border-b-0 md:border-r md:p-4">
+            <nav className="flex gap-2 overflow-x-auto md:block md:space-y-1">
               {(Object.keys(text.tabs) as Tab[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`w-full px-4 py-2 rounded-lg text-left transition-colors ${
+                  className={`shrink-0 rounded-lg px-3 py-2 text-left text-sm transition-colors md:w-full md:px-4 ${
                     activeTab === tab
                       ? 'bg-[var(--accent)] text-white'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'
@@ -303,7 +303,7 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-6">
             {activeTab === 'theme' && (
               <div className="space-y-6">
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">{text.theme.title}</h3>

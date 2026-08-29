@@ -55,7 +55,7 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
         aria-modal="true"
         aria-labelledby="tokendance-welcome-title"
         aria-describedby="tokendance-welcome-description"
-        className="brand-dialog tokendance-surface max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl overflow-hidden rounded-xl"
+        className="brand-dialog tokendance-surface flex max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl"
       >
         <div className="brand-dialog-header border-b border-[var(--border)] px-5 py-5 sm:px-8 sm:py-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -66,7 +66,7 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
           </div>
         </div>
 
-        <div className="max-h-[calc(100vh-7rem)] overflow-y-auto px-5 py-5 sm:px-8 sm:py-7">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-8 sm:py-7">
           <h1 id="tokendance-welcome-title" className="text-2xl font-bold sm:text-3xl">{content.title}</h1>
           <p id="tokendance-welcome-description" className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)] sm:text-base">
             {content.description}
@@ -103,7 +103,10 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
             </p>
           </div>
 
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        </div>
+
+        <div className="shrink-0 border-t border-[var(--border)] px-5 py-4 sm:px-8 sm:py-5">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <a
               href={pricingUrl}
               target="_blank"

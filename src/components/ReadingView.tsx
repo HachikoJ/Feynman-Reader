@@ -10,7 +10,7 @@ import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateRev
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, chat, chatJson, createDeepSeekClient, generateBookMetadata, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { tokendanceRecoveryMessage } from '@/lib/tokendance'
-import { deepSeekSunsetMessage, isTokenDanceOnly } from '@/lib/aiProviderPolicy'
+import { deepSeekSunsetMessage } from '@/lib/aiProviderPolicy'
 import LoadingQuotes from './LoadingQuotes'
 import PhaseResult from './PhaseResult'
 import QAPractice from './QAPractice'
@@ -205,16 +205,15 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const handleAnalyzeAll = async () => {
     if (analysisInFlightRef.current) return
     if (missingApiKey) {
-      const providerName = isTokenDanceOnly() ? 'TokenDance' : 'DeepSeek'
       setAnalysisError(lang === 'zh'
-        ? `使用 AI 深度分析前，请先前往设置填写并保存 ${providerName} API Key。`
-        : `Add and save your ${providerName} API key in Settings before using AI analysis.`)
+        ? '使用 AI 深度分析前，请先前往设置连接并保存 TokenDance API Key。'
+        : 'Connect and save your TokenDance API key in Settings before using AI analysis.')
       return
     }
     if (!client) {
       setAnalysisError(aiConsentRequired
         ? (lang === 'zh' ? '请先在设置中同意 AI 数据传输。' : 'Please consent to AI data transfer in Settings.')
-        : (lang === 'zh' ? 'AI 尚未就绪，请检查 API Key 后重试。' : 'AI is not ready. Check your API key and try again.'))
+        : (lang === 'zh' ? 'TokenDance AI 尚未就绪，请前往设置检查授权后重试。' : 'TokenDance AI is not ready. Check the authorization in Settings and try again.'))
       return
     }
     analysisInFlightRef.current = true
@@ -294,8 +293,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         setAnalysisError(interruptedMessage)
       } else if (authenticationFailed) {
         setAnalysisError(lang === 'zh'
-          ? '当前 DeepSeek API Key 无效或已失效，请前往设置重新填写并保存。'
-          : 'The current DeepSeek API key is invalid or expired. Update it in Settings.')
+          ? '当前 TokenDance API Key 无效或已失效，请前往设置重新授权。'
+          : 'The current TokenDance API key is invalid or expired. Reauthorize it in Settings.')
       } else if (contextLimitExceeded) {
         setAnalysisError(lang === 'zh'
           ? '文档上下文仍然过长，系统已自动缩减后重试但未成功。请拆分文档后重新上传，已完成的阶段不会丢失。'
@@ -391,7 +390,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         ? (lang === 'zh' ? '提交 AI 评估前，请先在设置中连接并保存 TokenDance API Key。' : 'Connect and save your TokenDance API key in Settings before AI review.')
         : aiConsentRequired
           ? (lang === 'zh' ? '请先在设置中同意 AI 数据传输后再提交。' : 'Please consent to AI data transfer in Settings before submitting.')
-          : (lang === 'zh' ? 'AI 尚未就绪，请检查 API Key 后重试。' : 'AI is not ready. Check your API key and try again.'))
+          : (lang === 'zh' ? 'TokenDance AI 尚未就绪，请前往设置检查授权后重试。' : 'TokenDance AI is not ready. Check the authorization in Settings and try again.'))
       return
     }
     practiceSubmissionRef.current = true
@@ -418,8 +417,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               ? '文档上下文过长，系统自动缩减后仍未完成评分。你填写的教学内容已保留，请拆分文档后重试。'
               : 'The document context is too long even after automatic reduction. Your teaching content was kept; split the document and try again.')
           : (lang === 'zh'
-              ? '评分请求失败，请检查网络和 API Key 后重试。'
-              : 'The evaluation request failed. Check your network and API key, then try again.')))
+              ? '评分请求失败，请检查 TokenDance 授权和网络后重试。'
+              : 'The evaluation request failed. Check your TokenDance authorization and network, then try again.')))
         return
       }
 
@@ -1346,8 +1345,15 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
       {showBookOrganizer && (
         <div className="modal-overlay" onClick={() => setShowBookOrganizer(false)}>
-          <div className="modal-content max-h-[90vh] max-w-5xl overflow-y-auto" onClick={event => event.stopPropagation()}>
-            <div className="mb-1 flex justify-end">
+          <div className="modal-content product-dialog product-dialog-wide max-h-[calc(100dvh-32px)]" onClick={event => event.stopPropagation()}>
+            <div className="product-dialog-header product-dialog-header-compact">
+              <div className="product-dialog-title">
+                <span className="product-dialog-title-icon"><AppIcon name="library" size={18} /></span>
+                <div>
+                  <h2>{lang === 'zh' ? '书籍整理' : 'Organize book'}</h2>
+                  <p>{lang === 'zh' ? '管理书单归属与书籍关系' : 'Manage list membership and book relationships'}</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowBookOrganizer(false)}
@@ -1358,7 +1364,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 <AppIcon name="close" size={20} />
               </button>
             </div>
+            <div className="product-dialog-body">
             <BookListManager lang={lang} book={book} />
+            </div>
           </div>
         </div>
       )}

@@ -502,18 +502,30 @@ export const PERSONA_TYPES: PersonaType[] = [
  * 推荐角色组合
  */
 export function getRecommendedPersonas(userPreference?: 'beginner' | 'balanced' | 'challenging'): PersonaType[] {
-  switch (userPreference) {
-    case 'beginner':
-      return PERSONA_TYPES.filter(p => p.category === 'beginner' || p.category === 'peer')
-    case 'challenging':
-      return PERSONA_TYPES.filter(p => p.category === 'critical' || p.category === 'expert')
-    default: // balanced
-      return [
-        PERSONA_TYPES.find(p => p.id === 'elementary')!,
-        PERSONA_TYPES.find(p => p.id === 'professional')!,
-        PERSONA_TYPES.find(p => p.id === 'scientist')!
-      ].filter(Boolean)
+  const categoriesByPreference: Record<
+    'beginner' | 'balanced' | 'challenging',
+    PersonaType['category'][]
+  > = {
+    beginner: ['beginner', 'peer', 'expert'],
+    balanced: ['beginner', 'peer', 'critical', 'expert'],
+    challenging: ['peer', 'critical', 'expert']
   }
+  const categories = categoriesByPreference[userPreference || 'balanced']
+
+  // 抽取类别时不放回，确保三个推荐角色来自不同类别。
+  const remainingCategories = [...categories]
+  const selectedCategories: PersonaType['category'][] = []
+  while (selectedCategories.length < 3 && remainingCategories.length > 0) {
+    const index = Math.floor(Math.random() * remainingCategories.length)
+    selectedCategories.push(remainingCategories[index])
+    remainingCategories.splice(index, 1)
+  }
+
+  return selectedCategories.flatMap(category => {
+    const personas = PERSONA_TYPES.filter(persona => persona.category === category)
+    if (personas.length === 0) return []
+    return [personas[Math.floor(Math.random() * personas.length)]]
+  })
 }
 
 /**

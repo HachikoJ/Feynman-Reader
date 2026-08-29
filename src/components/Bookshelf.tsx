@@ -1306,8 +1306,15 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
       {/* Add/Edit Book Modal */}
       {showBookLists && (
         <div className="modal-overlay" onClick={() => setShowBookLists(false)}>
-          <div className="modal-content max-h-[90vh] max-w-5xl overflow-y-auto" onClick={event => event.stopPropagation()}>
-            <div className="mb-1 flex justify-end">
+          <div className="modal-content product-dialog product-dialog-wide max-h-[calc(100dvh-32px)]" onClick={event => event.stopPropagation()}>
+            <div className="product-dialog-header product-dialog-header-compact">
+              <div className="product-dialog-title">
+                <span className="product-dialog-title-icon"><AppIcon name="library" size={18} /></span>
+                <div>
+                  <h2>{lang === 'zh' ? '书单管理' : 'Book Lists'}</h2>
+                  <p>{lang === 'zh' ? '整理主题书单，快速定位要读的书' : 'Organize themed lists and find your next book'}</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowBookLists(false)}
@@ -1318,6 +1325,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                 <AppIcon name="close" size={20} />
               </button>
             </div>
+            <div className="product-dialog-body">
             <BookListManager
               lang={lang}
               onOpenBook={selected => {
@@ -1325,31 +1333,37 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                 handleSelectBook(selected)
               }}
             />
+            </div>
           </div>
         </div>
       )}
 
       {(showAddModal || editingBook) && (
         <div className="modal-overlay" onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}>
-          <div className="modal-content !overflow-y-auto max-w-lg max-h-[calc(100dvh-32px)]" onClick={e => e.stopPropagation()}>
-            <div className="mb-6 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-bold">
-                {editingBook ? (lang === 'zh' ? '编辑书籍' : 'Edit Book') : t(lang, 'bookshelf.addBook')}
-              </h2>
+          <div className="modal-content product-dialog max-h-[calc(100dvh-32px)]" onClick={e => e.stopPropagation()}>
+            <div className="product-dialog-header">
+              <div className="product-dialog-title">
+                <span className="product-dialog-title-icon"><AppIcon name={editingBook ? 'edit' : 'bookOpen'} size={19} /></span>
+                <div>
+                  <h2>{editingBook ? (lang === 'zh' ? '编辑书籍' : 'Edit Book') : t(lang, 'bookshelf.addBook')}</h2>
+                  <p>{editingBook ? (lang === 'zh' ? '更新书籍信息与阅读标签' : 'Update book details and tags') : (lang === 'zh' ? '创建一个清晰、可持续学习的阅读条目' : 'Create a focused reading entry')}</p>
+                </div>
+              </div>
               <button type="button" onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }} disabled={savingBook} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭书籍窗口' : 'Close book dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
                 <AppIcon name="close" size={20} />
               </button>
             </div>
             
+            <div className="product-dialog-body">
             <div className="space-y-4">
               {/* Cover Upload */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
+              <div className="product-dialog-section">
+                <label className="product-dialog-label">
                   {lang === 'zh' ? '封面图片' : 'Cover Image'}
                 </label>
                 <div className="flex items-center gap-4">
-                  <div 
-                    className="w-24 h-32 rounded-lg overflow-hidden bg-[var(--bg-secondary)] flex items-center justify-center cursor-pointer border-2 border-dashed border-[var(--border)] hover:border-[var(--accent)]"
+                  <div
+                    className="product-dialog-cover flex items-center justify-center cursor-pointer"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     {getSafeImageSrc(newBookCover) ? (
@@ -1366,11 +1380,12 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                     className="hidden"
                   />
                   <div className="text-sm text-[var(--text-secondary)]">
-                    {lang === 'zh' ? '点击上传封面图片' : 'Click to upload cover'}
+                    <span className="font-medium text-[var(--text-primary)]">{lang === 'zh' ? '上传封面' : 'Upload cover'}</span>
+                    <span className="mt-1 block text-xs">{lang === 'zh' ? '建议使用竖版图片，可选' : 'Portrait image, optional'}</span>
                     {newBookCover && (
-                      <button 
+                      <button
                         onClick={() => setNewBookCover('')}
-                        className="block text-red-400 mt-1"
+                        className="mt-2 block text-xs text-[var(--text-secondary)] underline underline-offset-2 hover:text-[var(--text-primary)]"
                       >
                         {lang === 'zh' ? '移除图片' : 'Remove'}
                       </button>
@@ -1380,9 +1395,9 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               </div>
 
               {/* Book Name */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {t(lang, 'bookshelf.bookName')} *
+              <div className="product-dialog-section">
+                <label className="product-dialog-label">
+                  {t(lang, 'bookshelf.bookName')} <span className="product-dialog-required">*</span>
                 </label>
                 <input
                   type="text"
@@ -1395,8 +1410,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               </div>
               
               {/* Author */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
+              <div className="product-dialog-section">
+                <label className="product-dialog-label">
                   {t(lang, 'bookshelf.author')}
                 </label>
                 <input
@@ -1410,8 +1425,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
               {/* Description */}
               {/* Description */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
+              <div className="product-dialog-section">
+                <label className="product-dialog-label">
                   {lang === 'zh' ? '一句话介绍' : 'Brief Description'}
                 </label>
                 <textarea
@@ -1425,9 +1440,9 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               </div>
 
               {/* Tags Management */}
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  <AppIcon name="tag" tone="violet" size={18} />{lang === 'zh' ? '标签' : 'Tags'}
+              <div className="product-dialog-section">
+                <label className="product-dialog-label flex items-center gap-2">
+                  <AppIcon name="tag" size={16} />{lang === 'zh' ? '标签' : 'Tags'}
                 </label>
                 
                 {/* Existing Tags */}
@@ -1436,14 +1451,14 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                     {editingTags.map((tag, index) => (
                       <div 
                         key={index}
-                        className="px-3 py-1.5 bg-[var(--accent)]/10 text-[var(--accent)] rounded-lg text-sm flex items-center gap-2 border border-[var(--accent)]/20"
+                        className="product-dialog-tag flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm text-[var(--text-primary)]"
                       >
                         <span className="text-xs text-[var(--text-secondary)]">{tag.category}</span>
                         <span>·</span>
-                        <span>{tag.name}</span>
+                        <span className="font-medium text-[var(--accent)]">{tag.name}</span>
                         <button
                           onClick={() => handleRemoveTag(tag)}
-                          className="text-red-400 hover:text-red-500 ml-1"
+                          className="ml-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                         >
                           <AppIcon name="close" size={13} />
                         </button>
@@ -1457,7 +1472,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">
                     {lang === 'zh' ? '添加新标签' : 'Add New Tag'}
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
                         {lang === 'zh' ? '分类' : 'Category'}
@@ -1503,9 +1518,9 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   <button
                     onClick={handleAddTag}
                     disabled={!newTagName.trim() || (newTagCategory === '其他' && !customCategory.trim())}
-                    className="btn-secondary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-secondary product-dialog-action w-full disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <AppIcon name="plus" tone="violet" size={16} />
+                    <AppIcon name="plus" size={16} />
                     {lang === 'zh' ? '添加标签' : 'Add Tag'}
                   </button>
                 </div>
@@ -1521,23 +1536,24 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                 )}
               </div>
             </div>
+            </div>
 
-            <div className="sticky bottom-0 z-10 -mx-1 mt-6 flex gap-3 border-t border-[var(--border)] bg-[var(--bg-card)] px-1 pt-4 pb-1">
+            <div className="product-dialog-footer">
+              <button
+                onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}
+                className="btn-secondary min-h-11 !border-transparent !bg-transparent !text-[var(--text-secondary)] hover:!bg-[var(--bg-secondary)]"
+                disabled={savingBook}
+              >
+                {t(lang, 'bookshelf.cancel')}
+              </button>
               <button
                 onClick={editingBook ? handleUpdateBook : handleAddBook}
-                className="btn-primary flex-1"
+                className="btn-primary min-h-11"
                 disabled={savingBook || !newBookName.trim()}
               >
                 {savingBook
                   ? (lang === 'zh' ? '保存中...' : 'Saving...')
                   : editingBook ? (lang === 'zh' ? '保存' : 'Save') : t(lang, 'bookshelf.add')}
-              </button>
-              <button
-                onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}
-                className="btn-secondary flex-1"
-                disabled={savingBook}
-              >
-                {t(lang, 'bookshelf.cancel')}
               </button>
             </div>
           </div>
@@ -1550,6 +1566,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
           lang={lang}
           onBookAdded={() => setBooks(getBooks())}
           onClose={() => setShowDocumentUpload(false)}
+          onOpenSettings={onOpenSettings}
         />
       )}
 
@@ -1635,18 +1652,26 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
       {/* Tag Management Modal */}
       {showTagManagement && (
         <div className="modal-overlay" onClick={() => setShowTagManagement(false)}>
-          <div className="modal-content max-w-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">
-                <AppIcon name="tag" tone="violet" size={22} />{lang === 'zh' ? '标签管理' : 'Tag Management'}
-              </h2>
-              <button 
+          <div className="modal-content product-dialog product-dialog-wide max-h-[calc(100dvh-32px)]" onClick={e => e.stopPropagation()}>
+            <div className="product-dialog-header product-dialog-header-compact">
+              <div className="product-dialog-title">
+                <span className="product-dialog-title-icon"><AppIcon name="tag" size={18} /></span>
+                <div>
+                  <h2>{lang === 'zh' ? '标签管理' : 'Tag Management'}</h2>
+                  <p>{lang === 'zh' ? '统一维护标签和分类，修改会同步到书架' : 'Maintain tags and categories across your bookshelf'}</p>
+                </div>
+              </div>
+              <button
                 onClick={() => setShowTagManagement(false)}
-                className="text-2xl text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                className="icon-button"
+                aria-label={lang === 'zh' ? '关闭标签管理' : 'Close tag management'}
+                title={lang === 'zh' ? '关闭' : 'Close'}
               >
                 <AppIcon name="close" size={20} />
               </button>
             </div>
+
+            <div className="product-dialog-body">
 
             {/* Warning */}
             <div className="bg-yellow-500/10 border-2 border-yellow-500/30 rounded-xl p-4 mb-6">
@@ -1717,45 +1742,45 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                                     />
                                   </div>
                                 </div>
-                                <div className="flex gap-2 justify-end">
+                                <div className="flex flex-wrap justify-end gap-2">
                                   <button
                                     onClick={() => {
                                       setEditingGlobalTag(null)
                                       setNewGlobalTagName('')
                                       setNewGlobalTagCategory('')
                                     }}
-                                    className="px-4 py-2 text-sm bg-[var(--bg-card)] rounded-lg hover:bg-[var(--border)] transition-colors"
+                                    className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)]/35 hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
                                   >
                                     {lang === 'zh' ? '取消' : 'Cancel'}
                                   </button>
                                   <button
                                     onClick={handleUpdateGlobalTag}
                                     disabled={mutatingBooks || !newGlobalTagName.trim() || !newGlobalTagCategory.trim()}
-                                    className="px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     {mutatingBooks ? (lang === 'zh' ? '保存中...' : 'Saving...') : (lang === 'zh' ? '保存' : 'Save')}
                                   </button>
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <span className="font-medium">{tag.name}</span>
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                                  <span className="min-w-0 break-words font-medium">{tag.name}</span>
                                   <span className="text-xs px-2 py-1 bg-[var(--accent)]/10 text-[var(--accent)] rounded">
                                     {bookCount} {lang === 'zh' ? '本书' : 'books'}
                                   </span>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
                                   <button
                                     onClick={() => handleEditGlobalTag(tag)}
-                                    className="inline-flex items-center gap-1 text-sm text-[var(--accent)] hover:underline"
+                                    className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/8 px-3 py-2 text-sm font-medium text-[var(--accent)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent)]/14 sm:flex-none"
                                   >
                                     <AppIcon name="edit" tone="amber" size={14} />
                                     {lang === 'zh' ? '编辑' : 'Edit'}
                                   </button>
                                   <button
                                     onClick={() => handleDeleteGlobalTag(tag)}
-                                    className="text-sm text-red-400 hover:underline"
+                                    className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:border-red-500 hover:bg-red-500/14 dark:text-red-300 sm:flex-none"
                                   >
                                     <AppIcon name="trash" size={14} />{lang === 'zh' ? '删除' : 'Delete'}
                                   </button>
@@ -1781,8 +1806,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               </div>
             )}
 
-            <div className="mt-6 pt-4 border-t border-[var(--border)]">
-              <button 
+            </div>
+
+            <div className="product-dialog-footer">
+              <button
                 onClick={() => setShowTagManagement(false)}
                 className="btn-primary w-full"
               >

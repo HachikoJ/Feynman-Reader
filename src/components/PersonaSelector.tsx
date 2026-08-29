@@ -167,9 +167,9 @@ export default function PersonaSelector({
             >
               <div className="text-sm font-medium">{label[lang]}</div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">
-                {key === 'beginner' ? (lang === 'zh' ? '初学者+同行' : 'Beginner+Peer') :
+                {key === 'beginner' ? (lang === 'zh' ? '初学者+同行+专家' : 'Beginner+Peer+Expert') :
                  key === 'balanced' ? (lang === 'zh' ? '混合搭配' : 'Mixed') :
-                 (lang === 'zh' ? '质疑+专家' : 'Critical+Expert')}
+                 (lang === 'zh' ? '同行+质疑+专家' : 'Peer+Critical+Expert')}
               </div>
             </button>
           ))}

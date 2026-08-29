@@ -324,3 +324,35 @@ describe('Settings AI privacy controls', () => {
     expect(screen.getByRole('button', { name: '选择 JSON 或全部分卷文件' })).toBeInTheDocument()
   })
 })
+
+describe('Settings quote manager', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    HTMLElement.prototype.scrollIntoView = jest.fn()
+    getSettingsMock.mockReturnValue({ ...savedSettings })
+    saveSettingsMock.mockImplementation(nextSettings => {
+      getSettingsMock.mockReturnValue({ ...nextSettings })
+    })
+    ;(store.reloadSettingsFromPersistence as jest.MockedFunction<typeof store.reloadSettingsFromPersistence>)
+      .mockResolvedValue({ ...savedSettings })
+  })
+
+  it('adds a quote at the top and shows a save reminder', async () => {
+    render(
+      <>
+        <Settings onSettingsChange={jest.fn()} />
+        <AppDialogHost lang="zh" />
+      </>
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: /金句管理/ }))
+    fireEvent.change(screen.getByPlaceholderText('输入金句内容...'), { target: { value: '置顶金句' } })
+    fireEvent.change(screen.getByPlaceholderText('作者（选填）'), { target: { value: '测试作者' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('金句已添加到顶部')
+    const quoteItems = [...screen.getByRole('dialog', { name: '金句管理' }).querySelectorAll('p')]
+      .filter(item => item.textContent?.includes('金句'))
+    expect(quoteItems[0]).toHaveTextContent('置顶金句')
+  })
+})

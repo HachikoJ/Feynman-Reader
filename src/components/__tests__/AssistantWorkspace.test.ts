@@ -6,6 +6,7 @@ import {
   deriveAssistantSessionTitle,
   findAssistantMentionedBook,
   getAssistantMentionQuery,
+  clampAssistantPosition,
   shouldDeriveAssistantSessionTitle
 } from '../AssistantWorkspace'
 import { buildAssistantLearningContext, buildFeynmanNudge, searchLearningRecords } from '@/lib/assistantLearningContext'
@@ -104,5 +105,10 @@ describe('Feynman Assistant context helpers', () => {
     const reminder = buildFeynmanNudge(books, 'zh')
     expect(reminder).toContain('追风筝的人')
     expect(reminder).toContain('费曼学习法')
+  })
+
+  it('keeps the draggable assistant launcher inside the viewport', () => {
+    expect(clampAssistantPosition(-20, 700, 56, 56, 375, 812)).toEqual({ x: 8, y: 700 })
+    expect(clampAssistantPosition(360, -10, 56, 56, 375, 812)).toEqual({ x: 311, y: 8 })
   })
 })

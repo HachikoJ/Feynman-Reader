@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Image from 'next/image'
 import { ArrowUp, AtSign, BookOpen, Check, Copy, FileText, GitBranch, Paperclip, Pencil, Plus, RotateCcw, ShieldAlert, Sparkles, Trash2, X } from 'lucide-react'
 import type { Book, AppSettings } from '@/lib/store'
 import {
@@ -136,6 +135,21 @@ export function shouldDeriveAssistantSessionTitle(
     !session.messages.some(message => message.role === 'user')
 }
 
+export function clampAssistantPosition(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  margin = 8
+): { x: number; y: number } {
+  return {
+    x: Math.min(Math.max(x, margin), Math.max(margin, viewportWidth - width - margin)),
+    y: Math.min(Math.max(y, margin), Math.max(margin, viewportHeight - height - margin))
+  }
+}
+
 export default function AssistantWorkspace({ lang, settings, books, activeBook, onOpenSettings }: Props) {
   const isZh = lang === 'zh'
   const [open, setOpen] = useState(false)
@@ -160,6 +174,9 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const nudgeInFlightRef = useRef(false)
+  const dragRef = useRef<{ pointerId: number; offsetX: number; offsetY: number; moved: boolean } | null>(null)
+  const suppressLauncherClickRef = useRef(false)
+  const [launcherPosition, setLauncherPosition] = useState<{ x: number; y: number } | null>(null)
 
   const activeSession = sessions.find(session => session.id === activeSessionId) || null
   const busy = activeSession ? busySessionIds.has(activeSession.id) : false
@@ -530,17 +547,73 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
 
   const buttonLabel = isZh ? '打开费曼小助手' : 'Open Feynman Assistant'
 
+  const handleLauncherPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    dragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      moved: false
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handleLauncherPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const next = clampAssistantPosition(
+      event.clientX - drag.offsetX,
+      event.clientY - drag.offsetY,
+      rect.width,
+      rect.height,
+      window.innerWidth,
+      window.innerHeight
+    )
+    if (Math.abs(next.x - rect.left) > 3 || Math.abs(next.y - rect.top) > 3) drag.moved = true
+    if (drag.moved) {
+      suppressLauncherClickRef.current = true
+      setLauncherPosition(next)
+    }
+  }
+
+  const handleLauncherPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    dragRef.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const handleLauncherClick = () => {
+    if (suppressLauncherClickRef.current) {
+      suppressLauncherClickRef.current = false
+      return
+    }
+    void openAssistant()
+  }
+
   return (
     <>
       <button
         type="button"
-        onClick={() => void openAssistant()}
-        className="fixed bottom-24 right-4 z-40 flex h-14 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-2.5 text-white shadow-[0_14px_32px_color-mix(in_srgb,var(--accent)_28%,transparent)] transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 md:right-6 md:px-3"
+        onClick={handleLauncherClick}
+        onPointerDown={handleLauncherPointerDown}
+        onPointerMove={handleLauncherPointerMove}
+        onPointerUp={handleLauncherPointerUp}
+        onPointerCancel={handleLauncherPointerUp}
+        style={launcherPosition ? { left: launcherPosition.x, top: launcherPosition.y, right: 'auto', bottom: 'auto' } : undefined}
+        className="fixed bottom-24 right-4 z-40 flex h-14 w-14 touch-none select-none items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--bg-card)] text-[var(--accent)] shadow-[0_12px_28px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[transform,filter,box-shadow] hover:scale-[1.03] hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/5 hover:shadow-[0_14px_32px_color-mix(in_srgb,var(--accent)_24%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 md:right-6"
         aria-label={buttonLabel}
         title={buttonLabel}
+        aria-roledescription={isZh ? '可拖动按钮' : 'Draggable button'}
       >
-        <Image src="/feynman-assistant.svg" alt="" width={36} height={36} aria-hidden="true" />
-        <span className="hidden pr-1 text-sm font-semibold md:inline">{isZh ? '费曼小助手' : 'Feynman Assistant'}</span>
+        <span className="relative flex h-8 w-8 items-center justify-center" aria-hidden="true">
+          <BookOpen size={27} strokeWidth={2.15} />
+          <Sparkles className="absolute -right-1 -top-1" size={11} strokeWidth={2.2} />
+        </span>
       </button>
 
       {open && (
@@ -554,7 +627,12 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
           >
             <header className="brand-dialog-header flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
               <div className="flex items-center gap-3">
-                <Image src="/feynman-assistant.svg" alt="" width={40} height={40} aria-hidden="true" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/8 text-[var(--accent)]" aria-hidden="true">
+                  <span className="relative flex h-7 w-7 items-center justify-center">
+                    <BookOpen size={25} strokeWidth={2.1} />
+                    <Sparkles className="absolute -right-1 -top-1" size={10} strokeWidth={2.2} />
+                  </span>
+                </span>
                 <div>
                   <h2 id="assistant-title" className="font-semibold">{isZh ? '费曼小助手' : 'Feynman Assistant'}</h2>
                   <p className="text-xs text-[var(--text-secondary)]">{isZh ? 'AI 阅读辅助 · 按需引用你的资料' : 'AI reading support · uses your context when needed'}</p>
@@ -605,7 +683,10 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
                 <div className="min-h-0 min-w-0 flex-1 overflow-y-auto px-3 py-4 sm:px-4">
                   {!activeSession?.messages.length && (
                     <div className="mx-auto mt-12 max-w-sm text-center">
-                      <Image src="/feynman-assistant.svg" alt="" width={48} height={48} className="mx-auto mb-3" aria-hidden="true" />
+                      <span className="relative mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/8 text-[var(--accent)]" aria-hidden="true">
+                        <BookOpen size={29} strokeWidth={2.1} />
+                        <Sparkles className="absolute right-1 top-1" size={12} strokeWidth={2.2} />
+                      </span>
                       <h3 className="font-semibold">{isZh ? '想聊点什么？' : 'What would you like to discuss?'}</h3>
                       <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{isZh ? '可以自由提问。输入 @ 选择书架中的书，或直接写出书名，即可加载书籍信息和学习记录。' : 'Ask freely. Type @ to choose a shelf book, or write its title to load book details and learning history.'}</p>
                     </div>

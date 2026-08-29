@@ -217,9 +217,9 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 backdrop-blur-sm sm:items-center sm:p-4">
-      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className={`brand-dialog max-h-[calc(100dvh-1rem)] w-full max-w-xl overflow-y-auto rounded-xl p-5 animate-fade-in sm:max-h-[90vh] sm:p-6 md:p-8 ${currentStep === steps.length - 1 ? 'tokendance-surface' : ''}`}>
+      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className={`brand-dialog flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-xl animate-fade-in sm:max-h-[90vh] ${currentStep === steps.length - 1 ? 'tokendance-surface' : ''}`}>
         {/* 进度指示器 */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex shrink-0 gap-2 px-5 pt-5 sm:px-6 md:px-8 md:pt-8">
           {steps.map((_, idx) => (
             <div
               key={idx}
@@ -233,7 +233,8 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
         </div>
 
         {/* 步骤内容 */}
-        <div className="text-center mb-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-5 sm:px-6 md:px-8">
+          <div className="text-center pb-6">
           <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg ${currentStep === steps.length - 1 ? 'tokendance-icon' : iconBackgroundClasses[step.iconTone]}`}>
             <StepIcon size={32} strokeWidth={1.8} aria-hidden="true" />
           </div>
@@ -249,10 +250,12 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
               </div>
             ))}
           </div>
+          </div>
         </div>
 
         {/* 按钮 */}
-        <div className="flex flex-col-reverse gap-3 sm:flex-row">
+        <div className="shrink-0 px-5 pb-5 sm:px-6 md:px-8 md:pb-8">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row">
           {currentStep > 0 && (
             <button
               type="button"
@@ -281,14 +284,15 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
             }
             <ArrowRight size={17} aria-hidden="true" />
           </button>
-        </div>
+          </div>
 
-        {/* 进度文字 */}
-        <div className="text-center mt-4 text-sm text-[var(--text-secondary)]">
-          {lang === 'zh'
-            ? `${currentStep + 1} / ${steps.length}`
-            : `Step ${currentStep + 1} of ${steps.length}`
-          }
+          {/* 进度文字 */}
+          <div className="mt-4 text-center text-sm text-[var(--text-secondary)]">
+            {lang === 'zh'
+              ? `${currentStep + 1} / ${steps.length}`
+              : `Step ${currentStep + 1} of ${steps.length}`
+            }
+          </div>
         </div>
       </div>
     </div>

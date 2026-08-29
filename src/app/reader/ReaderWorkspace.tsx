@@ -345,7 +345,7 @@ export default function Home() {
                     priority
                   />
                 </div>
-                <span className="hidden text-xl font-bold text-gradient sm:inline">{t(lang, 'app.title')}</span>
+                <span className="hidden text-xl font-bold tracking-tight text-[var(--accent)] sm:inline">{t(lang, 'app.title')}</span>
               </button>
 
               <div className="flex shrink-0 items-center gap-1 sm:gap-2">

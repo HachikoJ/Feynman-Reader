@@ -104,7 +104,7 @@ export default function PhaseResult({ content, lang, documentContent, onExpandAl
             key={idx}
             className={`rounded-2xl overflow-hidden transition-all ${
               section.isKeyPoint
-                ? 'bg-gradient-to-br from-[var(--accent)]/15 via-[var(--accent)]/5 to-transparent border-2 border-[var(--accent)]/40 shadow-lg shadow-[var(--accent)]/10'
+                ? 'border border-[var(--accent)]/25 bg-[var(--accent)]/8 shadow-sm shadow-[var(--accent)]/10'
                 : 'bg-[var(--bg-secondary)] border border-[var(--border)]'
             }`}
           >
@@ -117,7 +117,7 @@ export default function PhaseResult({ content, lang, documentContent, onExpandAl
                 className="min-w-0 flex-1 flex items-center gap-3 p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]/50"
               >
                 {section.isKeyPoint && (
-                  <span className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-secondary)] text-white text-lg shadow-lg">
+                  <span className="flex items-center justify-center w-9 h-9 rounded-full bg-[var(--accent)] text-white text-lg shadow-sm shadow-[var(--accent)]/30">
                     <AppIcon name="lightbulb" size={19} />
                   </span>
                 )}
@@ -139,7 +139,7 @@ export default function PhaseResult({ content, lang, documentContent, onExpandAl
             {isExpanded && (
               <div className={`px-5 pb-5 ${section.isKeyPoint ? 'px-6' : ''}`}>
                 {section.isKeyPoint && (
-                  <div className="h-px bg-gradient-to-r from-[var(--accent)]/50 via-[var(--accent)]/20 to-transparent mb-4" />
+                  <div className="mb-4 h-px bg-[var(--accent)]/20" />
                 )}
                 <MarkdownRenderer
                   content={section.content}

@@ -609,6 +609,252 @@ canvas {
   animation: fade-in 0.2s ease-out;
 }
 
+/* Lightweight product dialogs used by the bookshelf workflows. */
+.modal-content.product-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 640px);
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--accent) 14%, var(--border));
+  box-shadow: 0 24px 70px rgba(26, 33, 51, 0.16), 0 2px 8px rgba(26, 33, 51, 0.05);
+}
+
+.modal-content.product-dialog-wide {
+  width: min(100%, 1040px);
+}
+
+.product-dialog-header-compact {
+  align-items: center;
+  padding-block: 12px;
+}
+
+.product-dialog-header-compact::after {
+  right: 28px;
+  left: 28px;
+  height: 2px;
+}
+
+.product-dialog-header {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  background: color-mix(in srgb, var(--bg-card) 96%, var(--bg-secondary));
+}
+
+.product-dialog-header::after {
+  position: absolute;
+  right: 28px;
+  bottom: -1px;
+  left: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 78%, var(--bg-secondary));
+  opacity: 0.9;
+  content: "";
+}
+
+.product-dialog-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.product-dialog-title-icon {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+  color: var(--accent);
+}
+
+.product-dialog-title h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.product-dialog-title p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.product-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 28px 24px;
+}
+
+.product-dialog-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 28px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  background: color-mix(in srgb, var(--bg-card) 96%, var(--bg-secondary));
+}
+
+.product-dialog-section {
+  --dialog-section-accent: var(--accent);
+  position: relative;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dialog-section-accent) 3%, var(--bg-card));
+}
+
+.product-dialog-section::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: -1px;
+  width: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dialog-section-accent) 56%, transparent);
+  content: "";
+}
+
+.product-dialog-section:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.product-dialog-section:focus-within::before {
+  background: var(--dialog-section-accent);
+}
+
+.product-dialog-section + .product-dialog-section {
+  margin-top: 14px;
+}
+
+.product-dialog-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.product-dialog-required {
+  color: color-mix(in srgb, var(--accent-secondary) 82%, var(--text-primary));
+}
+
+.product-dialog-required::after {
+  color: var(--accent-secondary);
+}
+
+.product-dialog-callout {
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-card));
+  color: color-mix(in srgb, var(--text-primary) 82%, var(--accent));
+}
+
+.product-dialog-status-warning {
+  border-left: 3px solid color-mix(in srgb, var(--warning) 78%, #b7791f);
+  background: color-mix(in srgb, var(--warning) 10%, var(--bg-card));
+  color: color-mix(in srgb, var(--text-primary) 76%, #9a6700);
+}
+
+.product-dialog-action {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-card));
+  color: var(--accent);
+}
+
+.product-dialog-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+  color: var(--accent);
+}
+
+.product-dialog-tag {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-card));
+}
+
+.product-dialog-dropzone {
+  display: flex;
+  min-height: 148px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 32%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 3%, var(--bg-card));
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.product-dialog-dropzone:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-card));
+}
+
+.product-dialog-cover {
+  width: 88px;
+  height: 118px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-secondary));
+}
+
+@media (max-width: 639px) {
+  .modal-content.product-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+  }
+
+  .modal-content.product-dialog-wide {
+    width: 100%;
+  }
+
+  .product-dialog-header {
+    padding: 18px 18px 15px;
+  }
+
+  .product-dialog-header::after {
+    right: 18px;
+    left: 18px;
+  }
+
+  .product-dialog-header-compact::after {
+    right: 18px;
+    left: 18px;
+  }
+
+  .product-dialog-body {
+    padding: 18px;
+  }
+
+  .product-dialog-footer {
+    padding: 12px 18px 16px;
+  }
+
+  .product-dialog-footer > button {
+    flex: 1;
+  }
+}
+
 .brand-dialog {
   border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
   background: var(--surface-glass-strong, var(--bg-card));
