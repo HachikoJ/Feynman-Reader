@@ -44,7 +44,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
   const saveInFlightRef = useRef(false)
 
   const handleClose = () => {
-    if (fileAnalysisInFlightRef.current || saveInFlightRef.current) return
+    if (saveInFlightRef.current) return
     onClose()
   }
 
@@ -260,11 +260,16 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal-content max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <AppIcon name="file" tone="blue" size={22} />
-          {lang === 'zh' ? '上传文档添加书籍' : 'Upload Document to Add Book'}
-        </h2>
+      <div className="modal-content !overflow-y-auto max-w-xl max-h-[calc(100dvh-32px)]" onClick={e => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <AppIcon name="file" tone="blue" size={22} />
+            {lang === 'zh' ? '上传文档添加书籍' : 'Upload Document to Add Book'}
+          </h2>
+          <button type="button" onClick={handleClose} disabled={saving} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭上传窗口' : 'Close upload dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
+            <AppIcon name="close" size={20} />
+          </button>
+        </div>
 
         {step === 'upload' && (
           <div className="space-y-4">
@@ -313,7 +318,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
           <div className="text-center py-12">
             <AppIcon name="scan" tone="accent" size={48} className="mx-auto mb-4 animate-pulse" />
             <p className="text-[var(--text-secondary)]">
-              {lang === 'zh' ? 'AI 正在分析文档内容...' : 'AI is analyzing document...'}
+              {lang === 'zh' ? '正在解析文档内容...' : 'Parsing document...'}
             </p>
           </div>
         )}
@@ -477,7 +482,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose }: Props) {
             )}
 
             {/* 操作按钮 */}
-            <div className="flex gap-3 pt-2">
+            <div className="sticky bottom-0 z-10 -mx-1 flex gap-3 border-t border-[var(--border)] bg-[var(--bg-card)] px-1 pt-4 pb-1">
               <button onClick={handleConfirm} disabled={saving} className="btn-primary flex flex-1 items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 <AppIcon name="check" size={17} />
                 {saving ? (lang === 'zh' ? '正在保存...' : 'Saving...') : (lang === 'zh' ? '确认添加' : 'Confirm & Add')}

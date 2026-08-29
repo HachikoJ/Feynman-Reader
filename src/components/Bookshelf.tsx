@@ -1331,10 +1331,15 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
       {(showAddModal || editingBook) && (
         <div className="modal-overlay" onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}>
-          <div className="modal-content max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <h2 className="text-xl font-bold mb-6">
-              {editingBook ? (lang === 'zh' ? '编辑书籍' : 'Edit Book') : t(lang, 'bookshelf.addBook')}
-            </h2>
+          <div className="modal-content !overflow-y-auto max-w-lg max-h-[calc(100dvh-32px)]" onClick={e => e.stopPropagation()}>
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <h2 className="text-xl font-bold">
+                {editingBook ? (lang === 'zh' ? '编辑书籍' : 'Edit Book') : t(lang, 'bookshelf.addBook')}
+              </h2>
+              <button type="button" onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }} disabled={savingBook} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭书籍窗口' : 'Close book dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
+                <AppIcon name="close" size={20} />
+              </button>
+            </div>
             
             <div className="space-y-4">
               {/* Cover Upload */}
@@ -1517,7 +1522,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="sticky bottom-0 z-10 -mx-1 mt-6 flex gap-3 border-t border-[var(--border)] bg-[var(--bg-card)] px-1 pt-4 pb-1">
               <button
                 onClick={editingBook ? handleUpdateBook : handleAddBook}
                 className="btn-primary flex-1"
