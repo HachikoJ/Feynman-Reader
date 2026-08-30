@@ -19,11 +19,11 @@ npm run dev
 2. 打开《追风筝的人》，查看 6/6 阶段学习、阶段内容折叠和综合得分。
 3. 切换至“费曼实践”，查看教学模拟输入区、评分记录和角色问答生成入口。
 4. 展开角色问答记录，查看 3 道题的用户原回答、分数和 AI 点评。
-5. 进入设置和隐私政策，查看本地 Key、AI 数据同意、数据管理与传输边界。
+5. 进入账号中心和隐私政策，查看云端书架、金句、助手数据、历史迁移与传输边界。
 
 ## 当前产品图集
 
-以下截图展示当前产品界面；正式访问地址为 `https://reader.deline.top`。当前默认示例书为《追风筝的人》；最新桌面和移动端截图见 `docs/product/screenshots/01-bookshelf-desktop.png` 与 `docs/product/screenshots/02-bookshelf-mobile.png`。
+以下截图展示当前产品界面；正式访问地址为 `https://reader.deline.top`。当前默认示例书为《追风筝的人》；最新书架和账号中心截图位于 `docs/product/screenshots/`。
 
 | 文件 | 展示重点 |
 | --- | --- |
@@ -34,8 +34,10 @@ npm run dev
 | `screenshots/05-feynman-practice-safari.png` | 教学模拟、角色问答和生成问题入口。 |
 | `screenshots/06-teaching-score-history-safari.png` | 教学模拟评分记录和 AI 点评。 |
 | `screenshots/07-role-qa-record-safari.png` | 3/3 角色问答记录、逐题回答和 AI 点评。 |
-| `screenshots/08-settings-local-first-safari.png` | 本地 API Key、隐私同意、数据管理和金句管理。 |
-| `screenshots/09-privacy-policy-safari.png` | 独立隐私政策页与数据传输说明。 |
+| `../screenshots/01-bookshelf-desktop.png` | 当前桌面书架和系统示例。 |
+| `../screenshots/02-bookshelf-mobile.png` | 当前移动端书架。 |
+| `../screenshots/03-account-center-desktop.png` | 当前桌面账号中心、云端统计和活动日历。 |
+| `../screenshots/04-account-center-mobile.png` | 当前移动端账号中心。 |
 
 角色问答和教学模拟截图均来自实际学习记录，不伪造 AI 生成内容。
 
@@ -44,6 +46,6 @@ npm run dev
 - 当前支持文本教学模拟，不支持语音输入或语音转写。
 - 当前主流程是顺序 6 阶段；学习模式选择尚未对用户开放。
 - 当前版本暂不提供自动复习提醒或复习调度服务。
-- 本产品不提供云端存储、同步与恢复服务；书籍和学习记录保存在当前浏览器，用户需要按提醒定期导出备份。
+- 未登录访客只能浏览系统示例；个人书籍、学习记录、金句和助手数据在观猹登录后保存到账号对应的 Supabase 云端，IndexedDB 仅用于旧版本历史数据迁移。
 - API Key 为空、格式不正确或未确认 AI 数据传输时，设置不会保存，并会定位到需要处理的项目。
 - 多标签页同时编辑时会检测数据版本冲突，避免旧页面静默覆盖较新的学习记录。

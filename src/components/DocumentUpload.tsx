@@ -11,6 +11,7 @@ import { getSettings, addBook, flushPendingStoreWrites, reloadBookFromPersistenc
 import { MAX_BOOK_TAGS, MAX_TAG_LENGTH } from '@/lib/dataLimits'
 import { detectMaliciousContent, sanitizeTextInput, validateAuthorName, validateBookName, validateContent } from '@/lib/validation'
 import AppIcon from './AppIcon'
+import { useAccountAccess } from './AuthGuard'
 
 interface Props {
   lang: Language
@@ -22,6 +23,7 @@ interface Props {
 type UploadStep = 'upload' | 'analyzing' | 'confirm'
 
 export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSettings }: Props) {
+  const { isAuthenticated, requestLogin } = useAccountAccess()
   const [step, setStep] = useState<UploadStep>('upload')
   const [error, setError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
@@ -91,15 +93,19 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
 
       // 检查 API Key
       const settings = getSettings()
-      if (!settings.apiKey) {
+      if (!settings.apiKey || !isAuthenticated) {
         setAnalyzedInfo(fallbackInfo)
         setBookName(fallbackInfo.name)
         setBookAuthor('')
         setBookDesc('')
         setBookTags([])
-        setAnalysisWarning(lang === 'zh'
-          ? '尚未配置 TokenDance API Key，文档已解析。请手工确认书籍信息后添加。'
-          : 'No TokenDance API key is configured. The document was parsed; confirm the book details manually.')
+        setAnalysisWarning(!isAuthenticated
+          ? (lang === 'zh'
+            ? '文档已在当前页面完成解析。请先使用观猹登录，再保存到云端书架；配置 TokenDance 后还可自动提取书籍信息。'
+            : 'The document was parsed on this page. Sign in with Watcha before saving it to your cloud bookshelf; configure TokenDance to extract book details automatically.')
+          : (lang === 'zh'
+            ? '尚未配置 TokenDance API Key，文档已解析。请手工确认书籍信息后添加。'
+            : 'No TokenDance API key is configured. The document was parsed; confirm the book details manually.'))
         setStep('confirm')
         return
       }
@@ -205,6 +211,12 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
 
   const handleConfirm = async () => {
     if (saveInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh'
+        ? '登录后才能保存这本书，并在其他设备继续学习。'
+        : 'Sign in to save this book and continue learning on other devices.')
+      return
+    }
     const nameValidation = validateBookName(bookName)
     if (!nameValidation.valid) {
       setError(nameValidation.error || (lang === 'zh' ? '书名无效' : 'Invalid book name'))
@@ -280,8 +292,8 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
           <div>
             <p className="mb-4 text-sm leading-6 text-[var(--text-secondary)]">
               {lang === 'zh'
-                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB）。配置 TokenDance API Key 后可自动提取书籍信息；未配置时也可以上传并手工填写。完整原文会保存在当前浏览器中。`
-                : `Supports PDF, DOCX, Markdown, TXT and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). With a TokenDance API key, book details are extracted automatically; without one, you can still upload and fill them in manually. The full text is kept in this browser.`}
+                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB）。登录后才能保存到云端书架；配置 TokenDance API Key 后可自动提取书籍信息，未配置时也可手工填写。`
+                : `Supports PDF, DOCX, Markdown, TXT, and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). Sign in to save it to your cloud bookshelf. A TokenDance API key extracts book details automatically; without one, you can fill them in manually.`}
             </p>
             
             <div 
@@ -317,8 +329,17 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
           <div role="status" className="product-dialog-status-warning mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3 text-sm">
             <span className="min-w-0 flex-1">{analysisWarning}</span>
             {!getSettings().apiKey && onOpenSettings && (
-              <button type="button" onClick={() => { onClose(); onOpenSettings() }} className="btn-secondary min-h-10 shrink-0 !px-3 !text-sm">
-                {lang === 'zh' ? '去配置 TokenDance' : 'Set up TokenDance'}
+              <button type="button" onClick={() => {
+                if (!isAuthenticated) {
+                  requestLogin(lang === 'zh' ? '请先使用观猹登录，再保存文档或配置 TokenDance AI。' : 'Sign in with Watcha before saving the document or configuring TokenDance AI.')
+                  return
+                }
+                onClose()
+                onOpenSettings()
+              }} className="btn-secondary min-h-10 shrink-0 !px-3 !text-sm">
+                {isAuthenticated
+                  ? (lang === 'zh' ? '去配置 TokenDance' : 'Set up TokenDance')
+                  : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
               </button>
             )}
           </div>

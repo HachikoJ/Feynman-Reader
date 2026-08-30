@@ -12,6 +12,7 @@ interface Props {
   lang: Language
   documentContent?: string
   onExpandAll?: () => void
+  onQuoteSelected?: (text: string) => Promise<void> | void
 }
 
 interface Section {
@@ -20,7 +21,7 @@ interface Section {
   isKeyPoint: boolean
 }
 
-export default function PhaseResult({ content, lang, documentContent, onExpandAll }: Props) {
+export default function PhaseResult({ content, lang, documentContent, onExpandAll, onQuoteSelected }: Props) {
   const parseContent = (text: string): Section[] => {
     const sections: Section[] = []
     const lines = text.split('\n')
@@ -144,6 +145,7 @@ export default function PhaseResult({ content, lang, documentContent, onExpandAl
                 <MarkdownRenderer
                   content={section.content}
                   className={section.isKeyPoint ? 'text-[var(--text-primary)]' : ''}
+                  onQuoteSelected={onQuoteSelected}
                 />
               </div>
             )}

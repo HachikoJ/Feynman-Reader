@@ -46,6 +46,7 @@ const PERSONAS = new Set<PersonaType>([
   'teacher', 'investor', 'user', 'competitor', 'nitpicker'
 ])
 const DANGEROUS_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+const UNSAFE_ASSISTANT_MEMORY = /(api\s*key|access[\s_-]*key|token\s*[:=]|password|credential|密码|密钥|私钥|secret|system prompt|系统提示词)/iu
 
 type ValidationResult<T> = { valid: true; data: T } | { valid: false; error: string }
 
@@ -57,6 +58,26 @@ export interface ValidatedExportData {
   aiUsageRecords: AIUsageRecord[]
   bookLists: BookList[]
   bookRelations: BookRelation[]
+  assistantSessions: ValidatedAssistantSession[]
+  assistantMemories: ValidatedAssistantMemory[]
+}
+
+export interface ValidatedAssistantSession {
+  id: string
+  title: string
+  bookId?: string
+  data: unknown
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ValidatedAssistantMemory {
+  id: string
+  content: string
+  category: 'preference' | 'learning-style' | 'goal' | 'workflow'
+  sourceSessionId?: string
+  createdAt: number
+  updatedAt: number
 }
 
 class ImportValidationError extends Error {}
@@ -136,6 +157,7 @@ export function normalizeSettings(
         theme: item.theme === 'dark' ? 'dark' : 'light',
         hideApiKeyAlert: optionalBoolean(item.hideApiKeyAlert, false),
         aiDataConsent: optionalBoolean(item.aiDataConsent, false),
+        personalizationAnalyticsEnabled: optionalBoolean(item.personalizationAnalyticsEnabled, true),
         assistantMemoryEnabled: optionalBoolean(item.assistantMemoryEnabled, true),
         quotes: quotesRaw.map((quote, index) => normalizeQuote(quote, `设置.quotes[${index}]`)),
         quotesInitialized: optionalBoolean(item.quotesInitialized, false)
@@ -537,6 +559,43 @@ export function normalizeImportData(value: unknown): ValidationResult<ValidatedE
     const bookRelations = normalizeBookRelations(item.bookRelations, bookIds)
     if (!bookRelations.valid) fail('', bookRelations.error)
 
+    const assistantSessionsRaw = item.assistantSessions === undefined ? [] : item.assistantSessions
+    if (!Array.isArray(assistantSessionsRaw)) fail('费曼小助手会话', '必须是数组')
+    if (assistantSessionsRaw.length > 1000) fail('费曼小助手会话', '最多允许 1000 条')
+    const assistantSessions = assistantSessionsRaw.map((value, index) => {
+      const session = record(value, `费曼小助手会话[${index}]`)
+      const data = session.data === undefined ? value : session.data
+      try {
+        if (JSON.stringify(data).length > 2 * 1024 * 1024) fail(`费曼小助手会话[${index}].data`, '超过 2 MB')
+      } catch { fail(`费曼小助手会话[${index}].data`, '必须是可序列化数据') }
+      return {
+        id: identifier(session.id, `费曼小助手会话[${index}].id`),
+        title: stringValue(session.title, `费曼小助手会话[${index}].title`, 200)!,
+        ...(session.bookId === undefined || session.bookId === null ? {} : { bookId: identifier(session.bookId, `费曼小助手会话[${index}].bookId`) }),
+        data,
+        createdAt: timestamp(session.createdAt, `费曼小助手会话[${index}].createdAt`),
+        updatedAt: timestamp(session.updatedAt, `费曼小助手会话[${index}].updatedAt`)
+      }
+    })
+    const assistantMemoriesRaw = item.assistantMemories === undefined ? [] : item.assistantMemories
+    if (!Array.isArray(assistantMemoriesRaw)) fail('费曼小助手长期记忆', '必须是数组')
+    if (assistantMemoriesRaw.length > 100) fail('费曼小助手长期记忆', '最多允许 100 条')
+    const assistantMemories = assistantMemoriesRaw.map((value, index) => {
+      const memory = record(value, `费曼小助手长期记忆[${index}]`)
+      const category = memory.category
+      if (!['preference', 'learning-style', 'goal', 'workflow'].includes(category as string)) fail(`费曼小助手长期记忆[${index}].category`, '取值无效')
+      const content = stringValue(memory.content, `费曼小助手长期记忆[${index}].content`, 500)!.trim()
+      if (UNSAFE_ASSISTANT_MEMORY.test(content)) fail(`费曼小助手长期记忆[${index}].content`, '不能保存敏感凭据或系统指令')
+      return {
+        id: identifier(memory.id, `费曼小助手长期记忆[${index}].id`),
+        content,
+        category: category as ValidatedAssistantMemory['category'],
+        ...(memory.sourceSessionId === undefined || memory.sourceSessionId === null ? {} : { sourceSessionId: identifier(memory.sourceSessionId, `费曼小助手长期记忆[${index}].sourceSessionId`) }),
+        createdAt: timestamp(memory.createdAt, `费曼小助手长期记忆[${index}].createdAt`),
+        updatedAt: timestamp(memory.updatedAt, `费曼小助手长期记忆[${index}].updatedAt`)
+      }
+    })
+
     return {
       valid: true,
       data: {
@@ -546,7 +605,9 @@ export function normalizeImportData(value: unknown): ValidationResult<ValidatedE
         books: books.data,
         aiUsageRecords: aiUsageRecords.data,
         bookLists: bookLists.data,
-        bookRelations: bookRelations.data
+        bookRelations: bookRelations.data,
+        assistantSessions,
+        assistantMemories
       }
     }
   } catch (error) {

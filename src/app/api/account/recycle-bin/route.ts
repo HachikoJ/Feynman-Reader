@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getPersistence } from '@/lib/server/persistence'
+import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 import { sessionUserId } from '@/lib/server/sessionUser'
 
 export const runtime = 'nodejs'
@@ -15,9 +15,20 @@ export async function GET(request: Request): Promise<NextResponse> {
     const store = getPersistence()
     if (!store.listRecycleBin) return NextResponse.json({ error: '数据库尚未启用回收站。' }, { status: 501 })
     await store.purgeRecycleBin?.(id)
-    return NextResponse.json({ items: await store.listRecycleBin(id) }, { headers: { 'Cache-Control': 'no-store' } })
+    const items = await store.listRecycleBin(id)
+    // Keep server retention timestamps private; the browser only needs the
+    // user's content and the time it was moved to the recycle bin.
+    return NextResponse.json({ items: items.map(item => ({
+      bookId: item.bookId,
+      name: item.name,
+      author: item.author,
+      deletedAt: item.deletedAt,
+      // This is the user-facing restore deadline, distinct from the private
+      // server purge timestamp retained for storage housekeeping.
+      restoreUntil: new Date(new Date(item.deletedAt).getTime() + 7 * 86400000).toISOString(),
+    })) }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Persistence adapter is not configured.') return NextResponse.json({ error: '账号服务尚未配置数据库。' }, { status: 503 })
+    if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     return NextResponse.json({ error: '读取回收站失败。' }, { status: 500 })
   }
 }
@@ -34,7 +45,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     else return NextResponse.json({ error: '操作无效。' }, { status: 400 })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Persistence adapter is not configured.') return NextResponse.json({ error: '账号服务尚未配置数据库。' }, { status: 503 })
+    if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     return NextResponse.json({ error: error instanceof Error ? error.message : '回收站操作失败。' }, { status: 400 })
   }
 }

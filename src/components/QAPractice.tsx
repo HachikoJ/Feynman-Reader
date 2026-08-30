@@ -17,6 +17,7 @@ import { ProgressRecord, PERSONA_TYPES } from '@/lib/practiceEnhancement'
 import { MAX_AI_ANSWER_LENGTH } from '@/lib/dataLimits'
 import AppIcon, { AppIconName } from './AppIcon'
 import CopyContentButton from './CopyContentButton'
+import { useAccountAccess } from './AuthGuard'
 
 interface Props {
   book: Book
@@ -29,6 +30,7 @@ interface Props {
   onShowHistoryChange?: (show: boolean) => void
   historyRef?: React.RefObject<HTMLDivElement>
   onOpenSettings?: () => void
+  onQuoteSelected?: (text: string) => Promise<void> | void
 }
 
 export function selectActiveQARecord(records: QAPracticeRecord[]): QAPracticeRecord | null {
@@ -151,7 +153,8 @@ function getFirstUnpassedQuestionIndex(record: QAPracticeRecord | null): number 
   return index >= 0 ? index : null
 }
 
-export default function QAPractice({ book, apiKey, needsAiConfiguration = false, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef, onOpenSettings }: Props) {
+export default function QAPractice({ book, apiKey, needsAiConfiguration = false, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef, onOpenSettings, onQuoteSelected }: Props) {
+  const { isAuthenticated, requestLogin } = useAccountAccess()
   const [currentRecord, setCurrentRecord] = useState<QAPracticeRecord | null>(null)
   const [qaRecords, setQaRecords] = useState<QAPracticeRecord[]>([])
   const [loading, setLoading] = useState(false)
@@ -257,6 +260,10 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
   // 生成新问题
   const handleGenerateQuestions = async () => {
     if (requestInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能生成并保存角色问答。' : 'Sign in to generate and save role-based questions.')
+      return
+    }
     if (!apiKey || needsAiConfiguration) {
       onOpenSettings?.()
       return
@@ -326,6 +333,10 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
   // 提交答案
   const handleSubmitAnswers = async () => {
     if (requestInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能提交答案并保存问答进度。' : 'Sign in to submit answers and save Q&A progress.')
+      return
+    }
     if (!currentRecord || !apiKey || needsAiConfiguration) {
       onOpenSettings?.()
       return
@@ -422,6 +433,10 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
   }
 
   const handleDeleteRecord = async (recordId: string) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能管理角色问答记录。' : 'Sign in to manage role-based Q&A records.')
+      return
+    }
     if (deletingRecordIdsRef.current.has(recordId)) return
     deletingRecordIdsRef.current.add(recordId)
     setDeletingRecordIds(new Set(deletingRecordIdsRef.current))
@@ -657,7 +672,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                 </button>
 
                 {isExpanded && <div className="border-t border-[var(--border)] px-3 pb-3 pt-3">
-                  <p className="mb-2 text-sm leading-6">{q.question}</p>
+                  <MarkdownRenderer content={q.question} className="mb-2 text-sm leading-6" onQuoteSelected={onQuoteSelected} />
                   <SourceEvidence content={q.question} documentContent={book.documentContent} lang={lang} />
 
                     {q.userAnswer && q.aiReview && !q.passed && (
@@ -675,7 +690,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                           </p>
                           <CopyContentButton content={q.aiReview} lang={lang} />
                         </div>
-                        <MarkdownRenderer content={q.aiReview} />
+                        <MarkdownRenderer content={q.aiReview} onQuoteSelected={onQuoteSelected} />
                         <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
                     )}
@@ -703,7 +718,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                           </p>
                           <CopyContentButton content={q.aiReview} lang={lang} />
                         </div>
-                        <MarkdownRenderer content={q.aiReview} />
+                        <MarkdownRenderer content={q.aiReview} onQuoteSelected={onQuoteSelected} />
                         <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
                     )}
@@ -833,7 +848,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                               </p>
                               <CopyContentButton content={attempt.aiReview} lang={lang} />
                             </div>
-                            <MarkdownRenderer content={attempt.aiReview} />
+                            <MarkdownRenderer content={attempt.aiReview} onQuoteSelected={onQuoteSelected} />
                             <SourceEvidence content={attempt.aiReview} documentContent={book.documentContent} lang={lang} />
                           </div>
                         ))}

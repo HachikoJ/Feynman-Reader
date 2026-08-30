@@ -1,7 +1,7 @@
 'use client'
 
-import { Check, Copy, Download } from 'lucide-react'
-import { useState } from 'react'
+import { BookmarkPlus, Check, Copy, Download } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { getSafeLinkHref } from '@/lib/safeUrl'
 import { downloadMarkdownAsWord, downloadTableAsExcel } from '@/lib/markdownExport'
 import { findMathExpressions } from '@/lib/mathRendering'
@@ -14,6 +14,7 @@ interface Props {
   content: string
   className?: string
   showWordDownload?: boolean
+  onQuoteSelected?: (text: string) => Promise<void> | void
 }
 
 function CopyCodeButton({ value, inline = false }: { value: string; inline?: boolean }) {
@@ -81,7 +82,62 @@ function tableAlignment(cell: string): 'left' | 'center' | 'right' | undefined {
   return undefined
 }
 
-export default function MarkdownRenderer({ content, className = '', showWordDownload = false }: Props) {
+export default function MarkdownRenderer({ content, className = '', showWordDownload = false, onQuoteSelected }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(null)
+  const [quoteSaveState, setQuoteSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  const captureSelection = () => {
+    if (!onQuoteSelected || typeof window === 'undefined') return
+    const current = window.getSelection()
+    if (!current || current.isCollapsed || !current.rangeCount || !rootRef.current) {
+      setSelection(null)
+      return
+    }
+    const anchor = current.anchorNode
+    const focus = current.focusNode
+    if (!anchor || !focus || !rootRef.current.contains(anchor) || !rootRef.current.contains(focus)) {
+      setSelection(null)
+      return
+    }
+    const text = current.toString().replace(/\s+/g, ' ').trim()
+    if (text.length < 2) {
+      setSelection(null)
+      return
+    }
+    const rect = current.getRangeAt(0).getBoundingClientRect()
+    if (!rect.width && !rect.height) {
+      setSelection(null)
+      return
+    }
+    const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - 150))
+    const top = Math.min(Math.max(8, rect.bottom + 8), Math.max(8, window.innerHeight - 48))
+    setQuoteSaveState('idle')
+    setSelection({ text: text.slice(0, 500), top, left })
+  }
+
+  useEffect(() => {
+    if (!onQuoteSelected) return
+    const clearSelection = (event: MouseEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return
+      setSelection(null)
+    }
+    document.addEventListener('mousedown', clearSelection)
+    return () => document.removeEventListener('mousedown', clearSelection)
+  }, [onQuoteSelected])
+
+  const saveSelectedQuote = async () => {
+    if (!selection || !onQuoteSelected || quoteSaveState === 'saving') return
+    setQuoteSaveState('saving')
+    try {
+      await onQuoteSelected(selection.text)
+      setQuoteSaveState('saved')
+      window.setTimeout(() => setSelection(null), 900)
+    } catch {
+      setQuoteSaveState('error')
+    }
+  }
+
   const parseMarkdown = (text: string): JSX.Element[] => {
     const lines = text.split('\n')
     const elements: JSX.Element[] = []
@@ -433,7 +489,7 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
   }
 
   return (
-    <div className={`markdown-content ${className}`}>
+    <div ref={rootRef} className={`markdown-content ${className}`} onMouseUp={() => window.setTimeout(captureSelection, 0)} onTouchEnd={() => window.setTimeout(captureSelection, 0)} onKeyUp={() => window.setTimeout(captureSelection, 0)}>
       {showWordDownload && (
         <div className="markdown-export-toolbar">
           <button type="button" className="markdown-word-download" onClick={() => void downloadMarkdownAsWord(content, 'feynman-ai-reply.docx')} aria-label="下载 Word / Download Word" title="下载 Word / Download Word">
@@ -443,6 +499,20 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
         </div>
       )}
       {parseMarkdown(content)}
+      {selection && onQuoteSelected && (
+        <button
+          type="button"
+          onMouseDown={event => event.preventDefault()}
+          onClick={() => void saveSelectedQuote()}
+          className="fixed z-[80] inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-[var(--accent)]/30 bg-[var(--bg-card)] px-3 text-xs font-medium text-[var(--accent)] shadow-lg shadow-black/10 transition-colors hover:bg-[var(--accent)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
+          style={{ top: selection.top, left: selection.left }}
+          disabled={quoteSaveState === 'saving'}
+          aria-label={quoteSaveState === 'saved' ? '已加入金句' : quoteSaveState === 'error' ? '加入金句失败' : '将选中文本加入金句'}
+        >
+          <BookmarkPlus size={14} aria-hidden="true" />
+          {quoteSaveState === 'saving' ? '保存中…' : quoteSaveState === 'saved' ? '已加入' : quoteSaveState === 'error' ? '重试加入' : '加入金句'}
+        </button>
+      )}
     </div>
   )
 }

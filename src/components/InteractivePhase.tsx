@@ -28,6 +28,7 @@ interface Props {
   lang: Language
   documentContent?: string
   onContentChange?: (newContent: string) => void
+  onQuoteSelected?: (text: string) => Promise<void> | void
 }
 
 function interactiveAIError(error: unknown, lang: Language, fallbackZh: string, fallbackEn: string): string {
@@ -54,7 +55,8 @@ export default function InteractivePhase({
   apiKey,
   lang,
   documentContent,
-  onContentChange
+  onContentChange,
+  onQuoteSelected
 }: Props) {
   const [content, setContent] = useState(initialContent)
   const [isEditing, setIsEditing] = useState(false)
@@ -325,7 +327,7 @@ export default function InteractivePhase({
         ) : (
           /* 显示内容 */
           <div className="prose prose-invert max-w-none">
-            <MarkdownRenderer content={content} />
+            <MarkdownRenderer content={content} onQuoteSelected={onQuoteSelected} />
             <SourceEvidence content={content} documentContent={documentContent} lang={lang} />
           </div>
         )}
@@ -395,7 +397,7 @@ export default function InteractivePhase({
                   <div className="mb-2 flex justify-end">
                     <CopyContentButton content={item.a} lang={lang} />
                   </div>
-                  <MarkdownRenderer content={item.a} />
+                  <MarkdownRenderer content={item.a} onQuoteSelected={onQuoteSelected} />
                   <SourceEvidence content={item.a} documentContent={documentContent} lang={lang} />
                 </div>
               </div>

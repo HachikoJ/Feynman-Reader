@@ -16,7 +16,10 @@ describe('TokenDanceWelcome', () => {
     render(<TokenDanceWelcome lang="zh" onContinue={jest.fn()} />)
 
     expect(screen.getByRole('img', { name: 'TokenDance' })).toBeInTheDocument()
-    expect(screen.getByText(/峰时火山方舟端口最高约省 20%/)).toBeInTheDocument()
+    expect(screen.getByText('观猹登录')).toBeInTheDocument()
+    expect(screen.getByText('账号云端')).toBeInTheDocument()
+    expect(screen.getByText('TokenDance AI')).toBeInTheDocument()
+    expect(screen.getByText(/DeepSeek V4 Flash 峰时最高约省 20%/)).toBeInTheDocument()
     expect(screen.getByText(/实际价格、适用线路、时段及活动期限/)).toBeInTheDocument()
     expect(screen.queryByText(/向作者提供分润/)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /查看 TokenDance 实时价目/ })).toHaveAttribute(
@@ -31,7 +34,7 @@ describe('TokenDanceWelcome', () => {
     const setItem = jest.spyOn(Storage.prototype, 'setItem')
     render(<TokenDanceWelcome lang="zh" onContinue={onContinue} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '进入费曼读书助手' }))
+    fireEvent.click(screen.getByRole('button', { name: '了解并进入书架' }))
 
     expect(setItem).toHaveBeenCalledWith(TOKENDANCE_WELCOME_KEY, TOKENDANCE_WELCOME_VERSION)
     expect(onContinue).toHaveBeenCalledTimes(1)
@@ -41,9 +44,9 @@ describe('TokenDanceWelcome', () => {
   it('provides the same disclosure in English', () => {
     render(<TokenDanceWelcome lang="en" onContinue={jest.fn()} />)
 
-    expect(screen.getByText(/Up to about 20% off the Volcengine Ark route/)).toBeInTheDocument()
+    expect(screen.getByText(/Up to about 20% off DeepSeek V4 Flash at peak hours/)).toBeInTheDocument()
     expect(screen.getByText(/Actual prices, eligible routes, periods, and offer dates/)).toBeInTheDocument()
     expect(screen.queryByText(/share revenue with the author/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Enter Feynman Reader' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to bookshelf' })).toBeInTheDocument()
   })
 })

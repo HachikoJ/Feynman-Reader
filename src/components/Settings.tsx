@@ -17,6 +17,7 @@ import {
   Gauge,
   HardDrive,
   Languages,
+  LogIn,
   Mail,
   MessageCircle,
   Moon,
@@ -35,6 +36,7 @@ import {
 import {
   AppSettings,
   CustomQuote,
+  SERVER_MANAGED_API_KEY,
   getBooks,
   getSettings,
   getAIUsageRecords,
@@ -55,6 +57,7 @@ import {
   replaceAIUsageRecords,
   subscribeToAIUsage
 } from '@/lib/store'
+import { deleteApiKey as deleteAccountApiKey, saveApiKey as saveAccountApiKey } from '@/lib/accountClient'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { privacyPolicyContent } from '@/lib/privacyPolicy'
@@ -69,7 +72,7 @@ import { createTokendanceAuthorizationUrl, exchangeTokendanceCode, fetchTokendan
 import { deepSeekSunsetMessage, isTokenDanceOnly } from '@/lib/aiProviderPolicy'
 import { DEEPSEEK_OFFICIAL_CHANNEL_SUNSET } from '@/lib/deepseek'
 import { isAIConfigurationComplete } from '@/lib/startupPrompt'
-import { clearAssistantMemories, deleteAssistantMemory, getAssistantMemories, type AssistantMemory } from '@/lib/assistantMemory'
+import { useAccountAccess } from './AuthGuard'
 
 // P0 新增：IndexedDB 支持
 import {
@@ -92,6 +95,7 @@ export default function Settings({
   onBackupCompleted,
   onOpenMigrationNotice
 }: Props) {
+  const { hasSignedInAccount, requestLogin } = useAccountAccess()
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
     aiProvider: 'tokendance',
@@ -131,9 +135,6 @@ export default function Settings({
 
   // 数据导出/导入相关状态
   const [showDataManagement, setShowDataManagement] = useState(false)
-  const [showAssistantMemoryManager, setShowAssistantMemoryManager] = useState(false)
-  const [assistantMemories, setAssistantMemories] = useState<AssistantMemory[]>([])
-  const [loadingAssistantMemories, setLoadingAssistantMemories] = useState(false)
   const [lastBackupAt, setLastBackupAt] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
   const [pendingBackupDownload, setPendingBackupDownload] = useState<{
@@ -190,6 +191,14 @@ export default function Settings({
   const importReadTokenRef = useRef(0)
   const handledApiConfigurationRequestRef = useRef(0)
 
+  const requireAccountForApi = () => {
+    if (hasSignedInAccount) return true
+    requestLogin(settings.language === 'zh'
+      ? '请先使用观猹登录。登录成功后，才能配置 TokenDance API Key，并将密钥加密保存到当前账号。'
+      : 'Sign in with Watcha first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.')
+    return false
+  }
+
   useEffect(() => {
     let cancelled = false
     let loaded = getSettings()
@@ -245,6 +254,12 @@ export default function Settings({
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     if (!code || params.get('tokendance_callback') !== '1') return
+    if (!hasSignedInAccount) {
+      requestLogin(settings.language === 'zh'
+        ? 'TokenDance AI 授权必须绑定到已登录账号。请先使用观猹登录，再重新发起授权。'
+        : 'TokenDance AI authorization must be linked to a signed-in account. Sign in with Watcha, then start authorization again.')
+      return
+    }
     setShowAiConfiguration(true)
     setTokendanceOAuthLoading(true)
     void exchangeTokendanceCode(code, params.get('state'))
@@ -256,9 +271,9 @@ export default function Settings({
         setApiActionStatus(lang === 'zh' ? 'TokenDance 授权成功。请确认数据传输同意，然后点击“保存设置”。' : 'TokenDance authorization succeeded. Confirm data consent, then click Save Settings.')
         window.history.replaceState({}, '', window.location.pathname)
       })
-      .catch(error => setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance OAuth failed.'))
+      .catch(error => setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance AI key authorization failed.'))
       .finally(() => setTokendanceOAuthLoading(false))
-  }, [settingsLoaded])
+  }, [hasSignedInAccount, requestLogin, settings.language, settingsLoaded])
 
   useEffect(() => subscribeToAIUsage(() => {
     setAIUsageSummary(getAIUsageSummary())
@@ -291,7 +306,7 @@ export default function Settings({
 
   useEffect(() => {
     if (openDataManagement) {
-      setShowDataManagement(true)
+      window.location.assign('/account?tab=data')
     }
   }, [openDataManagement])
 
@@ -303,6 +318,11 @@ export default function Settings({
     ) return
     handledApiConfigurationRequestRef.current = focusApiConfigurationRequest
     setShowAiConfiguration(true)
+
+    if (!hasSignedInAccount) {
+      requireAccountForApi()
+      return
+    }
 
     const apiKeyMissing = settings.apiKey.trim().length === 0
     const configuredProvider = isTokenDanceOnly() ? 'tokendance' : (settings.aiProvider ?? 'deepseek')
@@ -324,7 +344,7 @@ export default function Settings({
       target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       target?.focus()
     })
-  }, [focusApiConfigurationRequest, settings.aiDataConsent, settings.apiKey, settings.language, settingsLoaded])
+  }, [focusApiConfigurationRequest, hasSignedInAccount, settings.aiDataConsent, settings.apiKey, settings.language, settingsLoaded])
 
   // P0 新增：加载 IndexedDB 信息
   async function loadDbInfo() {
@@ -400,8 +420,10 @@ export default function Settings({
 
   const handleSave = async () => {
     if (settingsSaveInFlightRef.current) return
+    if (!requireAccountForApi()) return
     setApiActionStatus(null)
     const trimmedApiKey = settings.apiKey.trim()
+    const usesServerManagedKey = activeProvider === 'tokendance' && trimmedApiKey === SERVER_MANAGED_API_KEY
     if (!trimmedApiKey) {
       const message = settings.language === 'zh'
         ? `保存失败：请先填写 ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'} API Key。`
@@ -415,7 +437,7 @@ export default function Settings({
       return
     }
 
-    const apiKeyValidation = validateApiKey(trimmedApiKey)
+    const apiKeyValidation = usesServerManagedKey ? { valid: true } : validateApiKey(trimmedApiKey)
     if (!apiKeyValidation.valid) {
       const message = settings.language === 'zh'
         ? 'API Key 格式不正确，请检查是否复制完整。'
@@ -445,7 +467,9 @@ export default function Settings({
     setSaving(true)
     const settingsToSave = { ...settings, apiKey: trimmedApiKey }
     try {
-      await validateDeepSeekApiKey(trimmedApiKey, undefined, activeProvider)
+      if (!usesServerManagedKey) {
+        await validateDeepSeekApiKey(trimmedApiKey, undefined, activeProvider)
+      }
     } catch (error) {
       const invalidKey = error instanceof Error && error.message === DEEPSEEK_API_KEY_INVALID
       const sunset = error instanceof Error && error.message === DEEPSEEK_OFFICIAL_CHANNEL_SUNSET
@@ -484,10 +508,21 @@ export default function Settings({
 
     try {
       await flushPendingStoreWrites()
-      saveSettings(settingsToSave)
+      const settingsToPersist = activeProvider === 'tokendance'
+        ? { ...settingsToSave, apiKey: '' }
+        : settingsToSave
+      saveSettings(settingsToPersist)
       await flushPendingStoreWrites()
-      setSettings(settingsToSave)
-      onSettingsChange(settingsToSave)
+      if (activeProvider === 'tokendance' && !usesServerManagedKey) {
+        await saveAccountApiKey(trimmedApiKey)
+      }
+      const runtimeSettings = activeProvider === 'tokendance'
+        ? { ...settingsToPersist, apiKey: SERVER_MANAGED_API_KEY }
+        : settingsToPersist
+      saveSettings(runtimeSettings)
+      await flushPendingStoreWrites()
+      setSettings(runtimeSettings)
+      onSettingsChange(runtimeSettings)
       setApiKeyConsentError(null)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -509,16 +544,18 @@ export default function Settings({
   }
 
   const handleTokendanceAuthorize = async () => {
+    if (!requireAccountForApi()) return
     try {
       setTokendanceOAuthLoading(true)
       window.location.href = await createTokendanceAuthorizationUrl()
     } catch (error) {
       setTokendanceOAuthLoading(false)
-      setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance OAuth failed.')
+      setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance AI key authorization failed.')
     }
   }
 
   const handleTokendanceBalance = async () => {
+    if (!requireAccountForApi()) return
     if (!settings.apiKey) return
     setLoadingTokendanceBalance(true)
     try {
@@ -531,6 +568,7 @@ export default function Settings({
   }
 
   const handleTokendanceTopUp = async () => {
+    if (!requireAccountForApi()) return
     const amount = Number.parseInt(tokendanceAmount, 10)
     if (!settings.apiKey || !Number.isInteger(amount) || amount < 1 || amount > 100000) {
       setApiKeyConsentError(lang === 'zh' ? '充值金额须为 1 至 100000 元的整数。' : 'Top-up amount must be an integer from 1 to 100000.')
@@ -646,6 +684,7 @@ export default function Settings({
     successMessage: string
   ): Promise<boolean> => {
     if (settingsSaveInFlightRef.current) return false
+    if (!requireAccountForApi()) return false
 
     settingsSaveInFlightRef.current = true
     setUpdatingAiPrivacy(true)
@@ -682,33 +721,6 @@ export default function Settings({
       settingsSaveInFlightRef.current = false
       setUpdatingAiPrivacy(false)
     }
-  }
-
-  const loadAssistantMemoryManager = async () => {
-    setLoadingAssistantMemories(true)
-    try {
-      setAssistantMemories(await getAssistantMemories())
-    } finally {
-      setLoadingAssistantMemories(false)
-    }
-  }
-
-  const toggleAssistantMemory = async (enabled: boolean) => {
-    const persisted = { ...getSettings(), assistantMemoryEnabled: enabled }
-    saveSettings(persisted)
-    await flushPendingStoreWrites()
-    setSettings(current => ({ ...current, assistantMemoryEnabled: enabled }))
-    onSettingsChange(persisted)
-  }
-
-  const exportAssistantMemories = () => {
-    const payload = JSON.stringify({ version: 1, exportedAt: Date.now(), memories: assistantMemories }, null, 2)
-    const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `feynman-assistant-memory-${new Date().toISOString().slice(0, 10)}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
   }
 
   const addQuote = () => {
@@ -1009,6 +1021,7 @@ export default function Settings({
   }
 
   const handleConsentChange = (checked: boolean) => {
+    if (!requireAccountForApi()) return
     if (!checked) {
       void persistAiPrivacySettings(
         { aiDataConsent: false },
@@ -1044,6 +1057,7 @@ export default function Settings({
 
   const handleDeleteApiKey = async () => {
     if (confirmingApiKeyDeletion || updatingAiPrivacy || saving) return
+    if (!requireAccountForApi()) return
     setConfirmingApiKeyDeletion(true)
     try {
       const confirmed = await showAppConfirm({
@@ -1058,12 +1072,17 @@ export default function Settings({
       if (!confirmed) return
 
       setShowKey(false)
+      if (activeProvider === 'tokendance') await deleteAccountApiKey()
       await persistAiPrivacySettings(
         { apiKey: '', aiDataConsent: false, hideApiKeyAlert: false },
         settings.language === 'zh'
           ? 'API Key 已删除，AI 数据传输同意已同步撤回。'
           : 'The API key was deleted and AI data transfer consent was withdrawn.'
       )
+    } catch (error) {
+      setApiKeyConsentError(error instanceof Error
+        ? error.message
+        : (settings.language === 'zh' ? 'API Key 删除失败，请稍后重试。' : 'API key deletion failed. Try again later.'))
     } finally {
       setConfirmingApiKeyDeletion(false)
     }
@@ -1073,8 +1092,8 @@ export default function Settings({
   const tokenDanceOnly = isTokenDanceOnly()
   const activeProvider = tokenDanceOnly ? 'tokendance' : (settings.aiProvider ?? 'deepseek')
   const persistedSettings = getSettings()
-  const hasSavedApiKey = persistedSettings.apiKey.trim().length > 0
-  const aiConfigurationComplete = isAIConfigurationComplete(persistedSettings)
+  const hasSavedApiKey = hasSignedInAccount && persistedSettings.apiKey.trim().length > 0
+  const aiConfigurationComplete = hasSignedInAccount && isAIConfigurationComplete(persistedSettings)
   const consentPolicy = privacyPolicyContent[lang]
   const presetCount = settings.quotes.filter(q => q.isPreset).length
   const customCount = settings.quotes.filter(q => !q.isPreset).length
@@ -1121,9 +1140,9 @@ export default function Settings({
         >
           <Megaphone size={18} className="mt-0.5 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />
           <span className="min-w-0">
-            <span className="block font-semibold">{lang === 'zh' ? '查看渠道迁移说明' : 'View provider migration notice'}</span>
+            <span className="block font-semibold">{lang === 'zh' ? '查看账号与 AI 更新说明' : 'View account and AI update'}</span>
             <span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">
-              {lang === 'zh' ? '了解 TokenDance 推荐接入、DeepSeek 官方渠道下线时间，以及历史数据保留规则。' : 'Review the TokenDance recommendation, the DeepSeek sunset date, and historical data retention.'}
+              {lang === 'zh' ? '了解观猹登录、账号云端、TokenDance AI 配置和本机历史数据迁移规则。' : 'Review Watcha sign-in, account cloud storage, TokenDance AI setup, and legacy local data migration.'}
             </span>
           </span>
           <ExternalLink size={16} className="ml-auto mt-0.5 shrink-0 text-[var(--text-secondary)]" aria-hidden="true" />
@@ -1143,8 +1162,10 @@ export default function Settings({
             <label className="block text-sm font-medium">{lang === 'zh' ? 'AI 接入渠道' : 'AI provider'}</label>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${aiConfigurationComplete ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
-                {aiConfigurationComplete ? <Check size={14} aria-hidden="true" /> : <AlertTriangle size={14} aria-hidden="true" />}
-              {aiConfigurationComplete
+                {aiConfigurationComplete ? <Check size={14} aria-hidden="true" /> : hasSignedInAccount ? <AlertTriangle size={14} aria-hidden="true" /> : <LogIn size={14} aria-hidden="true" />}
+              {!hasSignedInAccount
+                  ? (lang === 'zh' ? '请先登录账号' : 'Sign in first')
+                  : aiConfigurationComplete
                   ? (activeProvider === 'tokendance'
                       ? (lang === 'zh' ? 'TokenDance 合作接入已连接' : 'TokenDance partner connection active')
                       : (lang === 'zh' ? 'DeepSeek 官方 API 已连接' : 'DeepSeek Official API connected'))
@@ -1157,6 +1178,26 @@ export default function Settings({
               )}
             </div>
           </div>
+          {!hasSignedInAccount ? (
+            <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/8 p-4">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-semibold">{lang === 'zh' ? '先使用观猹登录，再配置 TokenDance' : 'Sign in with Watcha before configuring TokenDance'}</h2>
+                  <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
+                    {lang === 'zh'
+                      ? 'API Key 必须绑定到当前账号，并由服务端加密保存。未登录时不会显示、接收或保存 API Key。'
+                      : 'The API key must be linked to the current account and encrypted by the server. Signed-out users cannot view, enter, or save an API key.'}
+                  </p>
+                  <button type="button" onClick={requireAccountForApi} className="btn-primary mt-3 inline-flex min-h-11 items-center gap-2 px-4">
+                    <LogIn size={17} aria-hidden="true" />
+                    {lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
           {aiConfigurationComplete && !showAiConfiguration && (
             <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
@@ -1166,7 +1207,7 @@ export default function Settings({
                   <span className="font-semibold">{lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API'}</span>
                 )}
                 <p className="text-sm text-[var(--text-secondary)]">
-                  {lang === 'zh' ? 'DeepSeek V4 Flash 已就绪，可直接返回书籍继续分析。' : 'DeepSeek V4 Flash is ready. Return to a book to continue analyzing.'}
+                  {lang === 'zh' ? 'TokenDance AI 已就绪，可返回书籍继续分析或使用费曼小助手。' : 'TokenDance AI is ready. Return to a book or use Feynman Assistant.'}
                 </p>
               </div>
               {activeProvider === 'tokendance' && (
@@ -1207,7 +1248,7 @@ export default function Settings({
                     </span>
                   )}
                 </span>
-                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{provider === 'tokendance' ? (lang === 'zh' ? 'OAuth、余额与充值；峰时火山方舟端口提供限时优惠，并支持智能路由。' : 'OAuth, balance, and top-up, with limited-time savings on the Volcengine Ark route at peak hours and smart routing.') : (lang === 'zh' ? '使用 DeepSeek 官方控制台与账单管理。' : 'Use the official DeepSeek console and billing.')}</span>
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">{provider === 'tokendance' ? (lang === 'zh' ? 'AI Key 快速授权、余额与充值；峰时火山方舟端口提供限时优惠，并支持智能路由。' : 'Fast AI key authorization, balance, and top-up, with limited-time savings on the Volcengine Ark route at peak hours and smart routing.') : (lang === 'zh' ? '使用 DeepSeek 官方控制台与账单管理。' : 'Use the official DeepSeek console and billing.')}</span>
               </button>
             ))}
           </div>
@@ -1258,8 +1299,8 @@ export default function Settings({
             <div className="tokendance-panel mb-4 rounded-lg p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="font-medium">TokenDance OAuth</p>
-                  <p className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '在 TokenDance 确认后自动返回，不需要复制 Key。' : 'Confirm on TokenDance and return automatically; no copy-paste required.'}</p>
+                  <p className="font-medium">{lang === 'zh' ? 'TokenDance 快速授权（AI Key）' : 'TokenDance fast authorization (AI key)'}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '当前观猹账号已登录；在 TokenDance 确认后会自动返回，并将 AI Key 加密保存到当前账号，无需复制 Key。' : 'The current Watcha account is signed in. Confirm in TokenDance to return automatically and save the AI key encrypted to this account without copying it.'}</p>
                 </div>
                 <button type="button" onClick={() => void handleTokendanceAuthorize()} disabled={tokendanceOAuthLoading || updatingAiPrivacy || saving} className="btn-primary inline-flex items-center gap-1.5">
                   {tokendanceOAuthLoading ? <RefreshCw size={15} className="animate-spin" aria-hidden="true" /> : <ExternalLink size={15} aria-hidden="true" />}
@@ -1289,9 +1330,7 @@ export default function Settings({
               {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
-          {activeProvider !== 'tokendance' && (
-            <p className="mb-2 text-xs text-[var(--text-secondary)]">{t(lang, 'settings.apiKeyHelp')}</p>
-          )}
+          <p className="mb-2 text-xs text-[var(--text-secondary)]">{t(lang, 'settings.apiKeyHelp')}</p>
           <label className="mt-3 flex items-start gap-3 text-sm text-[var(--text-secondary)] cursor-pointer">
             <input
               ref={aiConsentRef}
@@ -1303,8 +1342,8 @@ export default function Settings({
             />
             <span>
               {lang === 'zh'
-                ? `我理解使用 AI 功能会将相关学习内容直接发送至 ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}，并同意进行该传输。`
-                : `I understand that AI features send relevant learning content directly to ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}, and I consent to that transfer.`}
+                ? `我理解使用 AI 功能会将完成当前任务所需的相关学习内容发送至 ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}，并同意进行该传输。`
+                : `I understand that AI features send the learning content needed for the current task to ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}, and I consent to that transfer.`}
             </span>
           </label>
           {apiKeyConsentError && !showConsentPolicy && (
@@ -1344,7 +1383,7 @@ export default function Settings({
               rel="noopener noreferrer"
               className={`inline-flex min-h-11 items-center gap-1 rounded-md text-sm ${activeProvider === 'tokendance' ? 'tokendance-link hover:underline' : 'text-[var(--accent)] hover:bg-[var(--bg-secondary)]'}`}
             >
-              {activeProvider === 'tokendance' ? (lang === 'zh' ? '查看 TokenDance 授权文档' : 'View TokenDance OAuth docs') : t(lang, 'settings.getApiKey')}
+              {activeProvider === 'tokendance' ? (lang === 'zh' ? '查看 TokenDance AI Key 授权文档' : 'View TokenDance AI key authorization docs') : t(lang, 'settings.getApiKey')}
               <ArrowUpRight size={15} className="shrink-0" aria-hidden="true" />
             </a>
             {hasSavedApiKey && (
@@ -1456,92 +1495,23 @@ export default function Settings({
           )}
             </>
           )}
+            </>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-        {/* 数据管理 (P0 新增) */}
-        <div className="card p-4">
-          <button
-            onClick={() => {
-              setDataStats(getDataStats())
-              setAIUsageSummary(getAIUsageSummary())
-              void loadDbInfo()
-              setShowDataManagement(true)
-            }}
-            className="w-full flex items-center justify-between"
-          >
-            <div>
-              <h3 className="flex items-center gap-2 font-medium text-left">
-                <Database size={18} className="text-[var(--accent)]" aria-hidden="true" />
-                {lang === 'zh' ? '数据管理' : 'Data Management'}
-              </h3>
-              <p className="text-sm text-[var(--text-secondary)] text-left">
-                {lang === 'zh'
-                  ? `共 ${dataStats.totalBooks} 本书，数据大小 ${dataStats.dataSize}`
-                  : `${dataStats.totalBooks} books, ${dataStats.dataSize}`}
-              </p>
-            </div>
-            <ArrowUpRight size={18} className="text-[var(--text-secondary)]" aria-hidden="true" />
-          </button>
+        <div className="card p-2 sm:col-span-2">
+          <a href="/account?tab=data" className="flex min-h-10 items-center justify-between gap-3 rounded-md px-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
+            <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="truncate">{lang === 'zh' ? '账号中心 · 云端数据与历史迁移' : 'Account center · Cloud data and migration'}</span></span>
+            <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
+          </a>
         </div>
 
-        {/* Quote Manager */}
-        <div className="card p-4">
-          <button
-            onClick={() => {
-              setQuoteStatus(null)
-              setShowQuoteManager(true)
-            }}
-            className="w-full flex items-center justify-between"
-          >
-            <div>
-              <h3 className="flex items-center gap-2 font-medium text-left">
-                <Quote size={18} className="text-amber-500" aria-hidden="true" />
-                {lang === 'zh' ? '金句管理' : 'Quote Manager'}
-              </h3>
-              <p className="text-sm text-[var(--text-secondary)] text-left">
-                {lang === 'zh'
-                  ? `共 ${settings.quotes.length} 条（预设 ${presetCount}，自定义 ${customCount}）`
-                  : `Total ${settings.quotes.length} (${presetCount} preset, ${customCount} custom)`}
-              </p>
-            </div>
-            <ArrowUpRight size={18} className="text-[var(--text-secondary)]" aria-hidden="true" />
-          </button>
-
-        </div>
-
-        <div className="card p-4 sm:col-span-2">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <h3 className="flex items-center gap-2 font-medium">
-                <Sparkles size={18} className="text-[var(--accent-secondary)]" aria-hidden="true" />
-                {lang === 'zh' ? '费曼小助手记忆' : 'Feynman Assistant memory'}
-              </h3>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                {lang === 'zh' ? '只保存你明确要求记住的偏好，保存在当前浏览器，独立于书籍历史记录。' : 'Only explicit “remember this” preferences are stored in this browser, separately from book history.'}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-3 sm:justify-end">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.assistantMemoryEnabled !== false}
-                onClick={() => void toggleAssistantMemory(settings.assistantMemoryEnabled === false)}
-                className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${settings.assistantMemoryEnabled === false ? 'bg-[var(--border)]' : 'bg-[var(--accent)]'}`}
-                aria-label={lang === 'zh' ? '切换费曼小助手长期记忆' : 'Toggle assistant memory'}
-              >
-                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${settings.assistantMemoryEnabled === false ? 'left-1' : 'left-6'}`} />
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAssistantMemoryManager(true); void loadAssistantMemoryManager() }}
-                className="inline-flex min-h-10 items-center gap-1.5 text-sm text-[var(--accent)] hover:underline"
-              >
-                <Eye size={15} aria-hidden="true" />
-                {lang === 'zh' ? '查看与管理已保存记忆' : 'View and manage saved memories'}
-              </button>
-            </div>
-          </div>
+        <div className="card p-2 sm:col-span-2">
+          <a href="/account?tab=assistant" className="flex min-h-12 items-center justify-between gap-3 rounded-md px-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
+            <span className="inline-flex min-w-0 items-center gap-2"><Sparkles size={17} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="min-w-0"><span className="block font-medium text-[var(--text-primary)]">{lang === 'zh' ? '费曼小助手 · 会话与长期记忆' : 'Feynman Assistant · Sessions and memory'}</span><span className="mt-0.5 block truncate text-xs">{lang === 'zh' ? '统一在账号中心查看、导出、删除和管理记忆开关' : 'Manage sessions, exports, deletions, and memory settings in Account Center'}</span></span></span>
+            <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
+          </a>
         </div>
         </div>
 
@@ -1706,44 +1676,6 @@ export default function Settings({
         </div>
       )}
 
-      {showAssistantMemoryManager && (
-        <div className="modal-overlay" onClick={() => setShowAssistantMemoryManager(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={lang === 'zh' ? '费曼小助手记忆管理' : 'Feynman Assistant memory'}
-            className="modal-content product-dialog max-w-lg max-h-[calc(100dvh-32px)]"
-            onClick={event => event.stopPropagation()}
-          >
-            <div className="product-dialog-header">
-              <div>
-                <h2 className="text-xl font-bold">{lang === 'zh' ? '费曼小助手记忆' : 'Feynman Assistant memory'}</h2>
-                <p className="mt-1 text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '这些内容只用于个性化回答，可随时删除。' : 'Used only to personalize replies. You can remove them at any time.'}</p>
-              </div>
-              <button type="button" onClick={() => setShowAssistantMemoryManager(false)} className="btn-secondary px-3 py-2" aria-label={lang === 'zh' ? '关闭' : 'Close'}><X size={18} aria-hidden="true" /></button>
-            </div>
-            <div className="product-dialog-body">
-            {loadingAssistantMemories ? <p className="py-8 text-center text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '正在读取…' : 'Loading…'}</p> : assistantMemories.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-[var(--border)] p-6 text-center text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '还没有保存的记忆。对小助手说“请记住……”即可添加。' : 'No saved memories yet. Tell the assistant “remember that…” to add one.'}</div>
-            ) : (
-              <div className="space-y-2">
-                {assistantMemories.map(memory => (
-                  <div key={memory.id} className="flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
-                    <p className="min-w-0 flex-1 text-sm leading-5">{memory.content}</p>
-                    <button type="button" onClick={async () => { await deleteAssistantMemory(memory.id); setAssistantMemories(current => current.filter(item => item.id !== memory.id)) }} className="icon-button h-9 w-9 shrink-0 text-red-500" aria-label={lang === 'zh' ? '删除记忆' : 'Delete memory'} title={lang === 'zh' ? '删除记忆' : 'Delete memory'}><Trash2 size={15} aria-hidden="true" /></button>
-                  </div>
-                ))}
-              </div>
-            )}
-            </div>
-            <div className="product-dialog-footer">
-              <button type="button" onClick={exportAssistantMemories} disabled={!assistantMemories.length} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm disabled:opacity-50"><Download size={15} aria-hidden="true" />{lang === 'zh' ? '导出记忆' : 'Export memories'}</button>
-              <button type="button" onClick={async () => { if (!assistantMemories.length) return; const confirmed = await showAppConfirm({ title: lang === 'zh' ? '清空记忆' : 'Clear memories', message: lang === 'zh' ? '将删除费曼小助手保存的全部偏好，书籍和会话不会受影响。' : 'This removes all assistant preferences. Books and conversations are not affected.', confirmText: lang === 'zh' ? '清空' : 'Clear', cancelText: lang === 'zh' ? '取消' : 'Cancel', tone: 'danger' }); if (!confirmed) return; await clearAssistantMemories(); setAssistantMemories([]) }} disabled={!assistantMemories.length} className="btn-secondary inline-flex min-h-10 items-center gap-1.5 text-sm text-red-500 disabled:opacity-50"><Trash2 size={15} aria-hidden="true" />{lang === 'zh' ? '清空全部' : 'Clear all'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showDataManagement && (
         <div className="modal-overlay" onClick={closeDataManagement}>
           <div
@@ -1780,17 +1712,17 @@ export default function Settings({
                 <AlertTriangle size={19} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
                 <div className="text-sm leading-5">
                   <p className="font-semibold text-amber-700 dark:text-amber-300">
-                    {lang === 'zh' ? '本地数据可能永久丢失，请定期导出备份' : 'Local data can be permanently lost. Export backups regularly.'}
+                    {lang === 'zh' ? '云端数据也建议定期导出，本机历史数据请及时迁移' : 'Export cloud data regularly and migrate legacy local data promptly'}
                   </p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
                     {lang === 'zh'
-                      ? '清理浏览器缓存或网站数据、卸载重装、更新或重置浏览器、切换设备或用户配置，都可能删除全部学习数据。平台当前不提供云端备份与恢复服务，无法代为找回本地丢失的数据。'
-                      : 'Clearing site data, reinstalling, updating or resetting the browser, or switching devices or profiles may delete all learning data. The platform currently does not provide cloud backup or recovery services and cannot recover locally lost data.'}
+                      ? '登录后的学习数据会按账号保存到云端；尚未迁移的 IndexedDB 历史数据仍只在当前浏览器，清理网站数据会使这部分内容永久丢失。'
+                      : 'Signed-in learning data is saved to your account cloud. Unmigrated IndexedDB history remains only in this browser and is permanently lost if site data is cleared.'}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     {lang === 'zh'
-                      ? '当已有学习数据且距离上次成功备份满 7 天时，系统会再次提醒。提醒不会自动保存数据，仍需由你手动导出；数据较大时会自动分卷，导入时需一次选择全部分卷。只有确认文件保存成功后才会记录备份时间。'
-                      : 'When learning data exists and 7 days have passed since the last successful backup, the system will remind you again. Reminders do not save data automatically. Large backups are split automatically; select every part together when importing. Backup time is recorded only after the files are confirmed saved.'}
+                      ? '云端会自动保存日常修改，但导出备份仍需由你手动完成；数据较大时会自动分卷，导入时需一次选择全部分卷。只有确认文件保存成功后才会记录备份时间。'
+                      : 'Daily changes are saved to the cloud automatically, but exported backups are manual. Large backups are split automatically; select every part together when importing. Backup time is recorded only after files are confirmed saved.'}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     <strong className="text-amber-700 dark:text-amber-300">
@@ -1815,11 +1747,11 @@ export default function Settings({
               <div className="flex items-center gap-2">
                 <HardDrive size={20} className="text-[var(--accent-secondary)]" aria-hidden="true" />
                 <div>
-                  <div className="text-sm font-medium">{lang === 'zh' ? '存储方式' : 'Storage'}</div>
+                  <div className="text-sm font-medium">{lang === 'zh' ? '本机历史数据状态' : 'Legacy local data status'}</div>
                   <div className="text-xs text-[var(--text-secondary)]">
                     {dbInfo.usingIndexedDB
-                      ? (lang === 'zh' ? 'IndexedDB（浏览器本地存储）' : 'IndexedDB (Browser Local Storage)')
-                      : (lang === 'zh' ? 'LocalStorage (兼容模式)' : 'LocalStorage (Legacy Mode)')}
+                      ? (lang === 'zh' ? 'IndexedDB（仅用于历史迁移）' : 'IndexedDB (legacy migration only)')
+                      : (lang === 'zh' ? 'LocalStorage（旧版兼容数据）' : 'LocalStorage (legacy compatibility data)')}
                   </div>
                 </div>
               </div>
@@ -1831,7 +1763,7 @@ export default function Settings({
                 >
                   {migrating
                     ? (lang === 'zh' ? '迁移中...' : 'Migrating...')
-                    : (lang === 'zh' ? '升级到 IndexedDB' : 'Upgrade to IndexedDB')}
+                    : (lang === 'zh' ? '整理历史数据' : 'Prepare legacy data')}
                 </button>
               )}
             </div>

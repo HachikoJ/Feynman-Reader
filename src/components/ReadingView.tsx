@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
-import { Book, NoteRecord, updateBook, addPracticeRecord, deletePracticeRecord, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
+import { Book, NoteRecord, AppSettings, addQuoteFromSelection, updateBook, addPracticeRecord, deletePracticeRecord, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
 import { createLocalId } from '@/lib/localId'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
@@ -30,6 +30,7 @@ import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 import { buildMissingBookMetadataUpdates, needsBookMetadataEnrichment } from '@/lib/bookMetadata'
 import BookListManager from './BookListManager'
 import { BookLearningAnalytics } from './Charts'
+import { useAccountAccess } from './AuthGuard'
 
 interface Props {
   book: Book
@@ -38,6 +39,7 @@ interface Props {
   quotes?: { text: string; author: string }[]
   onBack: () => void
   onOpenSettings: () => void
+  onQuoteAdded?: (settings: AppSettings) => void
 }
 
 type TabType = 'phase' | 'practice' | 'notes' | 'recommendations'
@@ -82,7 +84,8 @@ function aiTaskErrorMessage(error: unknown, lang: Language): string | null {
   return null
 }
 
-export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack, onOpenSettings }: Props) {
+export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack, onOpenSettings, onQuoteAdded }: Props) {
+  const { isAuthenticated, requestLogin } = useAccountAccess()
   const [book, setBook] = useState(initialBook)
   const [activeTab, setActiveTab] = useState<TabType>('phase')
   const [currentPhase, setCurrentPhase] = useState(
@@ -122,6 +125,16 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const currentBookIdRef = useRef(book.id)
   const missingApiKey = apiKey.trim().length === 0
   const needsAiConfiguration = missingApiKey || aiConsentRequired || apiKeyInvalid
+
+  const handleQuoteSelected = async (text: string) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能保存金句，并在其他设备查看。' : 'Sign in to save quotes and view them on other devices.')
+      return
+    }
+    const nextSettings = addQuoteFromSelection(text)
+    onQuoteAdded?.(nextSettings)
+    await flushPendingStoreWrites()
+  }
   
   // 用于滚动定位的ref
   const readingTabsRef = useRef<HTMLDivElement>(null)
@@ -136,7 +149,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     setAiConsentRequired(false)
     setApiKeyInvalid(false)
 
-    if (apiKey) {
+    if (apiKey && isAuthenticated) {
       void createDeepSeekClient(apiKey)
         .then(client => {
           if (!cancelled) setClient(client)
@@ -154,14 +167,14 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     return () => {
       cancelled = true
     }
-  }, [apiKey])
+  }, [apiKey, isAuthenticated])
 
   useEffect(() => {
     currentBookIdRef.current = book.id
   }, [book.id])
 
   useEffect(() => {
-    if (!client || analyzingInBackground || !needsBookMetadataEnrichment(book) || metadataEnrichmentAttemptsRef.current.has(book.id)) return
+    if (!isAuthenticated || !client || analyzingInBackground || !needsBookMetadataEnrichment(book) || metadataEnrichmentAttemptsRef.current.has(book.id)) return
 
     const targetBookId = book.id
     metadataEnrichmentAttemptsRef.current.add(targetBookId)
@@ -195,7 +208,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         if (currentBookIdRef.current === targetBookId) setMetadataEnrichmentStatus('error')
       }
     })()
-  }, [client, analyzingInBackground, book])
+  }, [client, analyzingInBackground, book, isAuthenticated])
 
   // 确保打开书籍时页面滚动到顶部
   useEffect(() => {
@@ -204,6 +217,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const handleAnalyzeAll = async () => {
     if (analysisInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能使用 AI 分析，并保存你的学习记录。' : 'Sign in to use AI analysis and save your learning history.')
+      return
+    }
     if (missingApiKey) {
       setAnalysisError(lang === 'zh'
         ? '使用 AI 深度分析前，请先前往设置连接并保存 TokenDance API Key。'
@@ -342,6 +359,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const handleCompletePhase = async () => {
     if (progressSaveInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能保存阅读进度。' : 'Sign in to save reading progress.')
+      return
+    }
     const completedCount = clampCompletedPhaseCount(book.currentPhase, LEARNING_PHASES.length)
     const newProgress = completePhase(currentPhase, completedCount, LEARNING_PHASES.length)
 
@@ -365,8 +386,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       if (persistedBook) setBook(persistedBook)
       logger.error('Learning progress save failed:', error)
       setAnalysisError(lang === 'zh'
-        ? '阶段进度保存失败，页面未继续跳转。请检查本地存储后重试。'
-        : 'Phase progress could not be saved. The page did not advance; check local storage and try again.')
+        ? '阶段进度未能保存到账号云端，页面未继续跳转。请检查登录和网络后重试。'
+        : 'Phase progress could not be saved to your account cloud. The page did not advance; check sign-in and network, then try again.')
     } finally {
       progressSaveInFlightRef.current = false
       setSavingProgress(false)
@@ -375,6 +396,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const handleSubmitPractice = async () => {
     if (practiceSubmissionRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能使用 AI 点评并保存费曼实践记录。' : 'Sign in to use AI review and save Feynman practice records.')
+      return
+    }
     if (teachingNote.length > MAX_AI_ANSWER_LENGTH) {
       setPracticeError(lang === 'zh'
         ? `教学内容不能超过 ${MAX_AI_ANSWER_LENGTH.toLocaleString()} 个字符。`
@@ -467,6 +492,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   }
 
   const handleDeleteRecord = async (recordId: string) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能管理实践记录。' : 'Sign in to manage practice records.')
+      return
+    }
     if (practiceDeletionIdsRef.current.has(recordId)) return
     practiceDeletionIdsRef.current.add(recordId)
     setPracticeError(null)
@@ -490,6 +519,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const handleSaveNote = async () => {
     if (noteMutationInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能保存笔记。' : 'Sign in to save notes.')
+      return
+    }
     if (!newNote.trim()) return
     if (newNote.length > MAX_NOTE_LENGTH) {
       setNoteError(lang === 'zh'
@@ -534,6 +567,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const handleDeleteNote = async (noteId: string) => {
     if (noteMutationInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能删除笔记。' : 'Sign in to delete notes.')
+      return
+    }
     const updatedRecords = noteRecords.filter(n => n.id !== noteId)
     noteMutationInFlightRef.current = true
     setNoteSaving(true)
@@ -613,7 +650,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           <h1 className="text-2xl font-bold">《{book.name}》</h1>
           {book.isSample && (
             <p className="mt-1 text-xs text-[var(--accent)]">
-              {lang === 'zh' ? '示例学习档案 · 内容保存在本地，可随时删除或替换' : 'Sample learning record · stored locally and removable at any time'}
+              {lang === 'zh' ? '系统示例学习档案 · 不计入个人云端数据或历史迁移' : 'System sample learning record · excluded from personal cloud data and legacy migration'}
             </p>
           )}
           {metadataEnrichmentStatus === 'loading' && (
@@ -820,6 +857,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                         documentContent={book.documentContent}
                         lang={lang}
                         onExpandAll={() => scrollToReadingAnchor(phaseProgressRef)}
+                        onQuoteSelected={handleQuoteSelected}
                       />
 
                       {/* 每个阶段都显示完成按钮 */}
@@ -1197,7 +1235,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                               {lang === 'zh' ? 'AI 点评：' : 'AI Review:'}
                             </p>
                             <div className="bg-[var(--bg-card)] rounded p-3">
-                              <MarkdownRenderer content={record.aiReview} />
+                              <MarkdownRenderer content={record.aiReview} onQuoteSelected={handleQuoteSelected} />
                               <SourceEvidence content={record.aiReview} documentContent={book.documentContent} lang={lang} />
                             </div>
                           </div>
@@ -1222,6 +1260,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             onShowHistoryChange={setQaShowHistory}
             historyRef={qaHistoryRef}
             onOpenSettings={onOpenSettings}
+            onQuoteSelected={handleQuoteSelected}
           />
 
           {/* 相关推荐 - 移到独立 Tab */}
@@ -1338,6 +1377,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               onLoadingChange={setLoadingRecommendations}
               onOpenSettings={onOpenSettings}
               needsAiConfiguration={needsAiConfiguration}
+              onQuoteSelected={handleQuoteSelected}
             />
           )}
         </div>

@@ -3,6 +3,10 @@ import { Pool, type QueryResultRow } from 'pg'
 import type { AuthSession, AuthUser } from './auth'
 import type {
   ApiKeyRecord,
+  AssistantMemoryRecord,
+  AssistantSessionRecord,
+  ActivityDay,
+  ImportResult,
   MigrationResult,
   MigrationState,
   PersistenceAdapter,
@@ -11,6 +15,7 @@ import type {
 } from './persistence'
 import { normalizeImportData } from '@/lib/backupValidation'
 import { SAMPLE_BOOK_ID } from '@/lib/sampleBook'
+import { mergeDefaultQuotes } from '@/lib/defaultQuotes'
 
 type UserRow = {
   id: string
@@ -94,6 +99,26 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     return queryRows(result)[0] || null
   }
 
+  private async ensureDefaultQuotes(userId: string): Promise<Record<string, unknown>> {
+    const row = await this.one<{ data: unknown }>('select data from public.user_settings where user_id = $1', [userId])
+    const current = row?.data && typeof row.data === 'object' && !Array.isArray(row.data)
+      ? row.data as Record<string, unknown>
+      : {}
+    const quotes = mergeDefaultQuotes(current.quotes)
+    const next = { ...current, quotes, apiKey: '' }
+    const currentQuotes = Array.isArray(current.quotes) ? JSON.stringify(current.quotes) : ''
+    if (!row || currentQuotes !== JSON.stringify(quotes) || current.apiKey !== '') {
+      await this.pool.query(
+        `insert into public.user_settings (user_id, data, version, updated_at)
+         values ($1, $2::jsonb, 1, now())
+         on conflict (user_id) do update set data = excluded.data,
+           version = public.user_settings.version + 1, updated_at = now()`,
+        [userId, JSON.stringify(next)],
+      )
+    }
+    return next
+  }
+
   async findUserById(userId: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where id = $1', [userId])
     return row ? mapUser(row) : null
@@ -122,6 +147,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       [input.tokendanceSubject || null, input.phone || null, input.email || null],
     )
     if (!row) throw new Error('User creation returned no row.')
+    await this.ensureDefaultQuotes(row.id)
     return mapUser(row)
   }
 
@@ -200,9 +226,11 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   }
 
   async getUserDataSummary(userId: string): Promise<UserDataSummary> {
+    await this.ensureDefaultQuotes(userId)
     const row = await this.one<{
       books: string; notes: string; practices: string; qa_records: string; ai_usage_records: string;
-      lists: string; relations: string; last_import_at: Date | string | null; last_sync_at: Date | string | null
+      lists: string; relations: string; quotes: string; assistant_sessions: string; assistant_memories: string;
+      storage_bytes: string; last_import_at: Date | string | null; last_sync_at: Date | string | null
     }>(`select
       (select count(*) from public.user_books where user_id = $1 and deleted_at is null) as books,
       (select coalesce(sum(jsonb_array_length(coalesce(data->'noteRecords', '[]'::jsonb))), 0) from public.user_books where user_id = $1 and deleted_at is null) as notes,
@@ -211,26 +239,42 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       (select count(*) from public.user_ai_usage where user_id = $1) as ai_usage_records,
       (select count(*) from public.user_book_lists where user_id = $1) as lists,
       (select count(*) from public.user_book_relations where user_id = $1) as relations,
+      (select coalesce(jsonb_array_length(case when jsonb_typeof(data->'quotes') = 'array' then data->'quotes' else '[]'::jsonb end), 0) from public.user_settings where user_id = $1) as quotes,
+      (select count(*) from public.user_assistant_sessions where user_id = $1) as assistant_sessions,
+      (select count(*) from public.user_assistant_memories where user_id = $1) as assistant_memories,
+      (select coalesce(sum(bytes), 0) from (
+        select coalesce(sum(pg_column_size(data)), 0)::bigint as bytes from public.user_settings where user_id = $1
+        union all select coalesce(sum(pg_column_size(data)), 0)::bigint from public.user_books where user_id = $1 and deleted_at is null
+        union all select coalesce(sum(pg_column_size(data)), 0)::bigint from public.user_ai_usage where user_id = $1
+        union all select coalesce(sum(pg_column_size(data)), 0)::bigint from public.user_assistant_sessions where user_id = $1
+        union all select coalesce(sum(pg_column_size(content)), 0)::bigint from public.user_assistant_memories where user_id = $1
+        union all select coalesce(sum(pg_column_size(name) + coalesce(pg_column_size(description), 0) + pg_column_size(book_ids)), 0)::bigint from public.user_book_lists where user_id = $1
+        union all select coalesce(sum(pg_column_size(relation_type) + coalesce(pg_column_size(note), 0)), 0)::bigint from public.user_book_relations where user_id = $1
+      ) storage) as storage_bytes,
       (select last_import_at from public.user_data_state where user_id = $1) as last_import_at,
       (select last_sync_at from public.user_data_state where user_id = $1) as last_sync_at`, [userId])
     return {
       books: Number(row?.books || 0), notes: Number(row?.notes || 0), practices: Number(row?.practices || 0),
       qaRecords: Number(row?.qa_records || 0), aiUsageRecords: Number(row?.ai_usage_records || 0),
       lists: Number(row?.lists || 0), relations: Number(row?.relations || 0),
+      quotes: Number(row?.quotes || 0), assistantSessions: Number(row?.assistant_sessions || 0),
+      assistantMemories: Number(row?.assistant_memories || 0), storageBytes: Number(row?.storage_bytes || 0),
       lastImportAt: row?.last_import_at ? iso(row.last_import_at) : null,
       lastSyncAt: row?.last_sync_at ? iso(row.last_sync_at) : null,
     }
   }
 
   async exportUserData(userId: string): Promise<unknown> {
-    const [settings, books, usage, lists, relations] = await Promise.all([
-      this.one<{ data: Record<string, unknown> }>('select data from public.user_settings where user_id = $1', [userId]),
+    const ensuredSettings = await this.ensureDefaultQuotes(userId)
+    const [books, usage, lists, relations, assistantSessions, assistantMemories] = await Promise.all([
       this.pool.query<{ data: Record<string, unknown> }>('select data from public.user_books where user_id = $1 and deleted_at is null order by updated_at asc', [userId]),
       this.pool.query<{ data: Record<string, unknown> }>('select data from public.user_ai_usage where user_id = $1 order by created_at asc', [userId]),
       this.pool.query<{ list_id: string; name: string; description: string | null; book_ids: unknown; created_at: Date | string; updated_at: Date | string }>('select list_id, name, description, book_ids, created_at, updated_at from public.user_book_lists where user_id = $1 order by updated_at asc', [userId]),
       this.pool.query<{ relation_id: string; from_book_id: string; to_book_id: string; relation_type: string; note: string | null; created_at: Date | string; updated_at: Date | string }>('select relation_id, from_book_id, to_book_id, relation_type, note, created_at, updated_at from public.user_book_relations where user_id = $1 order by updated_at asc', [userId]),
+      this.pool.query<{ session_id: string; title: string; book_id: string | null; data: unknown; created_at: Date | string; updated_at: Date | string }>('select session_id, title, book_id, data, created_at, updated_at from public.user_assistant_sessions where user_id = $1 order by updated_at asc', [userId]),
+      this.pool.query<{ memory_id: string; content: string; category: AssistantMemoryRecord['category']; source_session_id: string | null; created_at: Date | string; updated_at: Date | string }>('select memory_id, content, category, source_session_id, created_at, updated_at from public.user_assistant_memories where user_id = $1 order by updated_at asc', [userId]),
     ])
-    const safeSettings = { ...(settings?.data || {}), apiKey: '' }
+    const safeSettings = { ...ensuredSettings, apiKey: '' }
     return {
       version: 5,
       exportDate: Date.now(),
@@ -254,7 +298,36 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
         createdAt: new Date(row.created_at).getTime(),
         updatedAt: new Date(row.updated_at).getTime(),
       })),
+      assistantSessions: assistantSessions.rows.map(row => ({
+        id: row.session_id,
+        title: row.title,
+        bookId: row.book_id || undefined,
+        data: row.data,
+        createdAt: new Date(row.created_at).getTime(),
+        updatedAt: new Date(row.updated_at).getTime(),
+      })),
+      assistantMemories: assistantMemories.rows.map(row => ({
+        id: row.memory_id,
+        content: row.content,
+        category: row.category,
+        ...(row.source_session_id ? { sourceSessionId: row.source_session_id } : {}),
+        createdAt: new Date(row.created_at).getTime(),
+        updatedAt: new Date(row.updated_at).getTime(),
+      })),
     }
+  }
+
+  async saveUserSettings(userId: string, data: unknown): Promise<void> {
+    const incoming = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {}
+    const current = await this.ensureDefaultQuotes(userId)
+    const settings = { ...current, ...incoming, quotes: mergeDefaultQuotes(incoming.quotes ?? current.quotes), apiKey: '' }
+    await this.pool.query(
+      `insert into public.user_settings (user_id, data, version, updated_at)
+       values ($1, $2::jsonb, 1, now())
+       on conflict (user_id) do update set data = excluded.data,
+         version = public.user_settings.version + 1, updated_at = now()`,
+      [userId, JSON.stringify(settings)],
+    )
   }
 
   async getMigrationState(userId: string, activateWindow = false): Promise<MigrationState> {
@@ -299,6 +372,8 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     }))
     const relations = data.bookRelations.filter(relation => bookIds.has(relation.fromBookId) && bookIds.has(relation.toBookId))
     const usageRecords = data.aiUsageRecords.filter(record => !record.bookId || bookIds.has(record.bookId))
+    const assistantSessions = data.assistantSessions
+    const assistantMemories = data.assistantMemories
     const client = await this.pool.connect()
     const migrationVersion = 1
     try {
@@ -325,7 +400,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
            last_migration_error = null, updated_at = now()`,
         [userId, migrationVersion],
       )
-      const settings = { ...data.settings, apiKey: '' }
+      const settings = { ...(data.settings || {}), apiKey: '', quotes: mergeDefaultQuotes((data.settings as { quotes?: unknown } | undefined)?.quotes) }
       const settingsAt = new Date(data.exportDate)
       await client.query(
         `insert into public.user_settings (user_id, data, version, updated_at)
@@ -336,8 +411,8 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       )
       for (const book of books) {
         await client.query(
-          `insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, deleted_at, purge_at)
-           values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), null, null)
+          `insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at, purge_at)
+           values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), now(), null, null)
            on conflict (user_id, book_id) do update set name=excluded.name, author=excluded.author, status=excluded.status,
              current_phase=excluded.current_phase, best_score=excluded.best_score, data=excluded.data,
              updated_at=excluded.updated_at, deleted_at=null, purge_at=null
@@ -374,6 +449,28 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
           [userId, relation.id, relation.fromBookId, relation.toBookId, relation.type, relation.note || null, relation.createdAt, relation.updatedAt || relation.createdAt],
         )
       }
+      for (const session of assistantSessions) {
+        await client.query(
+          `insert into public.user_assistant_sessions
+             (user_id, session_id, title, book_id, data, created_at, updated_at)
+           values ($1, $2, $3, $4, $5::jsonb, to_timestamp($6 / 1000.0), to_timestamp($7 / 1000.0))
+           on conflict (user_id, session_id) do update set title=excluded.title, book_id=excluded.book_id,
+             data=excluded.data, updated_at=excluded.updated_at
+           where excluded.updated_at >= public.user_assistant_sessions.updated_at`,
+          [userId, session.id, session.title, session.bookId || null, JSON.stringify(session.data), session.createdAt, session.updatedAt],
+        )
+      }
+      for (const memory of assistantMemories) {
+        await client.query(
+          `insert into public.user_assistant_memories
+             (user_id, memory_id, content, category, source_session_id, created_at, updated_at)
+           values ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0), to_timestamp($7 / 1000.0))
+           on conflict (user_id, memory_id) do update set content=excluded.content, category=excluded.category,
+             source_session_id=excluded.source_session_id, updated_at=excluded.updated_at
+           where excluded.updated_at >= public.user_assistant_memories.updated_at`,
+          [userId, memory.id, memory.content, memory.category, memory.sourceSessionId || null, memory.createdAt, memory.updatedAt],
+        )
+      }
       const result = await client.query<{ sync_version: number }>(
         `update public.user_data_state set migration_status='completed', migration_completed_at=now(),
            last_import_at=now(), last_sync_at=now(), sync_version=sync_version + 1, updated_at=now()
@@ -385,6 +482,8 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
         status: 'completed', migrationVersion, syncVersion: Number(result.rows[0]?.sync_version || 0),
         booksImported: books.length, aiUsageImported: usageRecords.length,
         listsImported: lists.length, relationsImported: relations.length,
+        assistantSessionsImported: assistantSessions.length,
+        assistantMemoriesImported: assistantMemories.length,
       }
     } catch (error) {
       await client.query('rollback')
@@ -436,7 +535,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
        where user_id = $1 and book_id = $2 and deleted_at is not null
          and deleted_at > now() - interval '7 days'`, [userId, bookId],
     )
-    if (result.rowCount !== 1) throw new Error('书籍不存在或已超过 7 天恢复期限。')
+    if (result.rowCount !== 1) throw new Error('书籍不存在或当前无法恢复。')
   }
 
   async permanentlyDeleteBook(userId: string, bookId: string): Promise<void> {
@@ -471,7 +570,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     return result.rowCount || 0
   }
 
-  async importUserData(userId: string, payload: unknown): Promise<{ booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }> {
+  async importUserData(userId: string, payload: unknown): Promise<ImportResult> {
     const normalized = normalizeImportData(payload)
     if (!normalized.valid) throw new Error(normalized.error)
     const data = normalized.data
@@ -480,15 +579,17 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const lists = data.bookLists.map(list => ({ ...list, bookIds: list.bookIds.filter(bookId => bookIds.has(bookId)) }))
     const relations = data.bookRelations.filter(relation => bookIds.has(relation.fromBookId) && bookIds.has(relation.toBookId))
     const usageRecords = data.aiUsageRecords.filter(record => !record.bookId || bookIds.has(record.bookId))
+    const assistantSessions = data.assistantSessions
+    const assistantMemories = data.assistantMemories
     const client = await this.pool.connect()
     try {
       await client.query('begin')
-      const settings = { ...data.settings, apiKey: '' }
+      const settings = { ...data.settings, apiKey: '', quotes: mergeDefaultQuotes(data.settings.quotes) }
       await client.query(`insert into public.user_settings (user_id, data, version, updated_at) values ($1, $2::jsonb, 1, now())
         on conflict (user_id) do update set data = excluded.data, version = public.user_settings.version + 1, updated_at = now()`, [userId, JSON.stringify(settings)])
       for (const book of books) {
-        await client.query(`insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, deleted_at)
-          values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), null)
+        await client.query(`insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), now(), null)
           on conflict (user_id, book_id) do update set name=excluded.name, author=excluded.author, status=excluded.status,
             current_phase=excluded.current_phase, best_score=excluded.best_score, data=excluded.data, updated_at=excluded.updated_at, deleted_at=null, purge_at=null
             where excluded.updated_at >= public.user_books.updated_at`,
@@ -515,17 +616,206 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
           where excluded.updated_at >= public.user_book_relations.updated_at`,
         [userId, relation.id, relation.fromBookId, relation.toBookId, relation.type, relation.note || null, relation.createdAt, relation.updatedAt || relation.createdAt])
       }
+      for (const session of assistantSessions) {
+        await client.query(`insert into public.user_assistant_sessions
+          (user_id, session_id, title, book_id, data, created_at, updated_at)
+          values ($1, $2, $3, $4, $5::jsonb, to_timestamp($6 / 1000.0), to_timestamp($7 / 1000.0))
+          on conflict (user_id, session_id) do update set title=excluded.title, book_id=excluded.book_id,
+            data=excluded.data, updated_at=excluded.updated_at
+          where excluded.updated_at >= public.user_assistant_sessions.updated_at`,
+        [userId, session.id, session.title, session.bookId || null, JSON.stringify(session.data), session.createdAt, session.updatedAt])
+      }
+      for (const memory of assistantMemories) {
+        await client.query(`insert into public.user_assistant_memories
+          (user_id, memory_id, content, category, source_session_id, created_at, updated_at)
+          values ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0), to_timestamp($7 / 1000.0))
+          on conflict (user_id, memory_id) do update set content=excluded.content, category=excluded.category,
+            source_session_id=excluded.source_session_id, updated_at=excluded.updated_at
+          where excluded.updated_at >= public.user_assistant_memories.updated_at`,
+        [userId, memory.id, memory.content, memory.category, memory.sourceSessionId || null, memory.createdAt, memory.updatedAt])
+      }
       await client.query(`insert into public.user_data_state (user_id, schema_version, sync_version, last_import_at, last_sync_at, updated_at)
         values ($1, $2, 1, now(), now(), now()) on conflict (user_id) do update set schema_version=excluded.schema_version,
         sync_version=public.user_data_state.sync_version + 1, last_import_at=now(), last_sync_at=now(), updated_at=now()`, [userId, data.version])
       await client.query('commit')
-      return { booksImported: books.length, aiUsageImported: usageRecords.length, listsImported: lists.length, relationsImported: relations.length }
+      return {
+        booksImported: books.length,
+        aiUsageImported: usageRecords.length,
+        listsImported: lists.length,
+        relationsImported: relations.length,
+        assistantSessionsImported: assistantSessions.length,
+        assistantMemoriesImported: assistantMemories.length,
+      }
     } catch (error) {
       await client.query('rollback')
       throw error
     } finally {
       client.release()
     }
+  }
+
+  async listAssistantSessions(userId: string): Promise<AssistantSessionRecord[]> {
+    const result = await this.pool.query<{
+      session_id: string
+      title: string
+      book_id: string | null
+      data: unknown
+      created_at: Date | string
+      updated_at: Date | string
+    }>(
+      `select session_id, title, book_id, data, created_at, updated_at
+       from public.user_assistant_sessions where user_id = $1
+       order by updated_at desc`,
+      [userId],
+    )
+    return result.rows.map(row => ({
+      sessionId: row.session_id,
+      title: row.title,
+      bookId: row.book_id,
+      data: row.data,
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    }))
+  }
+
+  async saveAssistantSession(userId: string, session: AssistantSessionRecord): Promise<void> {
+    await this.pool.query(
+      `insert into public.user_assistant_sessions
+         (user_id, session_id, title, book_id, data, created_at, updated_at)
+       values ($1, $2, $3, $4, $5::jsonb, $6, $7)
+       on conflict (user_id, session_id) do update set
+         title = excluded.title, book_id = excluded.book_id, data = excluded.data,
+         updated_at = excluded.updated_at
+       where excluded.updated_at >= public.user_assistant_sessions.updated_at`,
+      [userId, session.sessionId, session.title, session.bookId, JSON.stringify(session.data), session.createdAt, session.updatedAt],
+    )
+  }
+
+  async deleteAssistantSession(userId: string, sessionId: string): Promise<void> {
+    await this.pool.query(
+      'delete from public.user_assistant_sessions where user_id = $1 and session_id = $2',
+      [userId, sessionId],
+    )
+  }
+
+  async clearAssistantSessions(userId: string): Promise<void> {
+    await this.pool.query('delete from public.user_assistant_sessions where user_id = $1', [userId])
+  }
+
+  async listAssistantMemories(userId: string): Promise<AssistantMemoryRecord[]> {
+    const result = await this.pool.query<{
+      memory_id: string
+      content: string
+      category: AssistantMemoryRecord['category']
+      source_session_id: string | null
+      created_at: Date | string
+      updated_at: Date | string
+    }>(
+      `select memory_id, content, category, source_session_id, created_at, updated_at
+       from public.user_assistant_memories where user_id = $1
+       order by updated_at desc`,
+      [userId],
+    )
+    return result.rows.map(row => ({
+      memoryId: row.memory_id,
+      content: row.content,
+      category: row.category,
+      sourceSessionId: row.source_session_id,
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    }))
+  }
+
+  async saveAssistantMemory(userId: string, memory: AssistantMemoryRecord): Promise<void> {
+    const content = memory.content.trim()
+    if (!content || content.length > 500) throw new Error('长期记忆内容格式无效。')
+    if (!['preference', 'learning-style', 'goal', 'workflow'].includes(memory.category)) {
+      throw new Error('长期记忆类别无效。')
+    }
+    await this.pool.query(
+      `insert into public.user_assistant_memories
+         (user_id, memory_id, content, category, source_session_id, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (user_id, memory_id) do update set
+         content=excluded.content, category=excluded.category,
+         source_session_id=excluded.source_session_id, updated_at=excluded.updated_at
+       where excluded.updated_at >= public.user_assistant_memories.updated_at`,
+      [userId, memory.memoryId, content, memory.category, memory.sourceSessionId, memory.createdAt, memory.updatedAt],
+    )
+  }
+
+  async deleteAssistantMemory(userId: string, memoryId: string): Promise<void> {
+    await this.pool.query(
+      'delete from public.user_assistant_memories where user_id = $1 and memory_id = $2',
+      [userId, memoryId],
+    )
+  }
+
+  async clearAssistantMemories(userId: string): Promise<void> {
+    await this.pool.query('delete from public.user_assistant_memories where user_id = $1', [userId])
+  }
+
+  async recordBehaviorEvent(userId: string, eventType: string, payload: unknown, occurredAt?: string): Promise<void> {
+    const consent = await this.one<{ enabled: boolean }>(
+      `select case when data->>'personalizationAnalyticsEnabled' = 'false' then false else true end as enabled
+       from public.user_settings where user_id = $1`, [userId],
+    )
+    if (consent?.enabled === false) return
+    await this.pool.query(
+      `insert into public.user_behavior_events (user_id, event_type, payload, occurred_at)
+       values ($1, $2, $3::jsonb, coalesce($4::timestamptz, now()))`,
+      [userId, eventType.trim().slice(0, 80), JSON.stringify(payload && typeof payload === 'object' ? payload : {}), occurredAt || null],
+    )
+  }
+
+  async getActivityCalendar(userId: string, from: string, to: string): Promise<ActivityDay[]> {
+    // The analytics migration is optional during rollout. A missing events table
+    // should not hide the calendar data available from core account tables.
+    const safeQuery = async <T extends QueryResultRow>(text: string, values: unknown[]): Promise<T[]> => {
+      try {
+        const result = await this.pool.query<T>(text, values)
+        return result.rows
+      } catch (error) {
+        if (error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '42P01') return []
+        throw error
+      }
+    }
+    const values = [userId, from, to]
+    const [bookRows, aiRows, assistantRows, eventRows] = await Promise.all([
+      safeQuery<{ day: string; category: string; count: string }>(
+        `select (updated_at at time zone 'UTC')::date::text as day, 'reading' as category, count(*)::text as count
+         from public.user_books
+         where user_id = $1 and deleted_at is null and updated_at >= $2::date and updated_at < ($3::date + interval '1 day')
+         group by 1`, values),
+      safeQuery<{ day: string; category: string; count: string }>(
+        `select (created_at at time zone 'UTC')::date::text as day, 'ai' as category, count(*)::text as count
+         from public.user_ai_usage
+         where user_id = $1 and created_at >= $2::date and created_at < ($3::date + interval '1 day')
+         group by 1`, values),
+      safeQuery<{ day: string; category: string; count: string }>(
+        `select (updated_at at time zone 'UTC')::date::text as day, 'assistant' as category, count(*)::text as count
+         from public.user_assistant_sessions
+         where user_id = $1 and updated_at >= $2::date and updated_at < ($3::date + interval '1 day')
+         group by 1`, values),
+      safeQuery<{ day: string; category: string; count: string }>(
+        `select (occurred_at at time zone 'UTC')::date::text as day,
+           case when event_type like 'assistant%' then 'assistant'
+                when event_type like 'ai%' then 'ai' else 'activity' end as category,
+           count(*)::text as count
+         from public.user_behavior_events
+         where user_id = $1 and occurred_at >= $2::date and occurred_at < ($3::date + interval '1 day')
+         group by 1, 2`, values),
+    ])
+    const byDate = new Map<string, ActivityDay>()
+    for (const row of [...bookRows, ...aiRows, ...assistantRows, ...eventRows]) {
+      const count = Math.max(0, Number(row.count) || 0)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.day) || count === 0) continue
+      const day = byDate.get(row.day) || { date: row.day, count: 0, categories: {} }
+      day.count += count
+      day.categories[row.category] = (day.categories[row.category] || 0) + count
+      byDate.set(row.day, day)
+    }
+    return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
   }
 }
 

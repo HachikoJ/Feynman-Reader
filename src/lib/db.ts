@@ -38,6 +38,7 @@ const defaultSettings: AppSettings = {
   theme: 'light',
   hideApiKeyAlert: false,
   aiDataConsent: false,
+  personalizationAnalyticsEnabled: true,
   assistantMemoryEnabled: true,
   quotes: [],
   quotesInitialized: false

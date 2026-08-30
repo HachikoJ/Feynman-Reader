@@ -56,7 +56,7 @@ export default function UndoRedoControls({ lang }: Props) {
     try {
       const succeeded = await undoRedoManager.undo()
       if (!succeeded) {
-        showStatus(lang === 'zh' ? '撤销失败，请检查本地存储后重试。' : 'Undo failed. Check local storage and try again.')
+        showStatus(lang === 'zh' ? '撤销未能保存到账号云端，请检查登录和网络后重试。' : 'Undo could not be saved to your account cloud. Check sign-in and network, then try again.')
         return
       }
       setShowHint(true)
@@ -74,7 +74,7 @@ export default function UndoRedoControls({ lang }: Props) {
     try {
       const succeeded = await undoRedoManager.redo()
       if (!succeeded) {
-        showStatus(lang === 'zh' ? '重做失败，请检查本地存储后重试。' : 'Redo failed. Check local storage and try again.')
+        showStatus(lang === 'zh' ? '重做未能保存到账号云端，请检查登录和网络后重试。' : 'Redo could not be saved to your account cloud. Check sign-in and network, then try again.')
         return
       }
       setShowHint(true)
@@ -196,7 +196,7 @@ export function useUndoRedoShortcuts(lang: Language) {
         try {
           if (!await undoRedoManager.undo()) {
             window.dispatchEvent(new CustomEvent('undo-redo-status', {
-              detail: { message: lang === 'zh' ? '撤销失败，请检查本地存储后重试。' : 'Undo failed. Check local storage and try again.' }
+              detail: { message: lang === 'zh' ? '撤销未能保存到账号云端，请检查登录和网络后重试。' : 'Undo could not be saved to your account cloud. Check sign-in and network, then try again.' }
             }))
           }
         } finally {
@@ -211,7 +211,7 @@ export function useUndoRedoShortcuts(lang: Language) {
         try {
           if (!await undoRedoManager.redo()) {
             window.dispatchEvent(new CustomEvent('undo-redo-status', {
-              detail: { message: lang === 'zh' ? '重做失败，请检查本地存储后重试。' : 'Redo failed. Check local storage and try again.' }
+              detail: { message: lang === 'zh' ? '重做未能保存到账号云端，请检查登录和网络后重试。' : 'Redo could not be saved to your account cloud. Check sign-in and network, then try again.' }
             }))
           }
         } finally {

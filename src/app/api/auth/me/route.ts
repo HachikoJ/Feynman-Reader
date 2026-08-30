@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sessionCookieName } from '@/lib/server/auth'
-import { getPersistence } from '@/lib/server/persistence'
+import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 
 export const runtime = 'nodejs'
 
@@ -22,7 +22,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await store.findUserById(session.userId)
     return NextResponse.json({ user: user || { id: session.userId } }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Persistence adapter is not configured.') return NextResponse.json({ user: null }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
+    if (isPersistenceUnavailable(error)) return NextResponse.json({ user: null, error: '账号服务尚未配置数据库。' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
     return NextResponse.json({ user: null }, { status: 401, headers: { 'Cache-Control': 'no-store' } })
   }
 }

@@ -10,6 +10,8 @@ import { tokendanceRecoveryMessage } from '@/lib/tokendance'
 import { secureSystemPrompt, secureUserMessage } from '@/lib/promptSecurity'
 import LoadingQuotes from './LoadingQuotes'
 import AppIcon from './AppIcon'
+import { useAccountAccess } from './AuthGuard'
+import MarkdownRenderer from './MarkdownRenderer'
 
 interface RecommendedBook {
   title: string
@@ -137,8 +139,8 @@ export function getRecommendationErrorMessage(error: unknown, lang: Language): s
 
   if (error instanceof Error && error.message === 'RECOMMENDATION_SAVE_FAILED') {
     return lang === 'zh'
-      ? '推荐已生成，但未能保存到本地。原有推荐已保留，请检查本地存储后重试。'
-      : 'Recommendations were generated but could not be saved locally. Existing recommendations were kept.'
+      ? '推荐已生成，但未能保存到账号云端。原有推荐已保留，请检查登录和网络后重试。'
+      : 'Recommendations were generated but could not be saved to your account cloud. Existing recommendations were kept; check sign-in and network.'
   }
 
   if (error instanceof Error && error.message === AI_REQUEST_CANCELLED) {
@@ -182,6 +184,7 @@ interface Props {
   onLoadingChange: (loading: boolean) => void
   onOpenSettings?: () => void
   needsAiConfiguration?: boolean
+  onQuoteSelected?: (text: string) => Promise<void> | void
 }
 
 export default function BookRecommendations({
@@ -194,8 +197,10 @@ export default function BookRecommendations({
   loadingRecommendations,
   onLoadingChange,
   onOpenSettings,
-  needsAiConfiguration = false
+  needsAiConfiguration = false,
+  onQuoteSelected
 }: Props) {
+  const { isAuthenticated, requestLogin } = useAccountAccess()
   const [recommendations, setRecommendations] = useState<Recommendations | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [addingBookKey, setAddingBookKey] = useState<string | null>(null)
@@ -232,6 +237,10 @@ export default function BookRecommendations({
 
   const generateRecommendations = async () => {
     if (loadingRecommendations) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能生成并保存相关推荐。' : 'Sign in to generate and save recommendations.')
+      return
+    }
     if (!apiKey || needsAiConfiguration) {
       onOpenSettings?.()
       return
@@ -357,6 +366,10 @@ export default function BookRecommendations({
   }
 
   const handleAddToBookshelf = async (recBook: RecommendedBook) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能把推荐书籍保存到云端书架。' : 'Sign in to save recommended books to your cloud bookshelf.')
+      return
+    }
     // 检查是否已存在
     if (isBookInShelf(recBook.title, recBook.author)) {
       return
@@ -377,8 +390,8 @@ export default function BookRecommendations({
       if (addedBookId) await reloadBookFromPersistence(addedBookId).catch(() => undefined)
       logger.error('Adding recommended book failed:', error)
       setErrorMessage(lang === 'zh'
-        ? '加入书架失败，未保存的书籍不会显示为已添加。请检查本地存储后重试。'
-        : 'The book could not be added. Unsaved books will not appear as added; check local storage and try again.')
+        ? '未能保存到账号云端，书籍不会显示为已添加。请检查登录和网络后重试。'
+        : 'The book could not be saved to your account cloud and will not appear as added. Check sign-in and network, then try again.')
     } finally {
       addingBookKeysRef.current.delete(bookKey)
       setAddingBookKey(null)
@@ -485,10 +498,11 @@ export default function BookRecommendations({
                           《{recBook.title}》
                           {recBook.year && <span className="text-sm text-[var(--text-secondary)] ml-2">({recBook.year})</span>}
                         </h5>
-                        <p className="text-sm text-[var(--text-secondary)] mt-1">{recBook.description}</p>
-                        <p className="flex items-start gap-1.5 text-sm text-[var(--accent)] mt-2">
-                          <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5" />{recBook.reason}
-                        </p>
+                        <MarkdownRenderer content={recBook.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                        <div className="mt-2 flex items-start gap-1.5 text-sm text-[var(--accent)]">
+                          <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5 shrink-0" />
+                          <MarkdownRenderer content={recBook.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                        </div>
                       </div>
                       <button
                         onClick={() => handleAddToBookshelf(recBook)}
@@ -543,10 +557,11 @@ export default function BookRecommendations({
                               <p className="text-sm text-[var(--text-secondary)] mt-1">
                                 {recBook.author} {recBook.year && `(${recBook.year})`}
                               </p>
-                              <p className="text-sm text-[var(--text-secondary)] mt-1">{recBook.description}</p>
-                              <p className="flex items-start gap-1.5 text-sm text-[var(--accent)] mt-2">
-                                <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5" />{recBook.reason}
-                              </p>
+                              <MarkdownRenderer content={recBook.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                              <div className="mt-2 flex items-start gap-1.5 text-sm text-[var(--accent)]">
+                                <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5 shrink-0" />
+                                <MarkdownRenderer content={recBook.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                              </div>
                             </div>
                             <button
                               onClick={() => handleAddToBookshelf(recBook)}
@@ -602,12 +617,11 @@ export default function BookRecommendations({
                             <p className="text-sm text-[var(--text-secondary)] mt-1">
                               {path.book.author}
                             </p>
-                            <p className="text-sm text-[var(--text-secondary)] mt-1">
-                              {path.book.description}
-                            </p>
-                            <p className="flex items-start gap-1.5 text-sm text-[var(--accent)] mt-2">
-                              <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5" />{path.book.reason}
-                            </p>
+                            <MarkdownRenderer content={path.book.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                            <div className="mt-2 flex items-start gap-1.5 text-sm text-[var(--accent)]">
+                              <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5 shrink-0" />
+                              <MarkdownRenderer content={path.book.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                            </div>
                           </div>
                           <button
                             onClick={() => handleAddToBookshelf(path.book)}

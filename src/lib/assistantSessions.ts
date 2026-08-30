@@ -63,6 +63,8 @@ export const MAX_ASSISTANT_ATTACHMENT_TOTAL_CHARS = 30000
 const DEFAULT_SESSION_TITLE = '新会话'
 
 let writeQueue: Promise<void> = Promise.resolve()
+let cloudSessionCache: AssistantSession[] | null = null
+let cloudAccountState: 'unknown' | 'authenticated' | 'anonymous' = 'unknown'
 
 function clone<T>(value: T): T {
   return typeof structuredClone === 'function'
@@ -180,19 +182,117 @@ function sortSessions(sessions: AssistantSession[]): AssistantSession[] {
   return sessions.slice().sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-async function readSessions(): Promise<AssistantSession[]> {
+async function readLocalSessions(): Promise<AssistantSession[]> {
   await initDB()
   const record = await indexedDB.get<{ key: string; sessions?: unknown }>('metadata', ASSISTANT_SESSIONS_METADATA_KEY)
   if (!record || !Array.isArray(record.sessions)) return []
   return sortSessions(record.sessions.map(normalizeSession).filter((session): session is AssistantSession => session !== null))
 }
 
-async function writeSessions(sessions: AssistantSession[]): Promise<void> {
+async function writeLocalSessions(sessions: AssistantSession[]): Promise<void> {
   await initDB()
   await indexedDB.put('metadata', {
     key: ASSISTANT_SESSIONS_METADATA_KEY,
     sessions: sortSessions(sessions).map(clone)
   })
+}
+
+async function clearLocalSessions(): Promise<void> {
+  await initDB()
+  await indexedDB.delete('metadata', ASSISTANT_SESSIONS_METADATA_KEY)
+}
+
+function canUseCloudSessions(): boolean {
+  return typeof window !== 'undefined' && process.env.NODE_ENV !== 'test'
+}
+
+async function resolveCloudAccount(): Promise<'authenticated' | 'anonymous'> {
+  if (!canUseCloudSessions()) return 'anonymous'
+  if (cloudAccountState !== 'unknown') return cloudAccountState
+  try {
+    const response = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })
+    if (response.status === 401) {
+      cloudAccountState = 'anonymous'
+      return cloudAccountState
+    }
+    if (response.status === 503) throw new Error('ACCOUNT_PERSISTENCE_UNAVAILABLE')
+    if (!response.ok) throw new Error(`ACCOUNT_AUTH_FAILED:${response.status}`)
+    const payload = await response.json() as { user?: { id?: unknown } | null }
+    cloudAccountState = payload.user && typeof payload.user.id === 'string' ? 'authenticated' : 'anonymous'
+    return cloudAccountState
+  } catch (error) {
+    if (error instanceof Error && (error.message === 'ACCOUNT_PERSISTENCE_UNAVAILABLE' || error.message.startsWith('ACCOUNT_AUTH_FAILED:'))) {
+      throw error
+    }
+    throw new Error('ACCOUNT_AUTH_UNAVAILABLE')
+  }
+}
+
+async function fetchCloudSessions(): Promise<AssistantSession[]> {
+  if (!canUseCloudSessions()) return []
+  const response = await fetch('/api/account/assistant-sessions/', { credentials: 'include', cache: 'no-store' })
+  if (response.status === 401) {
+    cloudAccountState = 'anonymous'
+    cloudSessionCache = null
+    throw new Error('ASSISTANT_CLOUD_UNAUTHENTICATED')
+  }
+  if (response.status === 503) throw new Error('ACCOUNT_PERSISTENCE_UNAVAILABLE')
+  if (!response.ok) throw new Error(`ASSISTANT_CLOUD_READ_FAILED:${response.status}`)
+  const payload = await response.json() as { sessions?: unknown }
+  if (!Array.isArray(payload.sessions)) throw new Error('ASSISTANT_CLOUD_RESPONSE_INVALID')
+  const sessions = sortSessions(payload.sessions.map(item => {
+    if (!item || typeof item !== 'object') return null
+    const row = item as { data?: unknown }
+    return normalizeSession(row.data)
+  }).filter((session): session is AssistantSession => session !== null))
+  cloudSessionCache = sessions
+  return sessions
+}
+
+async function readSessions(): Promise<AssistantSession[]> {
+  const accountState = await resolveCloudAccount()
+  if (accountState === 'authenticated') {
+    if (cloudSessionCache) return clone(cloudSessionCache)
+    return clone(await fetchCloudSessions())
+  }
+  return readLocalSessions()
+}
+
+async function writeSessions(sessions: AssistantSession[]): Promise<void> {
+  const accountState = await resolveCloudAccount()
+  if (accountState === 'authenticated') {
+    cloudSessionCache = sortSessions(sessions).map(clone)
+    return
+  }
+  await writeLocalSessions(sessions)
+}
+
+async function syncCloudSession(session: AssistantSession): Promise<void> {
+  if (await resolveCloudAccount() !== 'authenticated') return
+  try {
+    const response = await fetch('/api/account/assistant-sessions/', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: session.id, title: session.title, bookId: session.bookId || null, data: session, createdAt: session.createdAt, updatedAt: session.updatedAt })
+    })
+    if (response.status === 503) throw new Error('ACCOUNT_PERSISTENCE_UNAVAILABLE')
+    if (!response.ok) throw new Error(`ASSISTANT_CLOUD_WRITE_FAILED:${response.status}`)
+    void fetch('/api/account/analytics/', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventType: 'assistant_session_updated', payload: { sessionId: session.id, hasBook: Boolean(session.bookId), messageCount: session.messages.length } }) }).catch(() => {})
+  } catch (error) {
+    cloudSessionCache = null
+    throw error
+  }
+}
+
+async function deleteCloudSession(sessionId?: string): Promise<void> {
+  if (await resolveCloudAccount() !== 'authenticated') return
+  try {
+    const response = await fetch(`/api/account/assistant-sessions/${sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''}`, { method: 'DELETE', credentials: 'include' })
+    if (response.status === 503) throw new Error('ACCOUNT_PERSISTENCE_UNAVAILABLE')
+    if (!response.ok) throw new Error(`ASSISTANT_CLOUD_DELETE_FAILED:${response.status}`)
+  } catch (error) {
+    cloudSessionCache = null
+    throw error
+  }
 }
 
 function queueWrite(operation: () => Promise<void>): Promise<void> {
@@ -201,7 +301,19 @@ function queueWrite(operation: () => Promise<void>): Promise<void> {
 }
 
 export async function getAssistantSessions(): Promise<AssistantSession[]> {
-  return clone(await readSessions())
+  const accountState = await resolveCloudAccount()
+  if (accountState === 'anonymous') return clone(await readLocalSessions())
+  const cloud = await readSessions()
+  if (cloud.length === 0) {
+    const local = await readLocalSessions()
+    if (local.length > 0) {
+      await Promise.all(local.map(syncCloudSession))
+      cloudSessionCache = sortSessions(local).map(clone)
+      await clearLocalSessions()
+      return clone(local)
+    }
+  }
+  return clone(cloud)
 }
 
 export async function createAssistantSession(input: CreateAssistantSessionInput = {}): Promise<AssistantSession> {
@@ -219,6 +331,7 @@ export async function createAssistantSession(input: CreateAssistantSessionInput 
     const sessions = await readSessions()
     await writeSessions([session, ...sessions])
   })
+  await syncCloudSession(session)
   return clone(session)
 }
 
@@ -249,6 +362,7 @@ export async function updateAssistantSession(
     result = next
     await writeSessions(sessions.map(session => session.id === id ? next : session))
   })
+  await syncCloudSession(result as AssistantSession)
   return clone(result as AssistantSession)
 }
 
@@ -276,6 +390,7 @@ export async function appendAssistantMessage(
     result = { ...existing, messages: [...existing.messages, message], updatedAt: Date.now() }
     await writeSessions(sessions.map(session => session.id === id ? result as AssistantSession : session))
   })
+  await syncCloudSession(result as AssistantSession)
   return clone(result as AssistantSession)
 }
 
@@ -320,6 +435,7 @@ export async function addAssistantAttachment(
     }
     await writeSessions(sessions.map(session => session.id === id ? result as AssistantSession : session))
   })
+  await syncCloudSession(result as AssistantSession)
   return clone(result as AssistantSession)
 }
 
@@ -339,6 +455,7 @@ export async function removeAssistantAttachment(id: string, attachmentId: string
     }
     await writeSessions(sessions.map(session => session.id === id ? result as AssistantSession : session))
   })
+  await syncCloudSession(result as AssistantSession)
   return clone(result as AssistantSession)
 }
 
@@ -358,6 +475,7 @@ export async function truncateAssistantMessages(id: string, messageId: string): 
     }
     await writeSessions(sessions.map(session => session.id === id ? result as AssistantSession : session))
   })
+  await syncCloudSession(result as AssistantSession)
   return clone(result as AssistantSession)
 }
 
@@ -381,6 +499,7 @@ export async function createAssistantBranchSession(id: string, messageId: string
     }
     await writeSessions([result, ...sessions])
   })
+  await syncCloudSession(result as AssistantSession)
   return clone(result as AssistantSession)
 }
 
@@ -389,10 +508,12 @@ export async function deleteAssistantSession(id: string): Promise<void> {
     const sessions = await readSessions()
     await writeSessions(sessions.filter(session => session.id !== id))
   })
+  await deleteCloudSession(id)
 }
 
 export async function clearAssistantSessions(): Promise<void> {
   await queueWrite(() => writeSessions([]))
+  await deleteCloudSession()
 }
 
 /**

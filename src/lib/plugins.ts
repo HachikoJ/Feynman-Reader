@@ -6,6 +6,7 @@
 
 import { logger } from './logger'
 import { addBook, deleteBook, getBook, getBooks, getSettings, saveSettings, updateBook } from './store'
+import { defaultQuotesZh, pickQuoteWithPriority } from './defaultQuotes'
 import { showAppConfirm, showAppPrompt } from './appDialog'
 
 // ============================================================================
@@ -417,14 +418,9 @@ const dailyQuotePlugin: Plugin = {
   },
   hooks: {
     onAppStart: () => {
-      const quotes = [
-        '凡我不能创造的，我就不能理解。 - 费曼',
-        '知道事物的名字和知道事物的区别，就像知道鱼的单词和知道鱼的味道的区别。 - 费曼',
-        '如果你不能简单地解释它，你就没有真正理解它。 - 费曼',
-        '学习是一个发现的过程，而不仅仅是记忆。'
-      ]
-      const quote = quotes[Math.floor(Math.random() * quotes.length)]
-      localStorage.setItem('daily-quote', quote)
+      const configuredQuotes = getSettings().quotes
+      const quote = pickQuoteWithPriority(configuredQuotes.length ? configuredQuotes : defaultQuotesZh)
+      if (quote) localStorage.setItem('daily-quote', `${quote.text} - ${quote.author}`)
     }
   }
 }

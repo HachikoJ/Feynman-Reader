@@ -16,7 +16,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!userId) return NextResponse.json({ error: { message: '未登录。' } }, { status: 401 })
     const store = getPersistence()
     const record = await store.getApiKey(userId, 'tokendance')
-    if (!record) return NextResponse.json({ error: { message: '请先在账号中心配置 TokenDance API Key。' } }, { status: 403 })
+    if (!record) return NextResponse.json({ error: { message: '请先在设置中配置 TokenDance API Key，并确认 AI 数据传输同意。' } }, { status: 403 })
     const payload = await request.json() as Record<string, unknown>
     if (payload.stream === true) return NextResponse.json({ error: { message: '暂不支持流式请求。' } }, { status: 400 })
     const secret = decryptApiKey(record.secret)

@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
-import { COOKIE_TTL_SECONDS, readOAuthState, sessionCookieHeader } from '@/lib/server/auth'
+import { COOKIE_TTL_SECONDS, oauthPkceCookieHeader, readOAuthState, sessionCookieHeader } from '@/lib/server/auth'
 import { getTokendanceCallbackUrl, TOKENDANCE_OAUTH_TOKEN_URL, TOKENDANCE_OAUTH_USERINFO_URL } from '@/lib/server/authConfig'
-import { getPersistence } from '@/lib/server/persistence'
+import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 
 export const runtime = 'nodejs'
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === '23505')
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
   const url = new URL(request.url)
@@ -39,15 +43,28 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (!subject || subject.length > 255) return NextResponse.json({ error: '观猹未返回稳定用户标识。' }, { status: 502 })
     const store = getPersistence()
     const existing = await store.findByTokendanceSubject(subject)
-    const user = existing ? await store.updateUser(existing.id, { tokendanceSubject: subject }) : await store.createUser({ tokendanceSubject: subject })
+    let user = existing ? await store.updateUser(existing.id, { tokendanceSubject: subject }) : null
+    if (!user) {
+      try {
+        user = await store.createUser({ tokendanceSubject: subject })
+      } catch (error) {
+        // Two callbacks can race after a user authorizes in multiple tabs. The
+        // unique subject constraint makes the second request resolve to the
+        // already-created account instead of failing the login.
+        if (!isUniqueViolation(error)) throw error
+        user = await store.findByTokendanceSubject(subject)
+        if (!user) throw error
+      }
+    }
     const session = await store.createSession(user.id, COOKIE_TTL_SECONDS)
     const destination = new URL('/account', new URL(callback).origin)
     const result = NextResponse.redirect(destination)
-    result.headers.append('Set-Cookie', sessionCookieHeader(session.id, new Date(session.expiresAt)))
-    result.headers.append('Set-Cookie', 'feynman_watcha_pkce=; Path=/api/auth/tokendance/callback; HttpOnly; Secure; SameSite=Lax; Max-Age=0')
+    result.headers.set('Cache-Control', 'no-store')
+    result.headers.append('Set-Cookie', sessionCookieHeader(session.id, new Date(session.expiresAt), request))
+    result.headers.append('Set-Cookie', oauthPkceCookieHeader('', 0, request))
     return result
   } catch (error) {
-    if (error instanceof Error && error.message === 'Persistence adapter is not configured.') return NextResponse.json({ error: '账号服务尚未配置数据库。' }, { status: 503 })
+    if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务尚未配置数据库或迁移尚未完成。' }, { status: 503 })
     return NextResponse.json({ error: '账号登录失败。' }, { status: 500 })
   }
 }

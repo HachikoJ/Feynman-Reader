@@ -43,7 +43,12 @@ function encode(value: Buffer): string {
 }
 
 function decode(value: string): Buffer {
-  return Buffer.from(value, 'base64url')
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Encrypted API key payload is malformed.')
+  const decoded = Buffer.from(value, 'base64url')
+  // Reject non-canonical encodings so changing ignored base64url padding bits
+  // cannot bypass the authenticated payload check.
+  if (decoded.toString('base64url') !== value) throw new Error('Encrypted API key payload is malformed.')
+  return decoded
 }
 
 /** Encrypt a provider API key. The plaintext must never be persisted or logged. */

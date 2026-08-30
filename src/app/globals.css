@@ -1367,6 +1367,9 @@ canvas {
 }
 
 .markdown-table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
   width: 100%;
   min-width: 520px;
   border-collapse: separate;

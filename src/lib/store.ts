@@ -161,6 +161,7 @@ export interface AppSettings {
   theme: Theme
   hideApiKeyAlert: boolean
   aiDataConsent?: boolean
+  personalizationAnalyticsEnabled?: boolean
   /** Enables the opt-in assistant memory layer. Only explicit memory requests are stored. */
   assistantMemoryEnabled?: boolean
   quotes: CustomQuote[]  // 改名，包含预设和自定义
@@ -174,6 +175,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   hideApiKeyAlert: false,
   aiDataConsent: false,
+  personalizationAnalyticsEnabled: true,
   assistantMemoryEnabled: true,
   quotes: [],
   quotesInitialized: false
@@ -336,9 +338,10 @@ export async function initializeStore(): Promise<void> {
     // intentionally skipped here; it is only read by the one-time migration flow.
     if (process.env.NODE_ENV !== 'test') {
       const accountResponse = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })
-      if (accountResponse.status === 401 || accountResponse.status === 403 || accountResponse.status === 503) {
+      if (accountResponse.status === 401 || accountResponse.status === 403) {
         cloudMode = false
       } else {
+        if (accountResponse.status === 503) throw new Error('云端数据库暂不可用，请稍后重试。')
         if (!accountResponse.ok) throw new Error('登录状态已失效，请重新登录。')
         const account = await accountResponse.json() as { user?: unknown }
         if (!account.user) {
@@ -501,6 +504,20 @@ export function saveSetting<K extends keyof AppSettings>(key: K, value: AppSetti
   const nextSettings = { ...settingsCache, [key]: value }
   saveSettings(nextSettings)
   return nextSettings
+}
+
+export function addQuoteFromSelection(text: string, author = '用户摘录'): AppSettings {
+  const normalizedText = text.replace(/\s+/g, ' ').trim()
+  const normalizedAuthor = author.trim() || '用户摘录'
+  if (!normalizedText) return settingsCache
+  const exists = settingsCache.quotes.some(quote => (
+    quote.text.trim() === normalizedText && quote.author.trim() === normalizedAuthor
+  ))
+  if (exists) return settingsCache
+  return saveSetting('quotes', [
+    { text: normalizedText, author: normalizedAuthor, isPreset: false },
+    ...settingsCache.quotes,
+  ])
 }
 
 export function getBooks(): Book[] {
@@ -1126,6 +1143,8 @@ export interface ExportData {
   aiUsageRecords: AIUsageRecord[]
   bookLists: BookList[]
   bookRelations: BookRelation[]
+  assistantSessions?: unknown[]
+  assistantMemories?: unknown[]
 }
 
 function createExportData(): ExportData {
@@ -1311,7 +1330,14 @@ export async function downloadDataBackup(options: BackupDownloadOptions = {}): P
     throw new Error('备份分卷参数无效')
   }
 
-  const data = createExportData()
+  let data = createExportData()
+  if (cloudMode) {
+    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    if (!response.ok) throw new Error('无法读取云端数据，导出已取消。')
+    const normalized = normalizeImportData(await response.json())
+    if (!normalized.valid) throw new Error(normalized.error)
+    data = normalized.data
+  }
   const encoder = new TextEncoder()
   const payloadBytes = getSerializedBackupSize(data, encoder)
   const date = new Date(data.exportDate).toISOString().split('T')[0]

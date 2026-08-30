@@ -10,6 +10,7 @@ jest.mock('qrcode', () => ({
 }))
 
 jest.mock('@/lib/store', () => ({
+  SERVER_MANAGED_API_KEY: 'server-managed',
   getBooks: jest.fn(() => []),
   getAIUsageRecords: jest.fn(() => []),
   getAIUsageSummary: jest.fn(() => ({
@@ -60,15 +61,43 @@ jest.mock('@/lib/tokendance', () => ({
   getTokendancePaymentSession: jest.fn(() => new Promise(() => {}))
 }))
 
+jest.mock('@/lib/accountClient', () => ({
+  saveApiKey: jest.fn(() => Promise.resolve()),
+  deleteApiKey: jest.fn(() => Promise.resolve())
+}))
+
+const mockAccountAccess: {
+  user: { id: string } | null
+  configured: boolean
+  checking: boolean
+  isAuthenticated: boolean
+  hasSignedInAccount: boolean
+  requestLogin: jest.Mock
+} = {
+  user: { id: 'user-1' },
+  configured: true,
+  checking: false,
+  isAuthenticated: true,
+  hasSignedInAccount: true,
+  requestLogin: jest.fn()
+}
+
+jest.mock('../AuthGuard', () => ({
+  useAccountAccess: () => mockAccountAccess
+}))
+
 import Settings from '../Settings'
 import AppDialogHost from '../AppDialogHost'
 import * as store from '@/lib/store'
 import * as tokendance from '@/lib/tokendance'
+import * as accountClient from '@/lib/accountClient'
 import type { AppSettings } from '@/lib/store'
 
 const getSettingsMock = store.getSettings as jest.MockedFunction<typeof store.getSettings>
 const saveSettingsMock = store.saveSettings as jest.MockedFunction<typeof store.saveSettings>
 const createTokendancePaymentSessionMock = tokendance.createTokendancePaymentSession as jest.MockedFunction<typeof tokendance.createTokendancePaymentSession>
+const saveAccountApiKeyMock = accountClient.saveApiKey as jest.MockedFunction<typeof accountClient.saveApiKey>
+const deleteAccountApiKeyMock = accountClient.deleteApiKey as jest.MockedFunction<typeof accountClient.deleteApiKey>
 const savedApiKey = ['test', 'api', 'key', 'for', 'settings'].join('-')
 
 const savedSettings: AppSettings = {
@@ -84,6 +113,9 @@ const savedSettings: AppSettings = {
 describe('Settings AI privacy controls', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockAccountAccess.user = { id: 'user-1' }
+    mockAccountAccess.isAuthenticated = true
+    mockAccountAccess.hasSignedInAccount = true
     HTMLElement.prototype.scrollIntoView = jest.fn()
     getSettingsMock.mockReturnValue({ ...savedSettings })
     saveSettingsMock.mockImplementation(nextSettings => {
@@ -99,6 +131,34 @@ describe('Settings AI privacy controls', () => {
       <AppDialogHost lang="zh" />
     </>
   )
+
+  it('requires Watcha sign-in before showing API configuration controls', async () => {
+    mockAccountAccess.user = null
+    mockAccountAccess.isAuthenticated = false
+    mockAccountAccess.hasSignedInAccount = false
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+
+    renderSettings()
+
+    expect(await screen.findByText('先使用观猹登录，再配置 TokenDance')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('TokenDance API Key')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '使用观猹登录' }))
+    expect(mockAccountAccess.requestLogin).toHaveBeenCalledWith(expect.stringContaining('请先使用观猹登录'))
+    expect(saveAccountApiKeyMock).not.toHaveBeenCalled()
+  })
+
+  it('saves a new TokenDance key to the signed-in account vault', async () => {
+    const onSettingsChange = jest.fn()
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: true, aiProvider: 'tokendance' })
+    renderSettings(onSettingsChange)
+
+    fireEvent.change(await screen.findByPlaceholderText('TokenDance API Key'), { target: { value: savedApiKey } })
+    fireEvent.click(screen.getByRole('button', { name: '验证并启用 AI' }))
+
+    await waitFor(() => expect(saveAccountApiKeyMock).toHaveBeenCalledWith(savedApiKey))
+    expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({ apiKey: '', aiDataConsent: true }))
+    expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'server-managed', aiDataConsent: true }))
+  })
 
   it('persists consent withdrawal immediately', async () => {
     const onSettingsChange = jest.fn()
@@ -147,10 +207,11 @@ describe('Settings AI privacy controls', () => {
 
   it('deletes the saved API key and withdraws consent together', async () => {
     const onSettingsChange = jest.fn()
+    getSettingsMock.mockReturnValue({ ...savedSettings, aiProvider: 'tokendance' })
     renderSettings(onSettingsChange)
     fireEvent.click(screen.getByRole('button', { name: '管理连接' }))
 
-    fireEvent.change(screen.getByPlaceholderText('sk-...'), { target: { value: '' } })
+    fireEvent.change(screen.getByPlaceholderText('TokenDance API Key'), { target: { value: '' } })
     expect(screen.getByRole('button', { name: '删除 API Key' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '删除 API Key' }))
 
@@ -159,6 +220,7 @@ describe('Settings AI privacy controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
 
     await waitFor(() => {
+      expect(deleteAccountApiKeyMock).toHaveBeenCalledTimes(1)
       expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({
         apiKey: '',
         aiDataConsent: false,
@@ -309,25 +371,20 @@ describe('Settings AI privacy controls', () => {
     expect(screen.getByText('微信：hostrow')).toBeInTheDocument()
   })
 
-  it('shows backup plaintext risk and multipart import guidance in data management', () => {
+  it('moves data management to the account center', () => {
     renderSettings()
 
-    fireEvent.click(screen.getByRole('button', { name: /数据管理/ }))
-
-    expect(screen.getByText('备份文件未加密：')).toBeInTheDocument()
-    expect(document.body.textContent).toContain('数据较大时会自动分卷，导入时需一次选择全部分卷')
-    expect(document.body.textContent).toContain('只有确认文件保存成功后才会记录备份时间')
-
-    fireEvent.click(screen.getByRole('button', { name: '导入数据' }))
-    const fileInput = document.querySelector('input[type="file"]')
-    expect(fileInput).toHaveAttribute('multiple')
-    expect(screen.getByRole('button', { name: '选择 JSON 或全部分卷文件' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '账号中心 · 云端数据与历史迁移' })).toHaveAttribute('href', '/account?tab=data')
+    expect(screen.queryByRole('dialog', { name: '数据管理' })).not.toBeInTheDocument()
   })
 })
 
 describe('Settings quote manager', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockAccountAccess.user = { id: 'user-1' }
+    mockAccountAccess.isAuthenticated = true
+    mockAccountAccess.hasSignedInAccount = true
     HTMLElement.prototype.scrollIntoView = jest.fn()
     getSettingsMock.mockReturnValue({ ...savedSettings })
     saveSettingsMock.mockImplementation(nextSettings => {
@@ -337,7 +394,7 @@ describe('Settings quote manager', () => {
       .mockResolvedValue({ ...savedSettings })
   })
 
-  it('adds a quote at the top and shows a save reminder', async () => {
+  it('moves quote management to the account center', async () => {
     render(
       <>
         <Settings onSettingsChange={jest.fn()} />
@@ -345,14 +402,7 @@ describe('Settings quote manager', () => {
       </>
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: /金句管理/ }))
-    fireEvent.change(screen.getByPlaceholderText('输入金句内容...'), { target: { value: '置顶金句' } })
-    fireEvent.change(screen.getByPlaceholderText('作者（选填）'), { target: { value: '测试作者' } })
-    fireEvent.click(screen.getByRole('button', { name: '添加' }))
-
-    expect(screen.getByRole('status')).toHaveTextContent('金句已添加到顶部')
-    const quoteItems = [...screen.getByRole('dialog', { name: '金句管理' }).querySelectorAll('p')]
-      .filter(item => item.textContent?.includes('金句'))
-    expect(quoteItems[0]).toHaveTextContent('置顶金句')
+    expect(await screen.findByRole('link', { name: '账号中心 · 云端数据与历史迁移' })).toHaveAttribute('href', '/account?tab=data')
+    expect(screen.queryByRole('dialog', { name: '金句管理' })).not.toBeInTheDocument()
   })
 })

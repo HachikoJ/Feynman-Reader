@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { AlertTriangle, CircleHelp, ExternalLink, RefreshCw, UserRound } from 'lucide-react'
+import { AlertTriangle, CircleHelp, Cloud, ExternalLink, Menu, RefreshCw, UserRound, X } from 'lucide-react'
 import { logger } from '@/lib/logger'
-import { showAppAlert } from '@/lib/appDialog'
 import {
   AppSettings,
   Book,
@@ -18,7 +17,7 @@ import Settings from '@/components/Settings'
 import Bookshelf from '@/components/Bookshelf'
 import ReadingView from '@/components/ReadingView'
 import BackToTop from '@/components/BackToTop'
-import AuthGuard from '@/components/AuthGuard'
+import AuthGuard, { useAccountAccess } from '@/components/AuthGuard'
 import Onboarding, { ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION } from '@/components/Onboarding'
 import TokenDanceWelcome, {
   TOKENDANCE_WELCOME_KEY,
@@ -60,6 +59,63 @@ type View = 'bookshelf' | 'reading' | 'settings'
 
 const TOKENDANCE_LOGO_URL = 'https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg'
 const TOKENDANCE_PRICING_URL = 'https://tokendance.space/models/deepseek-v4-flash-0731'
+const ACCOUNT_CLOUD_NOTICE_KEY = 'feynman-account-cloud-notice-v1'
+
+function AccountEntry({ lang }: { lang: AppSettings['language'] }) {
+  const { user, checking, isAuthenticated } = useAccountAccess()
+  const signedIn = Boolean(user) || isAuthenticated
+
+  return (
+    <a
+      href={signedIn ? '/account' : '/api/auth/tokendance/start'}
+      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-2.5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15 sm:px-3"
+      aria-label={signedIn ? (lang === 'zh' ? '打开账号中心' : 'Open Account Center') : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
+      title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
+      aria-disabled={checking}
+    >
+      <UserRound size={16} aria-hidden="true" />
+      <span className="hidden sm:inline">
+        {checking ? (lang === 'zh' ? '读取账号' : 'Checking') : signedIn ? (lang === 'zh' ? '账号中心' : 'Account') : (lang === 'zh' ? '观猹登录' : 'Watcha sign-in')}
+      </span>
+    </a>
+  )
+}
+
+function AccountCloudNotice({ lang, hidden }: { lang: AppSettings['language']; hidden: boolean }) {
+  const { checking, isAuthenticated } = useAccountAccess()
+  const [dismissed, setDismissed] = useState(true)
+
+  useEffect(() => {
+    setDismissed(localStorage.getItem(ACCOUNT_CLOUD_NOTICE_KEY) === 'dismissed')
+  }, [])
+
+  if (hidden || checking || isAuthenticated || dismissed) return null
+
+  const dismiss = () => {
+    localStorage.setItem(ACCOUNT_CLOUD_NOTICE_KEY, 'dismissed')
+    setDismissed(true)
+  }
+
+  return (
+    <div role="status" className="border-b border-[var(--accent)]/20 bg-[var(--accent)]/8 px-3 py-2.5 sm:px-4">
+      <div className="mx-auto flex max-w-6xl items-start gap-2.5 text-sm">
+        <Cloud size={17} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+        <p className="min-w-0 flex-1 leading-5 text-[var(--text-secondary)]">
+          {lang === 'zh'
+            ? '当前可浏览系统示例。添加书籍、保存学习记录或使用 AI 前，请先使用观猹登录；登录后数据会保存到你的账号云端。'
+            : 'You can browse the system sample now. Sign in with Watcha before adding books, saving learning records, or using AI; signed-in data is saved to your account cloud.'}
+        </p>
+        <a href="/api/auth/tokendance/start" className="shrink-0 font-medium text-[var(--accent)] hover:underline">
+          {lang === 'zh' ? '登录' : 'Sign in'}
+        </a>
+        <button type="button" onClick={dismiss} className="icon-button h-8 w-8 shrink-0" aria-label={lang === 'zh' ? '关闭通知' : 'Dismiss notice'} title={lang === 'zh' ? '关闭通知' : 'Dismiss'}>
+          <X size={15} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function GitHubMark() {
   return (
     <svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor" aria-hidden="true">
@@ -91,6 +147,7 @@ export default function Home() {
   const [backupDue, setBackupDue] = useState(false)
   const [openDataManagement, setOpenDataManagement] = useState(false)
   const [focusApiConfigurationRequest, setFocusApiConfigurationRequest] = useState(0)
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
 
   // P1 新增：启用撤销/重做快捷键
   useUndoRedoShortcuts(settings.language)
@@ -130,42 +187,43 @@ export default function Home() {
       const userHasHistory = hasUserHistory(books)
 
       const completedOnboardingVersion = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
-      if (shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION, isTokenDanceCallback)) {
-        setShowOnboarding(true)
-      }
+      const showOnboardingCandidate = shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION, isTokenDanceCallback)
 
       const completedTokenDanceWelcomeVersion = localStorage.getItem(TOKENDANCE_WELCOME_KEY)
-      if (shouldShowTokenDanceWelcome(
+      const showTokenDanceWelcomeCandidate = shouldShowTokenDanceWelcome(
         completedTokenDanceWelcomeVersion,
         TOKENDANCE_WELCOME_VERSION,
         isTokenDanceCallback,
         isAIConfigurationComplete(saved),
         userHasHistory
-      )) {
-        setShowTokenDanceWelcome(true)
-      }
+      )
 
       const completedMigrationNoticeVersion = localStorage.getItem(TOKENDANCE_MIGRATION_NOTICE_KEY)
-      if (shouldShowTokenDanceMigration(
+      const showTokenDanceMigrationCandidate = shouldShowTokenDanceMigration(
         completedMigrationNoticeVersion,
         TOKENDANCE_MIGRATION_NOTICE_VERSION,
         isTokenDanceCallback,
         userHasHistory
-      )) {
-        setShowTokenDanceMigration(true)
-      }
+      )
 
       const acknowledged = hasAcknowledgedCurrentDataRisk(localStorage.getItem(DATA_RISK_ACKNOWLEDGED_KEY))
       const lastBackupValue = localStorage.getItem(LAST_BACKUP_AT_KEY)
       const lastBackupAt = lastBackupValue ? Number(lastBackupValue) : null
       const learningDataCount = books.filter(hasBackupRelevantLearningData).length
       const needsBackup = isBackupReminderDue({ bookCount: learningDataCount, lastBackupAt })
-      setBackupDue(needsBackup)
-      setShowDataLossWarning(shouldShowBackupWarning({
+      const showDataLossWarningCandidate = shouldShowBackupWarning({
         acknowledged,
         bookCount: learningDataCount,
         lastBackupAt
-      }))
+      })
+      setBackupDue(needsBackup)
+
+      // Only one blocking startup message is shown per visit. Lower-priority
+      // guidance remains available from the header and can appear next visit.
+      if (showTokenDanceMigrationCandidate) setShowTokenDanceMigration(true)
+      else if (showDataLossWarningCandidate) setShowDataLossWarning(true)
+      else if (showOnboardingCandidate) setShowOnboarding(true)
+      else if (showTokenDanceWelcomeCandidate) setShowTokenDanceWelcome(true)
 
       setMounted(true)
     }
@@ -203,18 +261,9 @@ export default function Home() {
     setShowOnboarding(true)
   }
 
-  const handleLoginClick = () => {
-    void showAppAlert({
-      title: lang === 'zh' ? '观猹登录即将上线' : 'Login is coming soon',
-      message: lang === 'zh'
-        ? '观猹登录即将上线，敬请期待～'
-        : 'Login is still being completed and will open soon. You can use the local bookshelf and learning features now.',
-      tone: 'info'
-    })
-  }
-
   const handleOnboardingComplete = () => {
     setShowOnboarding(false)
+    localStorage.setItem(TOKENDANCE_WELCOME_KEY, TOKENDANCE_WELCOME_VERSION)
     const persistedSettings = getSettings()
     setSettings(persistedSettings)
   }
@@ -225,6 +274,7 @@ export default function Home() {
 
   const handleTokenDanceMigrationClose = () => {
     setShowTokenDanceMigration(false)
+    localStorage.setItem(TOKENDANCE_WELCOME_KEY, TOKENDANCE_WELCOME_VERSION)
   }
 
   const handleOpenTokenDanceMigration = () => {
@@ -291,9 +341,9 @@ export default function Home() {
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4">
         <div role="alert" className="card max-w-lg p-8 text-center">
           <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-amber-500" aria-hidden="true" />
-          <h1 className="mb-3 text-xl font-bold">本地数据暂时无法读取</h1>
+          <h1 className="mb-3 text-xl font-bold">学习数据暂时无法读取</h1>
           <p className="mb-6 text-sm leading-6 text-[var(--text-secondary)]">
-            为避免把空数据误当成真实书架，应用已暂停加载。请关闭其他同站点页面后重试；不要清除浏览器数据。
+            为避免把空数据误当成真实书架，应用已暂停加载。请检查网络和登录状态后重试；如有尚未迁移的本机历史数据，请不要清除浏览器网站数据。
           </p>
           <button type="button" onClick={() => window.location.reload()} className="btn-primary inline-flex items-center gap-2">
             <RefreshCw size={18} aria-hidden="true" />
@@ -310,14 +360,14 @@ export default function Home() {
         <div className="min-h-screen">
           <AppDialogHost lang={lang} />
           <AITaskStatus lang={lang} />
-          <AssistantWorkspace lang={lang} settings={settings} books={getBooks()} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} />
+          <AssistantWorkspace lang={lang} settings={settings} books={getBooks()} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} />
           {storageWriteError && (
             <div role="alert" className="sticky top-0 z-50 border-b border-red-500/50 bg-red-950 px-4 py-3 text-sm text-red-100">
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
                 <span>
                   {lang === 'zh'
-                    ? '数据保存失败，当前页面中的最新修改可能在刷新后丢失。请勿刷新，并立即导出数据备份。'
-                    : 'Data saving failed. Recent changes may be lost after refresh. Do not refresh; export a backup now.'}
+                    ? '最新修改尚未保存到账号云端，刷新后可能丢失。请勿刷新，并前往账号中心检查登录、云端同步或导出备份。'
+                    : 'Recent changes were not saved to your account cloud and may be lost after refresh. Do not refresh; check sign-in, cloud sync, or export a backup from Account Center.'}
                 </span>
                 <button
                   type="button"
@@ -328,7 +378,7 @@ export default function Home() {
                     setView('settings')
                   }}
                 >
-                  {lang === 'zh' ? '前往备份' : 'Open Backup'}
+                  {lang === 'zh' ? '前往账号中心' : 'Open Account Center'}
                 </button>
               </div>
             </div>
@@ -361,70 +411,60 @@ export default function Home() {
                 <span className="hidden text-xl font-bold tracking-tight text-[var(--accent)] sm:inline">{t(lang, 'app.title')}</span>
               </button>
 
-              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-                <a
-                  href={APP_ROUTES.website}
-                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] sm:px-3"
-                  aria-label={lang === 'zh' ? '访问官网' : 'Open the website'}
-                  title={lang === 'zh' ? '访问官网' : 'Website'}
-                >
-                  <ExternalLink size={15} aria-hidden="true" />
-                  {lang === 'zh' ? '官网' : 'Website'}
-                </a>
+              <div className="relative flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <div className="flex items-center gap-0.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/45 p-0.5" aria-label={lang === 'zh' ? '主要导航' : 'Primary navigation'}>
                 <button
                   type="button"
-                  onClick={handleLoginClick}
-                  className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] px-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] sm:px-3"
-                  aria-label={lang === 'zh' ? '登录功能近期开放' : 'Login coming soon'}
-                  title={lang === 'zh' ? '登录功能近期开放' : 'Login coming soon'}
-                >
-                  <UserRound size={15} aria-hidden="true" />
-                  {lang === 'zh' ? '登录（近期开放）' : 'Login (coming soon)'}
-                </button>
-                <button
                   onClick={() => {
                     setView('bookshelf')
                     setSelectedBook(null)
                     setBookshelfKey(prev => prev + 1) // 强制刷新书架
                   }}
-                  className={`nav-item px-2 sm:px-3 ${view === 'bookshelf' ? 'active' : ''}`}
+                  className={`nav-item min-h-10 px-2 sm:px-3 ${view === 'bookshelf' ? 'active' : ''}`}
+                  aria-label={lang === 'zh' ? '打开书架' : 'Open bookshelf'}
                 >
                   <AppIcon name="library" tone={view === 'bookshelf' ? 'inherit' : 'blue'} size={18} />
-                  {t(lang, 'nav.bookshelf')}
-                </button>
-                <button
-                  onClick={() => setView('settings')}
-                  className={`nav-item px-2 sm:px-3 ${view === 'settings' ? 'active' : ''}`}
-                >
-                  <AppIcon name="settings" tone={view === 'settings' ? 'inherit' : 'amber'} size={18} />
-                  {t(lang, 'nav.settings')}
+                  <span className="hidden sm:inline">{t(lang, 'nav.bookshelf')}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={handleOpenOnboarding}
-                  className="hidden h-11 w-11 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border border-[var(--accent)]/35 bg-[var(--accent)]/10 text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15 sm:flex lg:w-auto lg:px-3"
-                  aria-label={lang === 'zh' ? '打开使用引导' : 'Open user guide'}
-                  title={lang === 'zh' ? '使用引导' : 'User guide'}
+                  onClick={() => setView('settings')}
+                  className={`nav-item min-h-10 px-2 sm:px-3 ${view === 'settings' ? 'active' : ''}`}
+                  aria-label={lang === 'zh' ? '打开设置' : 'Open settings'}
                 >
-                  <CircleHelp size={20} aria-hidden="true" />
-                  <span className="hidden text-sm font-medium lg:inline">
-                    {lang === 'zh' ? '使用引导' : 'Guide'}
-                  </span>
+                  <AppIcon name="settings" tone={view === 'settings' ? 'inherit' : 'amber'} size={18} />
+                  <span className="hidden sm:inline">{t(lang, 'nav.settings')}</span>
                 </button>
+                </div>
+                <AccountEntry lang={lang} />
+                <div className="hidden items-center gap-0.5 border-l border-[var(--border)] pl-1 sm:flex">
+                  <a href={APP_ROUTES.website} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '访问官网' : 'Open the website'} title={lang === 'zh' ? '访问官网' : 'Website'}><ExternalLink size={17} aria-hidden="true" /></a>
+                  <button type="button" onClick={handleOpenOnboarding} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '打开使用引导' : 'Open user guide'} title={lang === 'zh' ? '使用引导' : 'User guide'}><CircleHelp size={18} aria-hidden="true" /></button>
                 <a
                   href="https://github.com/HachikoJ/Feynman-Reader"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[var(--border)] text-[var(--text-primary)] transition-colors hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] sm:flex"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
                   aria-label={lang === 'zh' ? '访问 GitHub 开源项目' : 'Open the GitHub repository'}
                   title={lang === 'zh' ? 'GitHub 开源项目' : 'GitHub repository'}
                 >
                   <GitHubMark />
                 </a>
+                </div>
+                <div className="sm:hidden">
+                  <button type="button" onClick={() => setShowHeaderMenu(open => !open)} className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] border border-[var(--border)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '打开更多入口' : 'Open more options'} aria-expanded={showHeaderMenu} title={lang === 'zh' ? '更多' : 'More'}><Menu size={18} aria-hidden="true" /></button>
+                  {showHeaderMenu && <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-glass-strong)] p-1.5 shadow-[var(--brand-shadow)]">
+                    <a href={APP_ROUTES.website} onClick={() => setShowHeaderMenu(false)} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"><ExternalLink size={16} aria-hidden="true" />{lang === 'zh' ? '访问官网' : 'Website'}</a>
+                    <button type="button" onClick={() => { setShowHeaderMenu(false); handleOpenOnboarding() }} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"><CircleHelp size={16} aria-hidden="true" />{lang === 'zh' ? '使用引导' : 'Guide'}</button>
+                    <a href="https://github.com/HachikoJ/Feynman-Reader" target="_blank" rel="noopener noreferrer" onClick={() => setShowHeaderMenu(false)} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"><GitHubMark />GitHub</a>
+                  </div>}
+                </div>
               </div>
             </div>
           </div>
         </nav>
+
+        <AccountCloudNotice lang={lang} hidden={activeStartupPrompt !== null} />
 
         {/* Main Content */}
         <main className="max-w-6xl mx-auto min-w-0 px-4 py-6 sm:py-8">
@@ -444,6 +484,7 @@ export default function Home() {
                 setBookshelfKey(prev => prev + 1) // 强制刷新书架以显示最新数据
               }}
               onOpenSettings={handleOpenApiSettings}
+              onQuoteAdded={handleSettingsChange}
             />
           )}
 
@@ -479,8 +520,8 @@ export default function Home() {
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
                     {lang === 'zh'
-                      ? <>TokenDance / TokenPay 提供 OAuth API Key 授权、智能路由、余额查询与充值服务。<strong className="brand-emphasis-coral">DeepSeek V4 Flash 峰时火山方舟端口限时优惠最高约省 20%。</strong></>
-                      : <>TokenDance / TokenPay provides OAuth API key authorization, smart routing, balance checks, and top-ups. <strong className="brand-emphasis-coral">DeepSeek V4 Flash offers limited-time savings of up to about 20% on the Volcengine Ark route at peak hours.</strong></>}
+                      ? <>TokenDance / TokenPay 提供 AI Key 快速授权、智能路由、余额查询与充值服务。<strong className="brand-emphasis-coral">DeepSeek V4 Flash 峰时火山方舟端口限时优惠最高约省 20%。</strong></>
+                      : <>TokenDance / TokenPay provides fast AI key authorization, smart routing, balance checks, and top-ups. <strong className="brand-emphasis-coral">DeepSeek V4 Flash offers limited-time savings of up to about 20% on the Volcengine Ark route at peak hours.</strong></>}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                     {lang === 'zh'

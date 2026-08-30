@@ -2,6 +2,7 @@
 
 import { BadgePercent, CheckCircle2, Database, ExternalLink, X } from 'lucide-react'
 import { Language } from '@/lib/i18n'
+import { useAccountAccess } from './AuthGuard'
 
 interface Props {
   lang: Language
@@ -10,15 +11,27 @@ interface Props {
 }
 
 export const TOKENDANCE_MIGRATION_NOTICE_KEY = 'feynman-tokendance-migration-notice'
-export const TOKENDANCE_MIGRATION_NOTICE_VERSION = '1'
+export const TOKENDANCE_MIGRATION_NOTICE_VERSION = '2'
 
 const pricingUrl = 'https://tokendance.space/models/deepseek-v4-flash-0731'
 
 export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSettings }: Props) {
+  const { hasSignedInAccount, requestLogin } = useAccountAccess()
   const isZh = lang === 'zh'
   const handleClose = () => {
     localStorage.setItem(TOKENDANCE_MIGRATION_NOTICE_KEY, TOKENDANCE_MIGRATION_NOTICE_VERSION)
     onClose()
+  }
+  const handleConfigureTokenDance = () => {
+    if (!hasSignedInAccount) {
+      onClose()
+      requestLogin(isZh
+        ? '请先使用观猹登录。登录成功后，再为当前账号配置 TokenDance API Key。'
+        : 'Sign in with Watcha first. After sign-in, configure a TokenDance API key for the current account.')
+      return
+    }
+    handleClose()
+    onOpenSettings?.()
   }
 
   return (
@@ -32,10 +45,10 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
         <div className="brand-dialog-header flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-primary)]">
-              {isZh ? '版本更新通知' : 'Version update notice'}
+              {isZh ? '老用户升级通知' : 'Returning user update'}
             </p>
             <h2 id="tokendance-migration-title" className="mt-1 text-xl font-bold">
-              {isZh ? 'AI 接入渠道即将调整' : 'AI provider changes ahead'}
+              {isZh ? '账号与云端保存已升级' : 'Accounts and cloud storage have been upgraded'}
             </h2>
           </div>
           <button
@@ -53,18 +66,18 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
           <div className="space-y-4">
           <p>
             {isZh
-              ? '感谢你一直使用费曼读书助手。本版本新增并优先推荐 TokenDance / TokenPay，支持 OAuth 授权、余额查询和充值。'
-              : 'Thank you for using Feynman Reader. This release adds and recommends TokenDance / TokenPay for OAuth authorization, balance checks, and top-ups.'}
+              ? '感谢你一直使用费曼读书助手。现在请使用观猹登录确认账号身份；登录后的书籍、学习记录、金句、助手会话和长期记忆会保存到账号云端。'
+              : 'Thank you for using Feynman Reader. Sign in with Watcha to identify your account. Books, learning records, quotes, assistant sessions, and long-term memories are then saved to your account cloud.'}
           </p>
 
-          <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-amber-800 dark:text-amber-200">
+          <div className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/8 p-3">
             <p className="font-semibold">
-              {isZh ? 'DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线' : 'The direct DeepSeek configuration channel retires on October 1, 2026'}
+              {isZh ? '检测到本机旧数据时，请在 3 天内完成迁移' : 'Migrate detected local history within 3 days'}
             </p>
             <p className="mt-1 text-xs leading-5">
               {isZh
-                ? '下线后，已配置的官方 Key 也不再支持调用。请在到期前保存相关配置，并改用 TokenDance API Key。'
-                : 'After that date, existing direct keys will no longer be supported. Save any needed configuration and switch to a TokenDance API key before the deadline.'}
+                ? '登录后，账号中心会显示历史迁移入口。迁移会合并书籍、笔记、实践、问答、金句、助手会话和长期记忆；同一记录冲突时以更新时间较新的内容为准。系统示例书不会上传。'
+                : 'After sign-in, Account Center shows the legacy migration entry. It merges books, notes, practice, Q&A, quotes, assistant sessions, and long-term memories. Newer records win conflicts, and the system sample is not uploaded.'}
             </p>
           </div>
 
@@ -72,13 +85,13 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
             <div className="flex items-start gap-2.5">
               <Database size={18} className="mt-1 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />
               <p className="text-xs leading-5">
-                {isZh ? '历史数据不会因本次更新被删除或覆盖。书籍、笔记、实践和问答记录仍保存在当前浏览器。' : 'This update does not delete or overwrite history. Books, notes, practice, and Q&A records remain in this browser.'}
+                {isZh ? '只有服务端确认迁移写入成功后，浏览器中的旧用户数据才会清理，并保留已迁移标记。' : 'Legacy browser data is cleared only after the server confirms a successful migration, and a migration marker is retained.'}
               </p>
             </div>
             <div className="flex items-start gap-2.5">
               <CheckCircle2 size={18} className="mt-1 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />
               <p className="text-xs leading-5">
-                {isZh ? '当前版本不改变 IndexedDB 数据结构；默认示例只在空书架时创建，不会替换你的书籍。' : 'The IndexedDB schema is unchanged. The bundled example is created only for an empty shelf and does not replace your books.'}
+                {isZh ? '选择“不再提醒”会永久关闭自动提醒，但保留本机数据；账号中心仍提供一个小型历史迁移入口。' : 'Choosing “Do not remind me again” permanently hides the automatic notice but keeps local data; a small migration entry remains in Account Center.'}
               </p>
             </div>
           </div>
@@ -87,12 +100,12 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
             <BadgePercent size={22} className="mt-0.5 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />
             <div>
               <p className="brand-emphasis-coral text-base">
-                {isZh ? 'TokenDance 限时优惠，峰时最高约省 20%' : 'TokenDance limited-time savings: up to about 20% off at peak hours'}
+                {isZh ? '先登录账号，再配置 AI' : 'Sign in before configuring AI'}
               </p>
               <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                 {isZh
-                  ? '当前适用于峰时火山方舟端口；实际价格、适用线路、时段和活动期限以官方实时价目与通知为准。'
-                  : 'Currently applies to the Volcengine Ark route at peak hours. Actual prices, eligible routes, periods, and offer dates follow official live pricing and notices.'}
+                  ? '请先使用观猹登录，再为当前账号配置 TokenDance API Key 并同意相关数据传输。API Key 加密保存在服务端，不进入云端备份。'
+                  : 'Sign in with Watcha first, then configure a TokenDance API key for the current account and consent to the relevant data transfer. The key is encrypted on the server and excluded from cloud backups.'}
               </p>
             </div>
           </div>
@@ -108,13 +121,13 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
             </a>
             <div className="flex flex-col gap-2 sm:flex-row">
               {onOpenSettings && (
-                <button type="button" onClick={() => { handleClose(); onOpenSettings() }} className="btn-secondary min-h-11 justify-center">
-                  {isZh ? '前往设置配置' : 'Open Settings'}
+                <button type="button" onClick={handleConfigureTokenDance} className="btn-secondary min-h-11 justify-center">
+                  {hasSignedInAccount ? (isZh ? '配置 TokenDance' : 'Configure TokenDance') : (isZh ? '登录后配置' : 'Sign in to configure')}
                 </button>
               )}
-              <button type="button" onClick={handleClose} autoFocus className="btn-primary min-h-11 justify-center">
-                {isZh ? '我知道了' : 'Got it'}
-              </button>
+              <a href="/account?tab=data" onClick={handleClose} className="btn-primary min-h-11 justify-center">
+                {isZh ? '前往账号中心' : 'Open Account Center'}
+              </a>
             </div>
           </div>
         </div>

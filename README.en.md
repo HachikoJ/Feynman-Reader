@@ -6,7 +6,8 @@
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
-![Local-first](https://img.shields.io/badge/data-local--first-22c55e)
+![Account cloud](https://img.shields.io/badge/data-account_cloud-22c55e)
+[![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
 
 [Personal site](https://www.deline.top) · [Open Feynman Reader](https://reader.deline.top/) · [中文 README](README.md) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
 
@@ -20,13 +21,17 @@ Feynman Reader is an AI-assisted deep-reading workspace based on the Feynman tec
 - Guides each book through six sequential learning phases.
 - Stores teaching attempts, four-dimension scores, role-based questions, and revisions.
 - Supports PDF, Word, Excel, and text document input.
-- Works local-first with optional cloud storage: books, notes, and settings stay in IndexedDB when signed out, and can be imported to the user's private Supabase data after Watcha sign-in.
-- Recommends TokenDance / TokenPay OAuth or API key setup for model access. DeepSeek's direct configuration channel is scheduled to retire on October 1, 2026; existing direct keys will no longer be supported after that date.
+- Lets signed-out visitors browse the system sample. Personal books, learning records, quotes, assistant sessions, and long-term memories are saved to account-scoped Supabase after Watcha sign-in; IndexedDB is used only to migrate legacy history.
+- Uses a separately configured TokenDance API key and AI data transfer consent for model access. The key is encrypted on the server and excluded from exports.
 
 ## Preview
 
 <p><img src="docs/product/screenshots/01-bookshelf-desktop.png" alt="Feynman Reader desktop bookshelf with The Kite Runner sample" width="100%"></p>
 <p><img src="docs/product/screenshots/02-bookshelf-mobile.png" alt="Feynman Reader mobile bookshelf" width="420"></p>
+<p><img src="docs/product/screenshots/03-account-center-desktop.png" alt="Feynman Reader desktop Account Center with cloud statistics and an activity calendar" width="100%"></p>
+<p><img src="docs/product/screenshots/04-account-center-mobile.png" alt="Feynman Reader mobile Account Center" width="420"></p>
+
+The Account Center preview uses clearly labeled mock data and contains no real user information.
 
 ## Quick Start
 
@@ -37,11 +42,21 @@ npm ci
 npm run dev
 ```
 
-Open <http://localhost:8080>. You can inspect the sample book without an API key. To call AI, open Settings, configure TokenDance / TokenPay, read the privacy policy to the end, and confirm AI data transfer consent.
+Open <http://localhost:8080>. You can inspect the system sample without signing in or configuring an API key. Sign in with Watcha before saving personal data, then open Settings to authorize or add a TokenDance API key and confirm task-relevant AI data transfer consent.
+
+### Local Account Preview
+
+The current Watcha client registers only the production callback at `https://reader.deline.top/api/auth/tokendance/callback`, so a localhost session cannot complete real Watcha authorization. To inspect Account Center locally, add this to the Git-ignored `.env.local` file:
+
+```env
+NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
+```
+
+Preview mode uses mock account data and disables cloud writes. Production builds ignore this switch. Validate real OAuth, session cookies, and Supabase reads and writes only after deployment through the production domain. Keep the Client Secret, database password, and generated secrets in the server environment file; never expose them to browser code or GitHub.
 
 ## Privacy, Cost, and Model Limits
 
-Signed-out data stays in the browser; after Watcha sign-in, users can import it to private Supabase storage and view account-scoped statistics. Clearing browser data can still delete local records, so export backups when prompted. API keys are encrypted server-side and never displayed in full.
+Signed-out visitors can inspect only the system sample. Legacy browser data from earlier releases can be imported after Watcha sign-in, after which personal records are stored in account-scoped Supabase storage. API keys are encrypted server-side, excluded from exports, and never displayed in full.
 
 According to TokenDance's official clarification, `v4flash0731` offers limited-time savings of up to about 20% on the Volcengine Ark route at peak hours, and users can set route preferences in TokenDance. Actual prices, eligible routes, periods, and offer dates follow [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731) and subsequent notices. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
 
@@ -59,12 +74,13 @@ git diff --check
 
 - [Product materials](docs/product/submission/README.md)
 - [Privacy policy](https://reader.deline.top/privacy/)
+- [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
 ## Project Status
 
-This is an actively maintained personal project becoming a public product. Voice input, OCR, cloud sync, and automated review scheduling are not part of the current release.
+This is an actively maintained public product. Voice input, OCR, and automated review scheduling are not part of the current release. Account-scoped cloud storage requires a configured Supabase database and Watcha OAuth credentials on the server.
 
 ## License
 

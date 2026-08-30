@@ -35,6 +35,7 @@ import {
 import { Language } from '@/lib/i18n'
 import { showAppConfirm } from '@/lib/appDialog'
 import AppIcon from './AppIcon'
+import { useAccountAccess } from './AuthGuard'
 
 interface Props {
   lang: Language
@@ -46,6 +47,7 @@ interface Props {
 type ListFormMode = 'create' | 'edit' | null
 
 export default function BookListManager({ lang, book, onBookAdded, onOpenBook }: Props) {
+  const { isAuthenticated, requestLogin } = useAccountAccess()
   const [lists, setLists] = useState<BookList[]>([])
   const [relations, setRelations] = useState<BookRelation[]>([])
   const [books, setBooks] = useState<Book[]>([])
@@ -90,6 +92,10 @@ export default function BookListManager({ lang, book, onBookAdded, onOpenBook }:
 
   const persistMutation = async (mutation: () => void): Promise<boolean> => {
     if (busy) return false
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能保存书单和书籍关系。' : 'Sign in to save book lists and relationships.')
+      return false
+    }
     setBusy(true)
     setError(null)
     try {
@@ -102,8 +108,8 @@ export default function BookListManager({ lang, book, onBookAdded, onOpenBook }:
       await reloadBookOrganizationFromPersistence().catch(() => undefined)
       refresh()
       setError(lang === 'zh'
-        ? '书单或书籍关系未能保存到本地，请检查浏览器存储后重试。'
-        : 'The list or relationship could not be saved locally. Check browser storage and try again.')
+        ? '书单或书籍关系未能保存到账号云端，请检查登录和网络后重试。'
+        : 'The list or relationship could not be saved to your account cloud. Check sign-in and network, then try again.')
       return false
     } finally {
       setBusy(false)

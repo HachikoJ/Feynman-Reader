@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { getPersistence } from '@/lib/server/persistence'
+import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 import { sessionUserId } from '@/lib/server/sessionUser'
 
 export const runtime = 'nodejs'
 
 function unavailable(error: unknown): NextResponse | null {
-  return error instanceof Error && error.message === 'Persistence adapter is not configured.'
-    ? NextResponse.json({ error: '账号服务尚未配置数据库。' }, { status: 503 })
+    return isPersistenceUnavailable(error)
+      ? NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     : null
 }
 

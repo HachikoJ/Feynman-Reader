@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sessionCookieName } from '@/lib/server/auth'
-import { getPersistence } from '@/lib/server/persistence'
+import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 
 export const runtime = 'nodejs'
 
@@ -25,7 +25,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const result = await store.importUserData(userId, payload)
     return NextResponse.json({ ok: true, ...result })
   } catch (error) {
-    if (error instanceof Error && error.message === 'Persistence adapter is not configured.') return NextResponse.json({ error: '账号服务尚未配置数据库。' }, { status: 503 })
+    if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     return NextResponse.json({ error: '数据导入失败。' }, { status: 400 })
   }
 }

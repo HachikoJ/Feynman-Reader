@@ -39,6 +39,7 @@ import { VirtualList } from './VirtualList'
 import { showAppAlert } from '@/lib/appDialog'
 import { tokendanceRecoveryMessage } from '@/lib/tokendance'
 import { openAssistantWithPrompt } from '@/lib/assistantEvents'
+import { useAccountAccess } from './AuthGuard'
 
 interface Props {
   lang: Language
@@ -68,6 +69,7 @@ export function getBookshelfProgressPercentage(book: Pick<Book, 'currentPhase'>)
 }
 
 export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props) {
+  const { isAuthenticated, requestLogin } = useAccountAccess()
   const [books, setBooks] = useState<Book[]>([])
   const [activeTab, setActiveTab] = useState<TabFilter>('all')
 
@@ -216,6 +218,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
   // AI 生成标签
   const handleGenerateTags = async (bookId: string, bookName: string, author?: string, description?: string) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能使用 AI 生成标签，并保存到云端书架。' : 'Sign in to generate AI tags and save them to your cloud bookshelf.')
+      return
+    }
     const settings = getSettings()
     if (!settings.apiKey || !settings.aiDataConsent) {
       onOpenSettings?.()
@@ -262,8 +268,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
             : tokendanceRecoveryMessage(error, lang)
       setTagGenerationError(requestMessage || (tagsGenerated
         ? (lang === 'zh'
-            ? 'AI 标签已生成，但未能保存到本地，原标签已恢复。请检查浏览器存储后重试。'
-            : 'AI tags were generated but could not be saved locally. The original tags were restored.')
+            ? 'AI 标签已生成，但未能保存到账号云端，原标签已恢复。请检查登录和网络后重试。'
+            : 'AI tags were generated but could not be saved to your account cloud. The original tags were restored; check sign-in and network.')
         : (lang === 'zh'
             ? '书籍已保存，但 AI 标签生成失败。你可以稍后重试，或在编辑书籍时手动添加标签。'
             : 'The book was saved, but AI tag generation failed. Retry later or add tags manually while editing the book.')))
@@ -274,6 +280,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
   const handleAddBook = async () => {
     if (bookSaveInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能保存这本书，并在其他设备继续学习。' : 'Sign in to save this book and continue learning on other devices.')
+      return
+    }
     // P0 新增：输入验证
     const nameValidation = validateBookName(newBookName)
     if (!nameValidation.valid) {
@@ -317,7 +327,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     } catch (error) {
       if (book) await reloadBookFromPersistence(book.id).catch(() => undefined)
       logger.error('Book save failed:', error)
-      await showBookFormError(lang === 'zh' ? '书籍保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving failed. Your form content was kept; check browser storage and try again.')
+      await showBookFormError(lang === 'zh' ? '书籍未能保存到账号云端，填写内容已保留。请检查登录和网络后重试。' : 'The book could not be saved to your account cloud. Your form content was kept; check sign-in and network, then try again.')
       return
     } finally {
       bookSaveInFlightRef.current = false
@@ -333,6 +343,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
   const handleUpdateBook = async () => {
     if (!editingBook || bookSaveInFlightRef.current) return
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能编辑并保存书籍。' : 'Sign in to edit and save books.')
+      return
+    }
 
     // P0 新增：输入验证
     const nameValidation = validateBookName(newBookName)
@@ -380,7 +394,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
       const persistedBooks = await reloadBooksFromPersistence().catch(() => getBooks())
       setBooks(persistedBooks)
       logger.error('Book update failed:', error)
-      await showBookFormError(lang === 'zh' ? '修改保存失败，填写内容已保留，请检查浏览器存储后重试。' : 'Saving changes failed. Your form content was kept; check browser storage and try again.')
+      await showBookFormError(lang === 'zh' ? '修改未能保存到账号云端，填写内容已保留。请检查登录和网络后重试。' : 'Changes could not be saved to your account cloud. Your form content was kept; check sign-in and network, then try again.')
     } finally {
       bookSaveInFlightRef.current = false
       setSavingBook(false)
@@ -466,6 +480,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
   // 全局标签管理函数
   const handleEditGlobalTag = (tag: BookTag) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能管理标签。' : 'Sign in to manage tags.')
+      return
+    }
     setEditingGlobalTag(tag)
     setNewGlobalTagName(tag.name)
     setNewGlobalTagCategory(tag.category)
@@ -518,6 +536,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   }
 
   const handleDeleteGlobalTag = (tag: BookTag) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能删除标签。' : 'Sign in to delete tags.')
+      return
+    }
     setTagToDelete(tag)
   }
 
@@ -556,6 +578,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   }
 
   const handleDeleteBook = (book: Book) => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能删除或移入回收站。' : 'Sign in to delete books or move them to the recycle bin.')
+      return
+    }
     setDeleteConfirmBook(book)
   }
 
@@ -628,6 +654,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   }
   
   const handleBatchDelete = () => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能批量管理书籍。' : 'Sign in to manage books in bulk.')
+      return
+    }
     setShowBatchDeleteConfirm(true)
   }
   

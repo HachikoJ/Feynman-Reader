@@ -76,12 +76,34 @@ export function sessionCookieName(): string {
   return SESSION_COOKIE
 }
 
-export function sessionCookieOptions(expires: Date): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.max(0, Math.floor((expires.getTime() - Date.now()) / 1000))}`
+export function shouldUseSecureCookies(request?: Request): boolean {
+  const configured = process.env.FEYNMAN_COOKIE_SECURE?.trim().toLowerCase()
+  const nodeEnv = process.env.NODE_ENV as string
+  if (configured === 'true') return true
+  if (configured === 'false' && nodeEnv !== 'production') return false
+  if (nodeEnv === 'production') return true
+  if (request) {
+    const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase()
+    if (forwardedProto) return forwardedProto === 'https'
+    return new URL(request.url).protocol === 'https:'
+  }
+  return process.env.NODE_ENV === 'production'
 }
 
-export function sessionCookieHeader(sessionId: string, expires: Date): string {
-  return `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${Math.max(0, Math.floor((expires.getTime() - Date.now()) / 1000))}`
+function secureAttribute(request?: Request): string {
+  return shouldUseSecureCookies(request) ? '; Secure' : ''
+}
+
+export function sessionCookieOptions(expires: Date, request?: Request): string {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly${secureAttribute(request)}; SameSite=Lax; Max-Age=${Math.max(0, Math.floor((expires.getTime() - Date.now()) / 1000))}`
+}
+
+export function sessionCookieHeader(sessionId: string, expires: Date, request?: Request): string {
+  return `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly${secureAttribute(request)}; SameSite=Lax; Max-Age=${Math.max(0, Math.floor((expires.getTime() - Date.now()) / 1000))}`
+}
+
+export function oauthPkceCookieHeader(value: string, maxAgeSeconds: number, request?: Request): string {
+  return `feynman_watcha_pkce=${encodeURIComponent(value)}; Path=/api/auth/tokendance/callback; HttpOnly${secureAttribute(request)}; SameSite=Lax; Max-Age=${maxAgeSeconds}`
 }
 
 export function createCsrfToken(): string {

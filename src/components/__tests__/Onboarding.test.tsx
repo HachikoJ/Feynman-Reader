@@ -18,7 +18,7 @@ describe('Onboarding implemented-feature copy', () => {
 
     expect(screen.queryByRole('button', { name: '上一步' })).not.toBeInTheDocument()
     next()
-    expect(screen.getByText('每天用 5 分钟复习')).toBeInTheDocument()
+    expect(screen.getByText('登录后，学习数据自动上云')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '上一步' }))
 
@@ -29,31 +29,36 @@ describe('Onboarding implemented-feature copy', () => {
   it('describes the implemented workflow and highlights key facts', () => {
     render(<Onboarding lang="zh" aiConfigured={false} onComplete={jest.fn()} />)
 
-    expect(ONBOARDING_VERSION).toBe('6')
+    expect(ONBOARDING_VERSION).toBe('7')
     expect(screen.getByText('先看一本完整示例')).toBeInTheDocument()
     expect(screen.getByText('六阶段分析').tagName).toBe('STRONG')
 
     next()
-    expect(screen.getByText('今日复习').tagName).toBe('STRONG')
-    expect(screen.getByText('当前浏览器').tagName).toBe('STRONG')
+    expect(screen.getByText('保存到账号云端').tagName).toBe('STRONG')
+    expect(screen.getByText('账号中心').tagName).toBe('STRONG')
 
     next()
-    expect(screen.getByText('需要新分析时，再连接 TokenDance')).toBeInTheDocument()
+    expect(screen.getByText('今日复习').tagName).toBe('STRONG')
+    expect(screen.getByText('不会跨用户调用').tagName).toBe('STRONG')
+
+    next()
+    expect(screen.getByText('需要 AI 时，配置 TokenDance')).toBeInTheDocument()
     expect(screen.getByText('最高约省 20%').tagName).toBe('STRONG')
     expect(screen.getByText('限时优惠').tagName).toBe('STRONG')
     expect(screen.getByText('官方实时标准及后续通知').tagName).toBe('STRONG')
   })
 
-  it('offers API configuration after the three-step tour for users without AI setup', () => {
+  it('offers API configuration after the tour for users without AI setup', () => {
     const onComplete = jest.fn()
     const onConfigureApi = jest.fn()
     render(<Onboarding lang="zh" aiConfigured={false} onComplete={onComplete} onConfigureApi={onConfigureApi} />)
 
     next()
     next()
-    expect(screen.getByRole('button', { name: '去配置 API' })).toBeInTheDocument()
+    next()
+    expect(screen.getByRole('button', { name: '配置 TokenDance' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '去配置 API' }))
+    fireEvent.click(screen.getByRole('button', { name: '配置 TokenDance' }))
 
     expect(onComplete).toHaveBeenCalledTimes(1)
     expect(onConfigureApi).toHaveBeenCalledTimes(1)
@@ -64,9 +69,10 @@ describe('Onboarding implemented-feature copy', () => {
 
     next()
     next()
+    next()
 
     expect(screen.getByText('TokenDance 已连接')).toBeInTheDocument()
-    expect(screen.getByText('均已配置完成')).toBeInTheDocument()
+    expect(screen.getByText('已加密保存')).toBeInTheDocument()
     expect(screen.queryByText('填写 TokenDance API Key')).not.toBeInTheDocument()
   })
 })

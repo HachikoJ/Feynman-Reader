@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, BadgePercent, CreditCard, ExternalLink, Route, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Cloud, CreditCard, ExternalLink, KeyRound, UserRound } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export const TOKENDANCE_WELCOME_KEY = 'feynman-tokendance-welcome'
-export const TOKENDANCE_WELCOME_VERSION = '1'
+export const TOKENDANCE_WELCOME_VERSION = '2'
 
 const pricingUrl = 'https://tokendance.space/models/deepseek-v4-flash-0731'
 const logoUrl = 'https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg'
@@ -17,30 +17,30 @@ const logoUrl = 'https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%
 export default function TokenDanceWelcome({ lang, onContinue }: Props) {
   const content = lang === 'zh'
     ? {
-        eyebrow: '费曼读书助手推荐接入',
-        title: '让 AI 阅读接入更省心',
-        description: 'TokenDance / TokenPay 为本产品提供 API 授权、余额查询与充值能力。你可以先进入书架体验完整示例，需要生成新内容时再连接。',
+        eyebrow: '新账号与云端能力已上线',
+        title: '先登录账号，再配置 AI',
+        description: '你可以直接浏览系统示例。添加自己的书、保存学习记录或使用 AI 前，请先使用观猹登录；登录后再为当前账号配置 TokenDance API Key。',
         features: [
-          { icon: ShieldCheck, title: 'OAuth 授权', text: '在产品内完成授权，无需手动复制 API Key' },
-          { icon: BadgePercent, title: '限时优惠', text: 'DeepSeek V4 Flash 峰时火山方舟端口最高约省 20%' },
-          { icon: Route, title: '智能路由', text: '支持智能路由，也可在 TokenDance 设置路由偏好' },
-          { icon: CreditCard, title: '账户服务', text: '可查询余额、充值，并按恢复提示处理额度问题' }
+          { icon: UserRound, title: '观猹登录', text: '确认账号身份和数据归属，用于登录费曼读书助手' },
+          { icon: Cloud, title: '账号云端', text: '书籍、学习记录、金句、助手会话和长期记忆按账号保存' },
+          { icon: KeyRound, title: 'TokenDance AI', text: 'API Key 和数据传输同意用于生成分析、推荐及助手回复' },
+          { icon: CreditCard, title: '余额与计费', text: '在 TokenDance 查询余额、充值并管理路由；费用由用户自己的 Key 承担' }
         ],
         pricing: '查看 TokenDance 实时价目',
-        continue: '进入费曼读书助手'
+        continue: '了解并进入书架'
       }
     : {
-        eyebrow: 'Recommended integration for Feynman Reader',
-        title: 'A simpler way to connect AI reading',
-        description: 'TokenDance / TokenPay provides API authorization, balance, and top-up services for this product. Explore the complete sample first, then connect when you need new AI content.',
+        eyebrow: 'Accounts and cloud data are now available',
+        title: 'Sign in before configuring AI',
+        description: 'You can browse the system sample immediately. Before adding books, saving learning records, or using AI, sign in with Watcha; then configure a TokenDance API key for the current account.',
         features: [
-          { icon: ShieldCheck, title: 'OAuth authorization', text: 'Authorize in the product without manually copying an API key' },
-          { icon: BadgePercent, title: 'Limited-time savings', text: 'Up to about 20% off the Volcengine Ark route for DeepSeek V4 Flash at peak hours' },
-          { icon: Route, title: 'Smart routing', text: 'Use smart routing or set route preferences in TokenDance' },
-          { icon: CreditCard, title: 'Account services', text: 'Check balance, top up, and follow recovery guidance for quota issues' }
+          { icon: UserRound, title: 'Watcha sign-in', text: 'Identifies your account and owns your Feynman Reader cloud data' },
+          { icon: Cloud, title: 'Account cloud', text: 'Books, learning records, quotes, sessions, and long-term memories are saved per account' },
+          { icon: KeyRound, title: 'TokenDance AI', text: 'An API key and data consent enable analyses, recommendations, and assistant replies' },
+          { icon: CreditCard, title: 'Balance and billing', text: 'Check balance, top up, and manage routes in TokenDance; usage is billed to your key' }
         ],
         pricing: 'View TokenDance live pricing',
-        continue: 'Enter Feynman Reader'
+        continue: 'Continue to bookshelf'
       }
 
   const handleContinue = () => {

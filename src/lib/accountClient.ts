@@ -22,6 +22,10 @@ export interface UserDataSummary {
   relations: number
   lastImportAt: string | null
   lastSyncAt: string | null
+  quotes: number
+  assistantSessions: number
+  assistantMemories: number
+  storageBytes: number
 }
 
 export interface MigrationState {
@@ -34,9 +38,20 @@ export interface MigrationState {
   syncVersion: number
 }
 
-// Keep this helper for callers that still import it while login is being completed.
+export interface ActivityDay {
+  date: string
+  count: number
+  categories: Record<string, number>
+}
+
+export function isLocalAuthBypassEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
+}
+
+// Keep this helper as the single feature flag for callers that need to know
+// whether account-backed data requires an authenticated session.
 export function isAccountRequired(): boolean {
-  return false
+  return !isLocalAuthBypassEnabled()
 }
 
 export async function getAccount(): Promise<AccountState> {
@@ -79,15 +94,17 @@ export async function deleteApiKey(): Promise<void> {
   if (!response.ok) throw new Error((await response.json().catch(() => null) as { error?: string } | null)?.error || 'API Key 删除失败。')
 }
 
-export async function importLocalData(payload: unknown): Promise<{ booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }> {
+export async function importLocalData(payload: unknown): Promise<{ booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number; assistantSessionsImported: number; assistantMemoriesImported: number }> {
   const response = await fetch('/api/account/import/', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-  const data = await response.json().catch(() => ({})) as { error?: string; booksImported?: number; aiUsageImported?: number; listsImported?: number; relationsImported?: number }
+  const data = await response.json().catch(() => ({})) as { error?: string; booksImported?: number; aiUsageImported?: number; listsImported?: number; relationsImported?: number; assistantSessionsImported?: number; assistantMemoriesImported?: number }
   if (!response.ok) throw new Error(data.error || '本地数据导入失败。')
   return {
     booksImported: data.booksImported || 0,
     aiUsageImported: data.aiUsageImported || 0,
     listsImported: data.listsImported || 0,
     relationsImported: data.relationsImported || 0,
+    assistantSessionsImported: data.assistantSessionsImported || 0,
+    assistantMemoriesImported: data.assistantMemoriesImported || 0,
   }
 }
 
@@ -113,9 +130,16 @@ export async function getMigrationState(activateWindow = false): Promise<Migrati
   return data as MigrationState
 }
 
-export async function migrateLocalData(payload: unknown): Promise<MigrationState & { booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }> {
+export async function migrateLocalData(payload: unknown): Promise<MigrationState & { booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number; assistantSessionsImported: number; assistantMemoriesImported: number }> {
   const response = await fetch('/api/account/migration/', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
   const data = await response.json().catch(() => ({})) as { error?: string }
   if (!response.ok) throw new Error(data.error || '历史数据迁移失败。')
-  return data as MigrationState & { booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number }
+  return data as MigrationState & { booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number; assistantSessionsImported: number; assistantMemoriesImported: number }
+}
+
+export async function getActivityCalendar(from: string, to: string): Promise<ActivityDay[]> {
+  const response = await fetch(`/api/account/activity/?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { credentials: 'include', cache: 'no-store' })
+  const data = await response.json().catch(() => ({})) as { error?: string; days?: ActivityDay[] }
+  if (!response.ok) throw new Error(data.error || '无法读取活动日历。')
+  return Array.isArray(data.days) ? data.days : []
 }

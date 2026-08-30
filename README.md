@@ -7,7 +7,7 @@
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
 ![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
 ![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
-![本地与云端](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E6%9C%AC%E5%9C%B0%E4%B8%8E%E4%BA%91%E7%AB%AF-22c55e)
+![账号云端](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E8%B4%A6%E5%8F%B7%E4%BA%91%E7%AB%AF-22c55e)
 
 [English](README.en.md) · [个人官网](https://www.deline.top) · [进入费曼读书助手](https://reader.deline.top/) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
 
@@ -18,7 +18,7 @@
 **产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
 
 > [!IMPORTANT]
-> **这是一个本地优先、可选云端同步的学习产品。** 未登录时，学习记录默认保存在浏览器 IndexedDB；登录观猹账号后，可在账号中心将本机数据导入 Supabase 云端，并查看自己的云端统计。API Key 由服务端加密保存，不会显示明文。清理浏览器数据前仍建议导出备份。调用 AI 前，需要先阅读并同意隐私政策；TokenDance / TokenPay 是推荐渠道，DeepSeek 官方配置渠道将于 2026 年 10 月 1 日下线，届时旧官方 Key 也不再支持。
+> **这是一个登录后使用账号云端的学习产品。** 未登录时可以浏览系统示例；添加书籍、AI 分析和保存学习记录前，需要先使用观猹登录。登录后，书籍、笔记、金句、助手会话和长期记忆会保存到账号对应的 Supabase 云端。IndexedDB 只用于老用户一次性历史迁移。TokenDance API Key 由服务端加密保存，不会显示明文，也不会进入备份文件。
 
 ## GitHub 传播素材
 
@@ -69,6 +69,18 @@
 
 书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《追风筝的人》，完整呈现深度阅读流程。
 
+### 账号云端
+
+<p>
+  <img src="docs/product/screenshots/03-account-center-desktop.png" alt="费曼读书助手桌面账号中心，展示云端统计和用户活动日历" width="100%">
+</p>
+
+<p>
+  <img src="docs/product/screenshots/04-account-center-mobile.png" alt="费曼读书助手移动端账号中心" width="420">
+</p>
+
+账号中心集中管理云端书架、金句、费曼小助手会话、回收站和数据导入导出。截图使用明确标注的本地预览数据，不包含真实用户信息。
+
 ### 六阶段阅读
 
 <p>
@@ -95,15 +107,7 @@ AI 的作用不是给出“你很棒”的空泛鼓励，而是保留原回答�
 
 ### 设置与隐私
 
-<p>
-  <img src="docs/product/submission/screenshots/08-settings-local-first-safari.png" alt="费曼读书助手设置页面，展示本地 API Key、数据管理和 AI 数据同意" width="100%">
-</p>
-
-<p>
-  <img src="docs/product/submission/screenshots/09-privacy-policy-safari.png" alt="费曼读书助手隐私政策页面，展示本地数据和 DeepSeek 传输说明" width="100%">
-</p>
-
-API Key 和学习记录默认留在浏览器本地。用户在调用 AI 前需要完成数据传输同意，并可在设置中管理或导出数据。
+登录后的学习记录保存到账号对应的 Supabase 云端；TokenDance API Key 由服务端加密保存且不进入数据导出。用户在调用 AI 前仍需完成数据传输同意，并可在账号中心管理或导出自己的云端数据。
 
 ### 核心交互流程
 
@@ -150,7 +154,7 @@ flowchart TD
 - 六阶段学习：按顺序完成背景、框架、拆解、批判、评价和连接。
 - 教学模拟：至少 200 字的个人解释、四维度评分、历史记录。
 - 角色问答：固定 3 题、逐题评分、原回答和改进建议、单题重答。
-- 本地优先、可选云端：未登录时书籍、设置和学习记录保存到 IndexedDB；登录后可从账号中心导入到 Supabase。API Key 只在服务端加密保存并始终掩码展示。
+- 账号云端：未登录可浏览系统示例；个人书籍、学习记录、金句和助手数据在观猹登录后保存到 Supabase。IndexedDB 只用于老用户历史迁移，API Key 只在服务端加密保存并始终掩码展示。
 - 隐私同意：保存 Key 和调用 AI 前都需要确认数据传输同意，并强制阅读隐私政策到底部。
 
 ## 如何运行
@@ -162,9 +166,30 @@ npm run dev
 
 打开 [http://localhost:8080](http://localhost:8080)。第一次使用时：
 
-1. 在设置中选择 TokenDance / TokenPay 并点击 OAuth 授权，或填写 TokenDance API Key。
-2. 阅读隐私政策，滚动到底部后勾选同意。
-3. 创建一本书或上传资料，开始第一次“讲给 AI 听”的练习。
+1. 浏览系统示例；需要保存个人数据时，使用观猹登录。
+2. 在设置中授权或填写 TokenDance API Key，并同意当前 AI 任务所需的数据传输。
+3. 创建一本书或上传资料，开始第一次“讲给 AI 听”的练习；数据会自动保存到当前账号云端。
+
+### 本地账号中心预览
+
+当前观猹客户端只登记正式回调地址 `https://reader.deline.top/api/auth/tokendance/callback`，因此 `localhost` 不能完成真实观猹授权。本地调试账号中心时，可在已被 Git 忽略的 `.env.local` 中启用只读预览：
+
+```env
+NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
+```
+
+预览模式只展示 Mock 账号与示例云端数据，并禁用云端写入；生产构建会忽略该开关。真实 OAuth、会话 Cookie 和 Supabase 读写必须部署后通过正式域名验证。Client Secret、数据库密码和随机密钥只能放在服务器环境文件中，不能写入前端代码或提交到 GitHub。
+
+### 生产部署（腾讯云 + Supabase）
+
+生产环境由 `deploy.sh` 构建 Next.js standalone 服务，并通过 PM2 监听 `127.0.0.1:8080`；Nginx 负责 `https://reader.deline.top` 的 HTTPS 反向代理。服务器只需要准备 `/etc/feynman-reader.env`（权限 `600`），填写 `.env.example` 中的生产值，尤其是 Supabase Session pooler 的 `DATABASE_URL` 和完全一致的回调地址：
+
+```env
+TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.deline.top/api/auth/tokendance/callback
+FEYNMAN_COOKIE_SECURE=true
+```
+
+Supabase SQL 编辑器按顺序执行 `supabase/migrations/001_auth.sql` 至 `007_recycle_bin_cron.sql` 各一次。迁移只需在数据库项目中完成一次；第 007 份迁移使用 Supabase `pg_cron` 每天清理达到 30 天服务端保留上限的回收站记录。密钥和连接串不放入 GitHub。之后龙虾在项目目录执行 `bash ./deploy.sh` 即可完成依赖安装、构建、PM2 重载和公网健康检查；若账号接口返回 503，表示服务器环境变量、Supabase 连接或迁移权限仍需检查，不需要修改前端代码。
 
 DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存相关配置，届时旧官方 Key 不再支持。根据 TokenDance 官方确认，`v4flash0731` 峰时火山方舟端口提供限时优惠，最高约可省 20%，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用线路、时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准。
 
@@ -172,7 +197,7 @@ DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存�
 
 - **前端**：Next.js 16、TypeScript、Tailwind CSS
 - **AI**：DeepSeek API
-- **本地数据**：IndexedDB
+- **云端数据**：Supabase / PostgreSQL（IndexedDB 仅用于历史迁移）
 - **文档解析**：PDF.js、Mammoth、XLSX
 - **测试**：Jest、Playwright
 
@@ -182,6 +207,7 @@ DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存�
 - [AI 工作流程](docs/product/submission/AI_Workflow_ZH.md)：模型与规则如何分工，以及数据边界。
 - [产品说明](docs/product/submission/Product_Guide_ZH.md)：建议体验路径、真实 Safari 截图索引和功能边界。
 - [增长方案](docs/product/submission/Growth_Plan_ZH.md)：增长策略、定价、Token 成本控制与 PMF 验证。
+- [更新记录](CHANGELOG.md)：当前版本的账号云端、迁移与安全变更。
 
 ## 后续规划
 
