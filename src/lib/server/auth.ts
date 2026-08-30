@@ -79,8 +79,8 @@ export function safeAuthReturnTo(value: string | null | undefined, fallback = '/
   const candidate = value?.trim()
   if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) return fallback
   try {
-    const parsed = new URL(candidate, 'https://reader.feline.top')
-    if (parsed.origin !== 'https://reader.feline.top') return fallback
+    const parsed = new URL(candidate, 'https://reader.deline.top')
+    if (parsed.origin !== 'https://reader.deline.top') return fallback
     return `${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
     return fallback

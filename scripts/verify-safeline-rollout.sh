@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 # Verify the public path after SafeLine is introduced. This deliberately checks
 # user-visible behavior and does not send exploit payloads to production.
-BASE_URL="${1:-https://reader.feline.top}"
+BASE_URL="${1:-https://reader.deline.top}"
 BASE_URL="${BASE_URL%/}"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT

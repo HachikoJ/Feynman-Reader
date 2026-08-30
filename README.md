@@ -9,13 +9,13 @@
 ![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
 ![账号云端](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E8%B4%A6%E5%8F%B7%E4%BA%91%E7%AB%AF-22c55e)
 
-[English](README.en.md) · [个人官网](https://www.deline.top) · [进入费曼读书助手](https://reader.feline.top/) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
+[English](README.en.md) · [个人官网](https://www.deline.top) · [进入费曼读书助手](https://reader.deline.top/) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
 
 **读完不算懂，能讲清楚才算。**
 
 费曼读书助手不是再帮你总结一本书，而是让你把书里的内容讲给 AI 听。AI 会先看你的解释，再从 3 个不同角色的角度追问你，直到你真的知道自己哪里没懂、该怎么改。
 
-**产品访问：** [https://reader.feline.top/](https://reader.feline.top/)
+**产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
 
 > [!IMPORTANT]
 > **这是一个登录后使用账号云端的学习产品。** 未登录时可以浏览系统示例；添加书籍、AI 分析和保存学习记录前，需要先使用观猹登录。登录后，书籍、笔记、金句、助手会话和长期记忆会保存到账号对应的 Supabase 云端。IndexedDB 只用于老用户一次性历史迁移。TokenDance API Key 由服务端加密保存，不会显示明文，也不会进入备份文件。
@@ -172,7 +172,7 @@ npm run dev
 
 ### 本地账号中心预览
 
-当前观猹客户端只登记正式回调地址 `https://reader.feline.top/api/auth/tokendance/callback`，因此 `localhost` 不能完成真实观猹授权。本地调试账号中心时，可在已被 Git 忽略的 `.env.local` 中启用只读预览：
+当前观猹客户端只登记正式回调地址 `https://reader.deline.top/api/auth/tokendance/callback`，因此 `localhost` 不能完成真实观猹授权。本地调试账号中心时，可在已被 Git 忽略的 `.env.local` 中启用只读预览：
 
 ```env
 NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
@@ -182,10 +182,10 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
 
 ### 生产部署（腾讯云 + Supabase）
 
-生产环境由 `deploy.sh` 构建 Next.js standalone 服务，并通过 PM2 监听 `127.0.0.1:8080`；Nginx 负责 `https://reader.feline.top` 的 HTTPS 反向代理。服务器只需要准备 `/etc/feynman-reader.env`（权限 `600`），填写 `.env.example` 中的生产值，尤其是 Supabase Session pooler 的 `DATABASE_URL` 和完全一致的回调地址：
+生产环境由 `deploy.sh` 构建 Next.js standalone 服务，并通过 PM2 监听 `127.0.0.1:8080`；Nginx 负责 `https://reader.deline.top` 的 HTTPS 反向代理。服务器只需要准备 `/etc/feynman-reader.env`（权限 `600`），填写 `.env.example` 中的生产值，尤其是 Supabase Session pooler 的 `DATABASE_URL` 和完全一致的回调地址：
 
 ```env
-TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.feline.top/api/auth/tokendance/callback
+TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.deline.top/api/auth/tokendance/callback
 FEYNMAN_COOKIE_SECURE=true
 ```
 

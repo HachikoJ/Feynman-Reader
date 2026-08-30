@@ -8,6 +8,6 @@ describe('standalone product routes', () => {
 
   it('builds root links without reintroducing the legacy path', () => {
     expect(readerHref()).toBe('/')
-    expect(readerHref('https://reader.feline.top')).toBe('https://reader.feline.top/')
+    expect(readerHref('https://reader.deline.top')).toBe('https://reader.deline.top/')
   })
 })

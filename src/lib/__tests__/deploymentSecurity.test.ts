@@ -31,9 +31,9 @@ describe('production security header deployment', () => {
 
   it('installs the shared config and verifies the live HTTPS response', () => {
     expect(deployScript).toContain('00-feynman-security-headers.conf')
-    expect(deployScript).toContain('https://reader.feline.top/')
+    expect(deployScript).toContain('https://reader.deline.top/')
     expect(deployScript).toContain('/etc/nginx/conf.d/reader.deline.top.conf')
-    expect(securityConfig).toContain('reader.feline.top 1;')
+    expect(securityConfig).toContain('reader.deline.top 1;')
     expect(securityConfig).not.toContain('www.deline.top 1;')
     for (const header of requiredHeaders) {
       expect(deployScript).toContain(`"${header}"`)
@@ -60,8 +60,8 @@ describe('production security header deployment', () => {
     expect(productNginx).toContain('location ^~ /reader/ { return 410; }')
     expect(productNginx).toContain('location = /feynmanreader { return 410; }')
     expect(productNginx).toContain('location ^~ /feynmanreader/ { return 410; }')
-    expect(tokendanceSource).toContain("TOKENDANCE_APP_URL = 'https://deline.top'")
-    expect(tokendanceSource).toContain("TOKENDANCE_CALLBACK_ORIGIN = 'https://reader.feline.top'")
+    expect(tokendanceSource).toContain("TOKENDANCE_APP_URL = 'https://reader.deline.top/'")
+    expect(tokendanceSource).toContain("TOKENDANCE_CALLBACK_ORIGIN = 'https://reader.deline.top'")
     expect(tokendanceSource).toContain('TOKENDANCE_CALLBACK_ORIGIN}${APP_ROUTES.home}')
     expect(tokendanceSource).not.toContain('window.location.origin}${APP_ROUTES.home}')
   })
