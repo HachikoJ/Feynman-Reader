@@ -69,7 +69,20 @@ const OAUTH_STATE_TTL_MS = 10 * 60 * 1000
 export interface OAuthStatePayload {
   nonce: string
   callback: string
+  returnTo: string
   issuedAt: number
+}
+
+export function safeAuthReturnTo(value: string | null | undefined, fallback = '/'): string {
+  const candidate = value?.trim()
+  if (!candidate || !candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) return fallback
+  try {
+    const parsed = new URL(candidate, 'https://reader.deline.top')
+    if (parsed.origin !== 'https://reader.deline.top') return fallback
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return fallback
+  }
 }
 
 export function sessionCookieName(): string {
@@ -140,7 +153,7 @@ export function readOAuthState(signed: string, now = Date.now()): OAuthStatePayl
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as Partial<OAuthStatePayload>
     if (typeof payload.nonce !== 'string' || !payload.nonce || typeof payload.callback !== 'string' || !payload.callback || typeof payload.issuedAt !== 'number') return null
     if (!Number.isFinite(payload.issuedAt) || Math.abs(now - payload.issuedAt) > OAUTH_STATE_TTL_MS) return null
-    return { nonce: payload.nonce, callback: payload.callback, issuedAt: payload.issuedAt }
+    return { nonce: payload.nonce, callback: payload.callback, returnTo: safeAuthReturnTo(payload.returnTo), issuedAt: payload.issuedAt }
   } catch {
     return null
   }

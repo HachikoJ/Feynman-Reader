@@ -57,7 +57,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     }
     const session = await store.createSession(user.id, COOKIE_TTL_SECONDS)
-    const destination = new URL('/account', new URL(callback).origin)
+    const destination = new URL(parsedState.returnTo, new URL(callback).origin)
     const result = NextResponse.redirect(destination)
     result.headers.set('Cache-Control', 'no-store')
     result.headers.append('Set-Cookie', sessionCookieHeader(session.id, new Date(session.expiresAt), request))

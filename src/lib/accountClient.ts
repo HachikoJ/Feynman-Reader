@@ -54,6 +54,11 @@ export function isAccountRequired(): boolean {
   return !isLocalAuthBypassEnabled()
 }
 
+export function accountLoginHref(returnTo = '/'): string {
+  const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/'
+  return `/api/auth/tokendance/start/?returnTo=${encodeURIComponent(safeReturnTo)}`
+}
+
 export async function getAccount(): Promise<AccountState> {
   try {
     const response = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })

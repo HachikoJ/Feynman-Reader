@@ -11,6 +11,19 @@ export const TOKENDANCE_RECOVERY_PREFIX = 'TOKENDANCE_RECOVERY:'
 
 const verifierKey = 'feynman-tokendance-pkce-verifier'
 const stateKey = 'feynman-tokendance-oauth-state'
+const SERVER_MANAGED_API_KEY = 'server-managed'
+
+async function accountTokendanceRequest<T>(method: 'GET' | 'POST' | 'PATCH', body?: unknown): Promise<T> {
+  const response = await fetch('/api/account/tokendance/', {
+    method,
+    credentials: 'include',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const data = await response.json().catch(() => ({})) as T & { error?: string }
+  if (!response.ok) throw new Error(data.error || `TokenDance account request failed (${response.status})`)
+  return data
+}
 
 function base64Url(bytes: Uint8Array): string {
   let binary = ''
@@ -125,6 +138,7 @@ export interface TokendanceBalance {
 }
 
 export async function fetchTokendanceBalance(apiKey: string): Promise<TokendanceBalance> {
+  if (apiKey === SERVER_MANAGED_API_KEY) return accountTokendanceRequest<TokendanceBalance>('GET')
   const data = await tokendanceRequest<{ balance: TokendanceBalance }>('/portal/api/v1/user/balance', apiKey)
   return data.balance
 }
@@ -158,6 +172,9 @@ function validateTokendancePaymentSession(session: TokendancePaymentSession): To
 }
 
 export async function createTokendancePaymentSession(apiKey: string, amount: number): Promise<TokendancePaymentSession> {
+  if (apiKey === SERVER_MANAGED_API_KEY) {
+    return validateTokendancePaymentSession(await accountTokendanceRequest<TokendancePaymentSession>('POST', { amount }))
+  }
   const data = await tokendanceRequest<{ session: TokendancePaymentSession }>('/portal/api/v1/payment/sessions', apiKey, {
     method: 'POST',
     body: JSON.stringify({ amount })
@@ -174,6 +191,10 @@ export async function getTokendancePaymentSession(apiKey: string, statusUrl: str
   }
   if (validatedStatusUrl.origin !== TOKENDANCE_BASE_URL || !validatedStatusUrl.pathname.startsWith('/portal/api/v1/payment/sessions/')) {
     throw new Error('Tokendance payment status URL is invalid.')
+  }
+
+  if (apiKey === SERVER_MANAGED_API_KEY) {
+    return validateTokendancePaymentSession(await accountTokendanceRequest<TokendancePaymentSession>('PATCH', { statusUrl: validatedStatusUrl.toString() }))
   }
 
   const response = await fetch(validatedStatusUrl.toString(), { headers: { Authorization: `Bearer ${apiKey}` } })

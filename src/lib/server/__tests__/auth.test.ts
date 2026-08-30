@@ -1,4 +1,4 @@
-import { normalizeEmail, normalizePhone, shouldUseSecureCookies, validateBinding } from '../auth'
+import { createOAuthState, normalizeEmail, normalizePhone, readOAuthState, safeAuthReturnTo, shouldUseSecureCookies, validateBinding } from '../auth'
 import { isPersistenceUnavailable } from '../persistence'
 
 describe('auth binding validation', () => {
@@ -34,6 +34,31 @@ describe('auth cookie transport', () => {
     expect(shouldUseSecureCookies(new Request('https://reader.deline.top/api/auth/me'))).toBe(false)
   })
 
+})
+
+describe('OAuth return destination', () => {
+  const previousSecret = process.env.FEYNMAN_AUTH_STATE_SECRET
+
+  beforeAll(() => {
+    process.env.FEYNMAN_AUTH_STATE_SECRET = 'test-state-secret'
+  })
+
+  afterAll(() => {
+    if (previousSecret === undefined) delete process.env.FEYNMAN_AUTH_STATE_SECRET
+    else process.env.FEYNMAN_AUTH_STATE_SECRET = previousSecret
+  })
+
+  it('keeps an internal page in signed state', () => {
+    const issuedAt = Date.now()
+    const signed = createOAuthState({ nonce: 'nonce', callback: 'https://reader.deline.top/api/auth/tokendance/callback', returnTo: '/?view=settings', issuedAt })
+    expect(readOAuthState(signed, issuedAt)?.returnTo).toBe('/?view=settings')
+  })
+
+  it('rejects external and protocol-relative redirects', () => {
+    expect(safeAuthReturnTo('https://example.com/account')).toBe('/')
+    expect(safeAuthReturnTo('//example.com/account')).toBe('/')
+    expect(safeAuthReturnTo('/account?tab=assistant')).toBe('/account?tab=assistant')
+  })
 })
 
 describe('persistence failure classification', () => {

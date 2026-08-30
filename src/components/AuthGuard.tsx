@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import { ExternalLink, LogIn, RefreshCw } from 'lucide-react'
-import { getAccount, getMigrationState, isLocalAuthBypassEnabled, migrateLocalData, type AccountUser, type MigrationState } from '@/lib/accountClient'
+import { accountLoginHref, getAccount, getMigrationState, isLocalAuthBypassEnabled, migrateLocalData, type AccountUser, type MigrationState } from '@/lib/accountClient'
 import { clearMigratedLocalData, dismissLocalMigrationNotice, inspectLocalMigration, type LocalMigrationSnapshot } from '@/lib/accountMigration'
 import { initializeStore } from '@/lib/store'
 
@@ -16,7 +16,7 @@ interface AccountAccessValue {
   checking: boolean
   isAuthenticated: boolean
   hasSignedInAccount: boolean
-  requestLogin: (message?: string) => void
+  requestLogin: (message?: string, returnTo?: string) => void
 }
 
 const AccountAccessContext = createContext<AccountAccessValue | null>(null)
@@ -47,7 +47,7 @@ export default function AuthGuard({ children }: Props) {
   const [migrationError, setMigrationError] = useState<string | null>(null)
   const [now, setNow] = useState(0)
   const [serviceUnavailable, setServiceUnavailable] = useState(false)
-  const [loginPrompt, setLoginPrompt] = useState<string | null>(null)
+  const [loginPrompt, setLoginPrompt] = useState<{ message: string; returnTo?: string } | null>(null)
 
   useEffect(() => {
     setNow(Date.now())
@@ -69,6 +69,10 @@ export default function AuthGuard({ children }: Props) {
     })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (user) setLoginPrompt(null)
+  }, [user])
 
   const migrationOpen = Boolean(
     user && localMigration?.hasData && migrationState && migrationState.status !== 'completed' &&
@@ -98,8 +102,9 @@ export default function AuthGuard({ children }: Props) {
     checking,
     isAuthenticated: Boolean(user) || isLocalAuthBypassEnabled(),
     hasSignedInAccount: Boolean(user),
-    requestLogin: (message) => setLoginPrompt(message || '登录后才能保存你的学习内容，并在其他设备继续使用。'),
+    requestLogin: (message, returnTo) => setLoginPrompt({ message: message || '登录后才能保存你的学习内容，并在其他设备继续使用。', returnTo }),
   }
+  const loginHref = accountLoginHref(loginPrompt?.returnTo || (typeof window === 'undefined' ? '/' : `${window.location.pathname}${window.location.search}${window.location.hash}`))
 
   return (
     <AccountAccessContext.Provider value={accessValue}>
@@ -135,13 +140,13 @@ export default function AuthGuard({ children }: Props) {
               <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={19} aria-hidden="true" /></span>
               <div className="min-w-0">
                 <h2 id="login-required-title" className="text-lg font-semibold">需要登录</h2>
-                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{loginPrompt}</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{loginPrompt.message}</p>
               </div>
             </div>
             {serviceUnavailable && <p role="alert" className="mt-3 text-sm text-amber-600">账号服务暂时不可用，请稍后重试。</p>}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" className="btn-secondary min-h-10 px-4" onClick={() => setLoginPrompt(null)}>稍后</button>
-              <a href="/api/auth/tokendance/start" className="btn-primary inline-flex min-h-10 items-center gap-2 px-4">使用观猹登录 <ExternalLink size={16} aria-hidden="true" /></a>
+              <a href={loginHref} className="btn-primary inline-flex min-h-10 items-center gap-2 px-4">使用观猹登录 <ExternalLink size={16} aria-hidden="true" /></a>
             </div>
           </section>
         </div>

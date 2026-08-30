@@ -1,5 +1,6 @@
 import {
   createTokendancePaymentSession,
+  fetchTokendanceBalance,
   getTokendancePaymentSession,
   createTokendanceAuthorizationUrl,
   TOKENDANCE_APP_URL,
@@ -30,6 +31,18 @@ describe('TokenDance payment session URLs', () => {
     expect(requestUrl).toBe('https://tokendance.space/portal/api/v1/payment/sessions')
     expect(requestUrl).not.toContain('sk-test')
     expect(new Headers(requestInit.headers).get('Authorization')).toBe('Bearer sk-test')
+  })
+
+  it('uses the authenticated account proxy for a server-managed key', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ credits: 100, credits_used: 25, balance: 75 }) })
+
+    await expect(fetchTokendanceBalance('server-managed')).resolves.toEqual({ credits: 100, credits_used: 25, balance: 75 })
+    expect(fetchMock).toHaveBeenCalledWith('/api/account/tokendance/', expect.objectContaining({
+      method: 'GET',
+      credentials: 'include',
+    }))
+    expect(JSON.stringify(fetchMock.mock.calls[0])).not.toContain('Authorization')
+    expect(JSON.stringify(fetchMock.mock.calls[0])).not.toContain('server-managed')
   })
 
   it('rejects an insecure payment URL returned by the service', async () => {

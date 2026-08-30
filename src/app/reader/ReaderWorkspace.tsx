@@ -54,6 +54,7 @@ import { LoadingState, Skeleton } from '@/components/Skeleton'
 import AppDialogHost from '@/components/AppDialogHost'
 import AssistantWorkspace from '@/components/AssistantWorkspace'
 import { APP_ROUTES } from '@/lib/appRoutes'
+import { accountLoginHref } from '@/lib/accountClient'
 
 type View = 'bookshelf' | 'reading' | 'settings'
 
@@ -61,13 +62,13 @@ const TOKENDANCE_LOGO_URL = 'https://tokendance.space/TokenDance%E5%93%81%E7%89%
 const TOKENDANCE_PRICING_URL = 'https://tokendance.space/models/deepseek-v4-flash-0731'
 const ACCOUNT_CLOUD_NOTICE_KEY = 'feynman-account-cloud-notice-v1'
 
-function AccountEntry({ lang }: { lang: AppSettings['language'] }) {
+function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; returnTo: string }) {
   const { user, checking, isAuthenticated } = useAccountAccess()
   const signedIn = Boolean(user) || isAuthenticated
 
   return (
     <a
-      href={signedIn ? '/account' : '/api/auth/tokendance/start'}
+      href={signedIn ? '/account' : accountLoginHref(returnTo)}
       className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-2.5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15 sm:px-3"
       aria-label={signedIn ? (lang === 'zh' ? '打开账号中心' : 'Open Account Center') : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
       title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
@@ -81,7 +82,7 @@ function AccountEntry({ lang }: { lang: AppSettings['language'] }) {
   )
 }
 
-function AccountCloudNotice({ lang, hidden }: { lang: AppSettings['language']; hidden: boolean }) {
+function AccountCloudNotice({ lang, hidden, returnTo }: { lang: AppSettings['language']; hidden: boolean; returnTo: string }) {
   const { checking, isAuthenticated } = useAccountAccess()
   const [dismissed, setDismissed] = useState(true)
 
@@ -105,7 +106,7 @@ function AccountCloudNotice({ lang, hidden }: { lang: AppSettings['language']; h
             ? '当前可浏览系统示例。添加书籍、保存学习记录或使用 AI 前，请先使用观猹登录；登录后数据会保存到你的账号云端。'
             : 'You can browse the system sample now. Sign in with Watcha before adding books, saving learning records, or using AI; signed-in data is saved to your account cloud.'}
         </p>
-        <a href="/api/auth/tokendance/start" className="shrink-0 font-medium text-[var(--accent)] hover:underline">
+        <a href={accountLoginHref(returnTo)} className="shrink-0 font-medium text-[var(--accent)] hover:underline">
           {lang === 'zh' ? '登录' : 'Sign in'}
         </a>
         <button type="button" onClick={dismiss} className="icon-button h-8 w-8 shrink-0" aria-label={lang === 'zh' ? '关闭通知' : 'Dismiss notice'} title={lang === 'zh' ? '关闭通知' : 'Dismiss'}>
@@ -155,8 +156,11 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false
-    const isTokenDanceCallback = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tokendance_callback') === '1'
-    const shouldOpenSettings = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('view') === 'settings'
+    const initialParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+    const isTokenDanceCallback = initialParams?.get('tokendance_callback') === '1'
+    const requestedView = initialParams?.get('view')
+    const requestedBookId = initialParams?.get('bookId')
+    const shouldOpenSettings = requestedView === 'settings'
     if (isTokenDanceCallback || shouldOpenSettings) {
       setView('settings')
     }
@@ -184,6 +188,13 @@ export default function Home() {
       setSettings(saved)
       document.documentElement.setAttribute('data-theme', saved.theme)
       const books = getBooks()
+      if (requestedView === 'reading' && requestedBookId) {
+        const requestedBook = books.find(book => book.id === requestedBookId)
+        if (requestedBook) {
+          setSelectedBook(requestedBook)
+          setView('reading')
+        }
+      }
       const userHasHistory = hasUserHistory(books)
 
       const completedOnboardingVersion = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
@@ -247,12 +258,14 @@ export default function Home() {
     setShowApiKeyAlert(false)
     setSelectedBook(book)
     setView('reading')
+    window.history.replaceState({}, '', `/?view=reading&bookId=${encodeURIComponent(book.id)}`)
   }
 
   const handleOpenApiSettings = () => {
     setShowApiKeyAlert(false)
     setFocusApiConfigurationRequest(request => request + 1)
     setView('settings')
+    window.history.replaceState({}, '', '/?view=settings')
   }
 
   const handleOpenOnboarding = () => {
@@ -285,6 +298,7 @@ export default function Home() {
     setShowApiKeyAlert(false)
     setFocusApiConfigurationRequest(request => request + 1)
     setView('settings')
+    window.history.replaceState({}, '', '/?view=settings')
   }
 
   const acknowledgeDataRisk = (goToBackup: boolean) => {
@@ -301,6 +315,11 @@ export default function Home() {
   }
 
   const lang = settings.language
+  const currentWorkspaceHref = view === 'settings'
+    ? '/?view=settings'
+    : view === 'reading' && selectedBook
+      ? `/?view=reading&bookId=${encodeURIComponent(selectedBook.id)}`
+      : '/'
   const activeStartupPrompt = getActiveStartupPrompt({
     showDataLossWarning,
     showTokenDanceWelcome,
@@ -389,10 +408,11 @@ export default function Home() {
             <div className="flex min-w-0 items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setView('bookshelf')
-                  setSelectedBook(null)
-                  setBookshelfKey(prev => prev + 1)
+                  onClick={() => {
+                    setView('bookshelf')
+                    setSelectedBook(null)
+                    window.history.replaceState({}, '', '/')
+                    setBookshelfKey(prev => prev + 1)
                 }}
                 className="flex min-h-11 min-w-0 shrink items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] sm:gap-3"
                 aria-label={lang === 'zh' ? '返回书架首页' : 'Return to bookshelf home'}
@@ -418,6 +438,7 @@ export default function Home() {
                   onClick={() => {
                     setView('bookshelf')
                     setSelectedBook(null)
+                    window.history.replaceState({}, '', '/')
                     setBookshelfKey(prev => prev + 1) // 强制刷新书架
                   }}
                   className={`nav-item min-h-10 px-2 sm:px-3 ${view === 'bookshelf' ? 'active' : ''}`}
@@ -428,7 +449,10 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setView('settings')}
+                  onClick={() => {
+                    setView('settings')
+                    window.history.replaceState({}, '', '/?view=settings')
+                  }}
                   className={`nav-item min-h-10 px-2 sm:px-3 ${view === 'settings' ? 'active' : ''}`}
                   aria-label={lang === 'zh' ? '打开设置' : 'Open settings'}
                 >
@@ -436,7 +460,7 @@ export default function Home() {
                   <span className="hidden sm:inline">{t(lang, 'nav.settings')}</span>
                 </button>
                 </div>
-                <AccountEntry lang={lang} />
+                <AccountEntry lang={lang} returnTo={currentWorkspaceHref} />
                 <div className="hidden items-center gap-0.5 border-l border-[var(--border)] pl-1 sm:flex">
                   <a href={APP_ROUTES.website} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '访问官网' : 'Open the website'} title={lang === 'zh' ? '访问官网' : 'Website'}><ExternalLink size={17} aria-hidden="true" /></a>
                   <button type="button" onClick={handleOpenOnboarding} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '打开使用引导' : 'Open user guide'} title={lang === 'zh' ? '使用引导' : 'User guide'}><CircleHelp size={18} aria-hidden="true" /></button>
@@ -464,7 +488,7 @@ export default function Home() {
           </div>
         </nav>
 
-        <AccountCloudNotice lang={lang} hidden={activeStartupPrompt !== null} />
+        <AccountCloudNotice lang={lang} hidden={activeStartupPrompt !== null} returnTo={currentWorkspaceHref} />
 
         {/* Main Content */}
         <main className="max-w-6xl mx-auto min-w-0 px-4 py-6 sm:py-8">
@@ -481,6 +505,7 @@ export default function Home() {
               onBack={() => {
                 setSelectedBook(null)
                 setView('bookshelf')
+                window.history.replaceState({}, '', '/')
                 setBookshelfKey(prev => prev + 1) // 强制刷新书架以显示最新数据
               }}
               onOpenSettings={handleOpenApiSettings}

@@ -95,7 +95,7 @@ export default function Settings({
   onBackupCompleted,
   onOpenMigrationNotice
 }: Props) {
-  const { hasSignedInAccount, requestLogin } = useAccountAccess()
+  const { checking: checkingAccount, hasSignedInAccount, requestLogin } = useAccountAccess()
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
     aiProvider: 'tokendance',
@@ -192,10 +192,11 @@ export default function Settings({
   const handledApiConfigurationRequestRef = useRef(0)
 
   const requireAccountForApi = () => {
+    if (checkingAccount) return false
     if (hasSignedInAccount) return true
     requestLogin(settings.language === 'zh'
       ? '请先使用观猹登录。登录成功后，才能配置 TokenDance API Key，并将密钥加密保存到当前账号。'
-      : 'Sign in with Watcha first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.')
+      : 'Sign in with Watcha first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.', '/?view=settings')
     return false
   }
 
@@ -254,10 +255,11 @@ export default function Settings({
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     if (!code || params.get('tokendance_callback') !== '1') return
+    if (checkingAccount) return
     if (!hasSignedInAccount) {
       requestLogin(settings.language === 'zh'
         ? 'TokenDance AI 授权必须绑定到已登录账号。请先使用观猹登录，再重新发起授权。'
-        : 'TokenDance AI authorization must be linked to a signed-in account. Sign in with Watcha, then start authorization again.')
+        : 'TokenDance AI authorization must be linked to a signed-in account. Sign in with Watcha, then start authorization again.', '/?view=settings')
       return
     }
     setShowAiConfiguration(true)
@@ -273,7 +275,7 @@ export default function Settings({
       })
       .catch(error => setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance AI key authorization failed.'))
       .finally(() => setTokendanceOAuthLoading(false))
-  }, [hasSignedInAccount, requestLogin, settings.language, settingsLoaded])
+  }, [checkingAccount, hasSignedInAccount, requestLogin, settings.language, settingsLoaded])
 
   useEffect(() => subscribeToAIUsage(() => {
     setAIUsageSummary(getAIUsageSummary())
@@ -344,7 +346,7 @@ export default function Settings({
       target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       target?.focus()
     })
-  }, [focusApiConfigurationRequest, hasSignedInAccount, settings.aiDataConsent, settings.apiKey, settings.language, settingsLoaded])
+  }, [checkingAccount, focusApiConfigurationRequest, hasSignedInAccount, settings.aiDataConsent, settings.apiKey, settings.language, settingsLoaded])
 
   // P0 新增：加载 IndexedDB 信息
   async function loadDbInfo() {
@@ -1163,7 +1165,9 @@ export default function Settings({
             <div className="flex flex-wrap items-center gap-2">
               <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${aiConfigurationComplete ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
                 {aiConfigurationComplete ? <Check size={14} aria-hidden="true" /> : hasSignedInAccount ? <AlertTriangle size={14} aria-hidden="true" /> : <LogIn size={14} aria-hidden="true" />}
-              {!hasSignedInAccount
+              {checkingAccount
+                  ? (lang === 'zh' ? '正在读取账号' : 'Checking account')
+                  : !hasSignedInAccount
                   ? (lang === 'zh' ? '请先登录账号' : 'Sign in first')
                   : aiConfigurationComplete
                   ? (activeProvider === 'tokendance'
@@ -1178,7 +1182,12 @@ export default function Settings({
               )}
             </div>
           </div>
-          {!hasSignedInAccount ? (
+          {checkingAccount ? (
+            <div className="flex min-h-28 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]/50 text-sm text-[var(--text-secondary)]" role="status">
+              <RefreshCw size={16} className="mr-2 animate-spin" aria-hidden="true" />
+              {lang === 'zh' ? '正在读取账号状态…' : 'Checking account status…'}
+            </div>
+          ) : !hasSignedInAccount ? (
             <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/8 p-4">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>

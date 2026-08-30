@@ -114,6 +114,7 @@ describe('Settings AI privacy controls', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     mockAccountAccess.user = { id: 'user-1' }
+    mockAccountAccess.checking = false
     mockAccountAccess.isAuthenticated = true
     mockAccountAccess.hasSignedInAccount = true
     HTMLElement.prototype.scrollIntoView = jest.fn()
@@ -143,8 +144,22 @@ describe('Settings AI privacy controls', () => {
     expect(await screen.findByText('先使用观猹登录，再配置 TokenDance')).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('TokenDance API Key')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '使用观猹登录' }))
-    expect(mockAccountAccess.requestLogin).toHaveBeenCalledWith(expect.stringContaining('请先使用观猹登录'))
+    expect(mockAccountAccess.requestLogin).toHaveBeenCalledWith(expect.stringContaining('请先使用观猹登录'), '/?view=settings')
     expect(saveAccountApiKeyMock).not.toHaveBeenCalled()
+  })
+
+  it('waits for the account check before showing a sign-in prompt', async () => {
+    mockAccountAccess.user = null
+    mockAccountAccess.checking = true
+    mockAccountAccess.isAuthenticated = false
+    mockAccountAccess.hasSignedInAccount = false
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+
+    renderSettings()
+
+    expect(await screen.findByText('正在读取账号状态…')).toBeInTheDocument()
+    expect(screen.queryByText('先使用观猹登录，再配置 TokenDance')).not.toBeInTheDocument()
+    expect(mockAccountAccess.requestLogin).not.toHaveBeenCalled()
   })
 
   it('saves a new TokenDance key to the signed-in account vault', async () => {

@@ -3,14 +3,17 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, LogIn, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
-import { getAccount, type AccountUser } from '@/lib/accountClient'
+import { accountLoginHref, getAccount, type AccountUser } from '@/lib/accountClient'
 
 export default function LoginPage() {
   const [user, setUser] = useState<AccountUser | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [loginHref, setLoginHref] = useState(accountLoginHref('/'))
 
   useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('returnTo')
+    setLoginHref(accountLoginHref(requested && requested.startsWith('/') ? requested : '/'))
     void getAccount().then(state => setUser(state.user)).catch(() => setError('暂时无法读取登录状态，请刷新页面重试。')).finally(() => setChecking(false))
   }, [])
 
@@ -48,7 +51,7 @@ export default function LoginPage() {
             </div>
           ) : (
             <>
-              <a href="/api/auth/tokendance/start/" className="btn-primary mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2">
+              <a href={loginHref} className="btn-primary mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2">
                 <LogIn size={17} aria-hidden="true" />使用观猹登录<ExternalLink size={15} aria-hidden="true" />
               </a>
               <p className="mt-4 text-xs leading-5 text-[var(--text-secondary)]">

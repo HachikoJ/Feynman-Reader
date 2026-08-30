@@ -11,6 +11,7 @@ import {
   AI_CONTEXT_LIMIT_EXCEEDED,
   AI_OUTPUT_INCOMPLETE,
   chat,
+  browserAiProxyBaseUrl,
   createDeepSeekClient,
   DEEPSEEK_API_KEY_INVALID,
   DEEPSEEK_OFFICIAL_CHANNEL_SUNSET,
@@ -44,6 +45,10 @@ describe('DeepSeek V4 Flash request defaults', () => {
 })
 
 describe('TokenDance recovery headers', () => {
+  it('constructs an absolute same-origin browser proxy URL', () => {
+    expect(browserAiProxyBaseUrl('https://reader.deline.top')).toBe('https://reader.deline.top/api/ai')
+  })
+
   it('reads the recovery action from OpenAI SDK response-header objects', () => {
     expect(getTokendanceRecoveryAction({ headers: { 'tokendance-recovery-action': 'reauthorize_api_key' } }))
       .toBe('reauthorize_api_key')
