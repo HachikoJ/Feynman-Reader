@@ -104,7 +104,7 @@ describe('TokenDance OAuth attribution and callback', () => {
       const authorizationUrl = await createTokendanceAuthorizationUrl()
       const params = new URL(authorizationUrl).searchParams
       expect(params.get('app_url')).toBe(TOKENDANCE_APP_URL)
-      expect(params.get('app_url')).toBe('https://reader.deline.top/')
+      expect(params.get('app_url')).toBe('https://deline.top')
       expect(params.get('callback_url')).toContain(`${TOKENDANCE_CALLBACK_ORIGIN}/?view=settings&tokendance_callback=1`)
       expect(params.get('callback_url')).not.toContain('www.deline.top/?view=settings')
       expect(authorizationUrl).not.toContain('apiKey')
