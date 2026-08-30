@@ -1,6 +1,8 @@
 export interface AccountUser {
   id: string
   tokendanceSubject?: string
+  displayName?: string
+  avatarUrl?: string
   phone?: string
   email?: string
   phoneVerifiedAt?: string

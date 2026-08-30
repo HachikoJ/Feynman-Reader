@@ -20,7 +20,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     const session = await store.findSession(sessionId)
     if (!session || Date.parse(session.expiresAt) <= Date.now()) return NextResponse.json({ user: null }, { status: 401, headers: { 'Cache-Control': 'no-store' } })
     const user = await store.findUserById(session.userId)
-    return NextResponse.json({ user: user || { id: session.userId } }, { headers: { 'Cache-Control': 'no-store' } })
+    const profile = store.getUserProfile ? await store.getUserProfile(session.userId) : null
+    return NextResponse.json({ user: user ? { ...user, ...(profile ? { displayName: profile.displayName, avatarUrl: profile.avatarUrl } : {}) } : { id: session.userId } }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (isPersistenceUnavailable(error)) return NextResponse.json({ user: null, error: '账号服务尚未配置数据库。' }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
     return NextResponse.json({ user: null }, { status: 401, headers: { 'Cache-Control': 'no-store' } })

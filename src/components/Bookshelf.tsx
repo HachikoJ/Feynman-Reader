@@ -68,6 +68,15 @@ export function getBookshelfProgressPercentage(book: Pick<Book, 'currentPhase'>)
   return Math.min(100, Math.max(0, (book.currentPhase / LEARNING_PHASES.length) * 100))
 }
 
+export function scoreReviewPriority(book: Pick<Book, 'status' | 'currentPhase' | 'bestScore' | 'practiceRecords' | 'qaPracticeRecords' | 'updatedAt' | 'createdAt'>, now = Date.now()): number {
+  const weakAnswers = (book.qaPracticeRecords || []).reduce((count, record) => count + record.questions.filter(question => question.score !== undefined && question.score < 70).length, 0)
+  const lastPracticeAt = (book.practiceRecords || []).reduce((latest, record) => Math.max(latest, record.createdAt), 0)
+  const daysSinceActivity = Math.max(0, now - Math.max(lastPracticeAt, book.updatedAt || book.createdAt)) / 86_400_000
+  const unfinished = Math.max(0, LEARNING_PHASES.length - book.currentPhase)
+  const statusWeight = book.status === 'reading' ? 30 : book.status === 'finished' ? 15 : -40
+  return weakAnswers * 100 + unfinished * 18 + statusWeight + Math.min(45, Math.floor(daysSinceActivity * 3)) + Math.max(0, 80 - book.bestScore)
+}
+
 export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props) {
   const { isAuthenticated, requestLogin } = useAccountAccess()
   const [books, setBooks] = useState<Book[]>([])
@@ -737,15 +746,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     { key: 'finished', label: t(lang, 'bookshelf.tabs.finished'), count: stats.finished }
   ]
 
-  const priorityReviewBook = books
-    .filter(book => book.currentPhase < LEARNING_PHASES.length || book.bestScore < 80)
-    .sort((a, b) => {
-      const aNeedsReview = a.qaPracticeRecords?.some(record => record.questions.some(question => question.score !== undefined && question.score < 70)) ? 0 : 1
-      const bNeedsReview = b.qaPracticeRecords?.some(record => record.questions.some(question => question.score !== undefined && question.score < 70)) ? 0 : 1
-      return aNeedsReview - bNeedsReview || (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
-    })[0]
+  const reviewCandidates = books.filter(book => book.status !== 'unread' && (book.currentPhase < LEARNING_PHASES.length || book.bestScore < 80 || book.qaPracticeRecords?.some(record => record.questions.some(question => question.score !== undefined && question.score < 70))))
+  const priorityReviewBook = reviewCandidates.sort((a, b) => scoreReviewPriority(b) - scoreReviewPriority(a) || b.updatedAt - a.updatedAt)[0]
   // Keep the review workbench useful even when every book is complete.
-  const reviewBook = priorityReviewBook || [...books]
+  const reviewBook = priorityReviewBook || books.filter(book => book.status !== 'unread')
     .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))[0]
 
   const reviewPrompt = reviewBook?.qaPracticeRecords
@@ -1273,24 +1277,27 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
                 {/* Hover Actions - 右上角小图标 */}
                 {!batchMode && (
-                  <div className={`absolute right-2 ${book.isSample ? 'top-[4rem]' : 'top-2'} hidden flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 sm:flex`}>
+                  <div className={`absolute right-2 ${book.isSample ? 'top-[4rem]' : 'top-2'} z-10 flex flex-col gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100`}>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleSelectBook(book) }}
-                      className="w-8 h-8 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-sm hover:scale-110 transition-transform"
+                      type="button"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-sm text-white shadow-sm transition-transform hover:scale-110"
                       title={lang === 'zh' ? '阅读' : 'Read'}
                     >
                       <AppIcon name="bookOpen" size={16} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); openEditModal(book) }}
-                      className="w-8 h-8 rounded-full bg-white/90 text-gray-700 flex items-center justify-center text-sm hover:scale-110 transition-transform"
+                      type="button"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-sm text-gray-700 shadow-sm transition-transform hover:scale-110"
                       title={lang === 'zh' ? '编辑' : 'Edit'}
                     >
                       <AppIcon name="edit" size={16} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteBook(book) }}
-                      className="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center text-sm hover:scale-110 transition-transform"
+                      type="button"
+                      className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-sm text-white shadow-sm transition-transform hover:scale-110"
                       title={lang === 'zh' ? '删除' : 'Delete'}
                     >
                       <AppIcon name="trash" size={16} />

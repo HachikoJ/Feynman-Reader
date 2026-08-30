@@ -3,7 +3,7 @@ import './globals.css'
 import 'katex/dist/katex.min.css'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://reader.deline.top'),
+  metadataBase: new URL('https://reader.feline.top'),
   title: '费曼读书助手 | Feynman Reader',
   description: '把一本书讲给 AI 听，直到你真的理解。费曼读书助手是一个支持账号云端学习记录的 AI 深度阅读工作区。',
   applicationName: '费曼读书助手',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: '费曼读书助手 | Feynman Reader',
     description: '把一本书讲给 AI 听，直到你真的理解。',
-    url: 'https://reader.deline.top',
+    url: 'https://reader.feline.top',
     siteName: '费曼读书助手',
     type: 'website',
     images: [{ url: '/icon-512.png', width: 512, height: 512, alt: '费曼读书助手' }],

@@ -72,7 +72,7 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
 
           <div className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/8 p-3">
             <p className="font-semibold">
-              {isZh ? '检测到本机旧数据时，请在 3 天内完成迁移' : 'Migrate detected local history within 3 days'}
+              {isZh ? '检测到本机旧数据时，请在 2026 年 10 月 1 日前完成迁移' : 'Migrate detected local history before October 1, 2026'}
             </p>
             <p className="mt-1 text-xs leading-5">
               {isZh

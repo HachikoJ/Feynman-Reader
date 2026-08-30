@@ -24,14 +24,14 @@ describe('auth cookie transport', () => {
 
   it('allows plain HTTP cookies for localhost development', () => {
     expect(shouldUseSecureCookies(new Request('http://localhost:8080/api/auth/me'))).toBe(false)
-    expect(shouldUseSecureCookies(new Request('https://reader.deline.top/api/auth/me'))).toBe(true)
+    expect(shouldUseSecureCookies(new Request('https://reader.feline.top/api/auth/me'))).toBe(true)
   })
 
   it('honors an explicit deployment override', () => {
     process.env.FEYNMAN_COOKIE_SECURE = 'true'
     expect(shouldUseSecureCookies(new Request('http://localhost:8080/api/auth/me'))).toBe(true)
     process.env.FEYNMAN_COOKIE_SECURE = 'false'
-    expect(shouldUseSecureCookies(new Request('https://reader.deline.top/api/auth/me'))).toBe(false)
+    expect(shouldUseSecureCookies(new Request('https://reader.feline.top/api/auth/me'))).toBe(false)
   })
 
 })
@@ -50,7 +50,7 @@ describe('OAuth return destination', () => {
 
   it('keeps an internal page in signed state', () => {
     const issuedAt = Date.now()
-    const signed = createOAuthState({ nonce: 'nonce', callback: 'https://reader.deline.top/api/auth/tokendance/callback', returnTo: '/?view=settings', issuedAt })
+    const signed = createOAuthState({ nonce: 'nonce', callback: 'https://reader.feline.top/api/auth/tokendance/callback', returnTo: '/?view=settings', issuedAt })
     expect(readOAuthState(signed, issuedAt)?.returnTo).toBe('/?view=settings')
   })
 

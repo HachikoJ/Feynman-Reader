@@ -159,7 +159,7 @@ curl -fsS --retry 5 --retry-connrefused --retry-delay 2 --connect-timeout 5 --ma
 systemctl reload nginx
 
 echo "6. 验证公网首页、健康检查、新旧 Chunk 与 HTTPS 安全响应头..."
-RESPONSE_HEADERS="$(curl -fsSI --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 20 "https://reader.deline.top/?release=$RELEASE_ID")"
+RESPONSE_HEADERS="$(curl -fsSI --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 20 "https://reader.feline.top/?release=$RELEASE_ID")"
 REQUIRED_HEADERS=(
   "Content-Security-Policy"
   "X-Frame-Options"
@@ -177,10 +177,10 @@ for header in "${REQUIRED_HEADERS[@]}"; do
   fi
 done
 
-curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.deline.top/api/health/" | grep -q '"status":"ok"'
+curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.feline.top/api/health/" | grep -q '"status":"ok"'
 
 for retired_path in "/reader" "/reader/?view=settings&tokendance_callback=1" "/feynmanreader" "/feynmanreader/settings"; do
-  retired_status="$(curl -sS --retry 3 --connect-timeout 10 --max-time 20 -o /dev/null -w '%{http_code}' "https://reader.deline.top$retired_path")"
+  retired_status="$(curl -sS --retry 3 --connect-timeout 10 --max-time 20 -o /dev/null -w '%{http_code}' "https://reader.feline.top$retired_path")"
   if [[ "$retired_status" != "410" ]]; then
     echo "部署失败：停用入口 $retired_path 返回 HTTP $retired_status，而不是 410" >&2
     exit 1
@@ -193,9 +193,9 @@ if [[ -z "$new_chunk" ]]; then
   exit 1
 fi
 NEW_CHUNK_URL="/_next/static/${new_chunk#"$PROJECT_DIR/.next/static/"}"
-curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.deline.top$NEW_CHUNK_URL?release=$RELEASE_ID" >/dev/null
+curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.feline.top$NEW_CHUNK_URL?release=$RELEASE_ID" >/dev/null
 if [[ -n "$OLD_CHUNK_URL" ]]; then
-  curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.deline.top$OLD_CHUNK_URL?release=$RELEASE_ID" >/dev/null
+  curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.feline.top$OLD_CHUNK_URL?release=$RELEASE_ID" >/dev/null
 fi
 
 echo "7. 保留最近 $RELEASES_TO_KEEP 个可回滚版本..."
@@ -210,5 +210,5 @@ CONFIGS_INSTALLED=0
 trap - EXIT
 
 echo "=========================================="
-echo "部署完成：https://reader.deline.top"
+echo "部署完成：https://reader.feline.top"
 echo "=========================================="

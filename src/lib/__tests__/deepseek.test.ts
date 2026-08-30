@@ -46,7 +46,7 @@ describe('DeepSeek V4 Flash request defaults', () => {
 
 describe('TokenDance recovery headers', () => {
   it('constructs an absolute same-origin browser proxy URL', () => {
-    expect(browserAiProxyBaseUrl('https://reader.deline.top')).toBe('https://reader.deline.top/api/ai')
+    expect(browserAiProxyBaseUrl('https://reader.feline.top')).toBe('https://reader.feline.top/api/ai')
   })
 
   it('reads the recovery action from OpenAI SDK response-header objects', () => {

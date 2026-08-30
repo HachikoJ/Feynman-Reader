@@ -21,7 +21,7 @@ export function getTokendanceCallbackUrl(request?: Request): string {
     if (forwardedProto && forwardedHost) return `${forwardedProto}://${forwardedHost}${TOKENDANCE_OAUTH_CALLBACK_PATH}`
     return `${url.origin}${TOKENDANCE_OAUTH_CALLBACK_PATH}`
   }
-  return `https://reader.deline.top${TOKENDANCE_OAUTH_CALLBACK_PATH}`
+  return `https://reader.feline.top${TOKENDANCE_OAUTH_CALLBACK_PATH}`
 }
 
 export function getAuthConfig(): AuthConfig {

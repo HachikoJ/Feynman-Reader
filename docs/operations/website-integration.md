@@ -8,15 +8,15 @@
 | --- | --- | --- |
 | 裸域入口 | `https://deline.top/` | 官网项目，308 到 `www` |
 | 品牌官网 | `https://www.deline.top/` | 官网 GitHub 仓库 |
-| 费曼读书助手 | `https://reader.deline.top/` | Feynman-Reader 仓库 |
+| 费曼读书助手 | `https://reader.feline.top/` | Feynman-Reader 仓库 |
 | 未来独立项目 | `https://<project>.deline.top/` | 对应项目仓库 |
 
-产品仓库只负责 `reader.deline.top`。官网仓库不要复制产品构建产物、Nginx 配置或 `public` 资源。
+产品仓库只负责 `reader.feline.top`。官网仓库不要复制产品构建产物、Nginx 配置或 `public` 资源。
 
 ## 2. 官网代码必须修改的内容
 
 1. Feynman Reader 卡片、按钮、导航、文档和 Open Graph 链接统一使用：
-   `https://reader.deline.top/`
+   `https://reader.feline.top/`
 2. 官网收到下列请求时返回 `410 Gone`，不执行跳转：
    - `/reader`、`/reader/` 及其子路径
    - `/feynmanreader`、`/feynmanreader/` 及其子路径
@@ -33,10 +33,10 @@
 ```text
 deline.top          A/AAAA  <官网服务器或 WAF>
 www.deline.top      A/AAAA  <官网服务器或 WAF>
-reader.deline.top   A/AAAA  <产品服务器或 WAF>
+reader.feline.top   A/AAAA  <产品服务器或 WAF>
 ```
 
-不要让 `reader.deline.top` 解析到官网站点目录。三个 hostname 都必须配置 HTTPS 证书；裸域和 `www` 的证书由官网项目维护，产品证书由产品部署维护。
+不要让 `reader.feline.top` 解析到官网站点目录。三个 hostname 都必须配置 HTTPS 证书；裸域和 `www` 的证书由官网项目维护，产品证书由产品部署维护。
 
 ## 4. 腾讯云服务器首次接入
 
@@ -64,7 +64,7 @@ node --version
 /var/www/deline-website-deploy/releases/<commit-or-timestamp>
 ```
 
-不要使用 `/var/www/feynman-reader`，也不要修改 `/etc/nginx/conf.d/reader.deline.top.conf`。
+不要使用 `/var/www/feynman-reader`，也不要修改 `/etc/nginx/conf.d/reader.feline.top.conf`。
 
 ## 5. 官网 Nginx 最小配置
 
@@ -135,24 +135,24 @@ curl -fsSI https://www.deline.top/
 curl -fsSI https://deline.top/
 curl -sSI 'https://www.deline.top/reader/?from=retired'
 curl -sSI 'https://www.deline.top/feynmanreader'
-curl -fsSI https://reader.deline.top/
-curl -fsSI https://reader.deline.top/privacy/
-curl -fsSI https://reader.deline.top/manifest.json
+curl -fsSI https://reader.feline.top/
+curl -fsSI https://reader.feline.top/privacy/
+curl -fsSI https://reader.feline.top/manifest.json
 ```
 
 验收标准：
 
 - `deline.top/` -> `www.deline.top/` 为 `308`。
 - `www.deline.top/reader`、`www.deline.top/feynmanreader` 及其子路径均为 `410`。
-- `reader.deline.top/` 返回费曼读书助手页面，不能返回官网页面。
-- `reader.deline.top/reader`、`reader.deline.top/feynmanreader` 及其子路径均为 `410`。
-- 产品页面的 canonical、Open Graph、PWA manifest 和 TokenDance OAuth callback 都使用 `reader.deline.top`；TokenDance `app_url` 保持已登记的裸域归因标识 `https://deline.top`。
+- `reader.feline.top/` 返回费曼读书助手页面，不能返回官网页面。
+- `reader.feline.top/reader`、`reader.feline.top/feynmanreader` 及其子路径均为 `410`。
+- 产品页面的 canonical、Open Graph、PWA manifest 和 TokenDance OAuth callback 都使用 `reader.feline.top`；TokenDance `app_url` 保持已登记的裸域归因标识 `https://deline.top`。
 - 官网和产品均无混合内容、证书错误或跨域存储假设。
 
 ## 8. 变更责任
 
 - 官网仓库：品牌页面、官网导航、裸域/www 跳转、官网服务器和官网证书。
-- Feynman-Reader 仓库：产品页面、`reader.deline.top`、产品 Nginx、产品 OAuth 回调和产品静态资源。
+- Feynman-Reader 仓库：产品页面、`reader.feline.top`、产品 Nginx、产品 OAuth 回调和产品静态资源。
 - DNS/WAF 管理：确保 hostname 指向正确源站，并分别转发到对应 Nginx server block。
 
 任何一方要改变域名、路径、OAuth callback 或本地数据格式，必须先同时更新两边的交接文档和验收脚本，再上线。

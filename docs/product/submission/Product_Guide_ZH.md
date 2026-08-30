@@ -23,7 +23,7 @@ npm run dev
 
 ## 当前产品图集
 
-以下截图展示当前产品界面；正式访问地址为 `https://reader.deline.top`。当前默认示例书为《追风筝的人》；最新书架和账号中心截图位于 `docs/product/screenshots/`。
+以下截图展示当前产品界面；正式访问地址为 `https://reader.feline.top`。当前默认示例书为《追风筝的人》；最新书架和账号中心截图位于 `docs/product/screenshots/`。
 
 | 文件 | 展示重点 |
 | --- | --- |

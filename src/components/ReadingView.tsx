@@ -476,6 +476,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           setBook(updatedBook)
         }
 
+        setShowPracticeHistory(true)
+        setTimeout(() => {
+          practiceHistoryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 100)
+
         setTeachingNote('')
       } catch (error) {
         const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
@@ -798,7 +803,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                     {completedPhaseCount} / {LEARNING_PHASES.length}
                   </span>
                 </div>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                   {LEARNING_PHASES.map((p, idx) => (
                     <button
                       key={p.id}
@@ -807,7 +812,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                       aria-label={lang === 'zh'
                         ? `第 ${idx + 1} 阶段：${t(lang, `phases.${p.id}.title`)}`
                         : `Phase ${idx + 1}: ${t(lang, `phases.${p.id}.title`)}`}
-                      className={`flex flex-col items-center p-3 rounded-xl transition-all ${
+                      className={`flex min-w-0 min-h-[92px] flex-col items-center justify-start rounded-xl p-2.5 transition-all sm:p-3 ${
                         idx === currentPhase 
                           ? 'bg-[var(--accent)] text-white scale-105' 
                           : responses[p.id]
@@ -816,7 +821,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                       }`}
                     >
                       <AppIcon name={phaseIconNames[p.id]} tone={idx === currentPhase ? 'inherit' : phaseIconTones[p.id]} size={22} className="mb-1" />
-                      <span className="text-xs text-center">{t(lang, `phases.${p.id}.subtitle`)}</span>
+                      <span className="min-w-0 max-w-full break-words text-center text-xs leading-4">{t(lang, `phases.${p.id}.subtitle`)}</span>
                       {responses[p.id] && isPhaseCompleted(idx, completedPhaseCount) && <AppIcon name="success" tone="green" size={14} className="mt-1" />}
                       {responses[p.id] && !isPhaseCompleted(idx, completedPhaseCount) && <AppIcon name="circle" tone="amber" size={13} className="mt-1" />}
                     </button>

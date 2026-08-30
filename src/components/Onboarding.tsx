@@ -61,7 +61,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       tips: [
         { text: '书籍、笔记、金句、学习进度和助手会话保存到账号云端', emphasis: '保存到账号云端', tone: 'accent' },
         { text: '账号中心可跨设备查看云端书架、活动、金句和数据统计', emphasis: '账号中心', tone: 'emerald' },
-        { text: 'Supabase 是平台后台数据库，用户无需自行配置或接触数据库信息', emphasis: '无需自行配置', tone: 'sky' }
+        { text: '登录后，学习数据会自动保存到云端，可在账号中心跨设备查看', emphasis: '自动保存到云端', tone: 'sky' }
       ]
     },
     {
@@ -108,7 +108,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       tips: [
         { text: 'Books, notes, quotes, progress, and assistant sessions are saved to your account cloud', emphasis: 'account cloud', tone: 'accent' },
         { text: 'Use Account Center to view your cloud bookshelf, activity, quotes, and data statistics across devices', emphasis: 'Account Center', tone: 'emerald' },
-        { text: 'Supabase is the platform backend database; users do not configure or access it directly', emphasis: 'do not configure', tone: 'sky' }
+        { text: 'After sign-in, learning data is saved to your account cloud and available across devices', emphasis: 'account cloud', tone: 'sky' }
       ]
     },
     {

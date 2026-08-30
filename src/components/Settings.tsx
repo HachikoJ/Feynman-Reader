@@ -1351,8 +1351,8 @@ export default function Settings({
             />
             <span>
               {lang === 'zh'
-                ? `我理解使用 AI 功能会将完成当前任务所需的相关学习内容发送至 ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}，并同意进行该传输。`
-                : `I understand that AI features send the learning content needed for the current task to ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'}, and I consent to that transfer.`}
+                ? '我理解使用 AI 功能会将完成当前任务所需的相关学习内容发送至所选大模型服务，并同意进行该传输。'
+                : 'I understand that AI features send the learning content needed for the current task to the selected large-language model service, and I consent to that transfer.'}
             </span>
           </label>
           {apiKeyConsentError && !showConsentPolicy && (

@@ -577,7 +577,7 @@ export default function Home() {
               </div>
 
               <p className="min-w-0 text-center text-xs text-[var(--text-secondary)] sm:text-right">
-                © 2025 {lang === 'zh' ? '费曼读书助手 · 保留所有权利' : 'Feynman Reader · All Rights Reserved'}
+                © 2026 {lang === 'zh' ? '费曼读书助手 · 保留所有权利' : 'Feynman Reader · All Rights Reserved'}
               </p>
             </div>
           </div>

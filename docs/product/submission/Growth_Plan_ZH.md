@@ -1,6 +1,6 @@
 # 增长、定价、Token 成本和 PMF
 
-产品已经可以直接访问：[https://reader.deline.top](https://reader.deline.top)
+产品已经可以直接访问：[https://reader.feline.top](https://reader.feline.top)
 
 现在的产品不是帮人快速总结一本书。用户得自己把书讲一遍，AI 再用 3 个角色问问题。这个动作有门槛，但也是它和普通 AI 阅读工具不一样的地方。
 

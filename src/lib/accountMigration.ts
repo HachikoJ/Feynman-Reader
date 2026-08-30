@@ -7,7 +7,7 @@ import { ASSISTANT_MEMORY_METADATA_KEY, type AssistantMemory } from './assistant
 const MIGRATION_MARKER = 'feynman-cloud-migration-completed'
 const MIGRATION_DISMISSED_MARKER = 'feynman-cloud-migration-dismissed'
 const MIGRATION_DETECTED_AT = 'feynman-cloud-migration-detected-at'
-const MIGRATION_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+const MIGRATION_CUTOFF_AT = Date.parse('2026-10-01T00:00:00+08:00')
 
 export interface LocalMigrationSnapshot {
   hasData: boolean
@@ -60,7 +60,10 @@ export async function inspectLocalMigration(options: { includeDismissed?: boolea
   const userUsage = aiUsageRecords.filter(record => !record.bookId || userBookIds.has(record.bookId))
   const assistantSessions = Array.isArray(sessionRecord?.sessions) ? sessionRecord.sessions : []
   const assistantMemories = Array.isArray(memoryRecord?.memories) ? memoryRecord.memories : []
-  const hasData = userBooks.length > 0 || userUsage.length > 0 || userLists.length > 0 || userRelations.length > 0 || assistantSessions.length > 0 || assistantMemories.length > 0
+  const userQuotes = Array.isArray(settings.quotes)
+    ? settings.quotes.filter(quote => quote && typeof quote === 'object' && !(quote as { isPreset?: unknown }).isPreset)
+    : []
+  const hasData = userBooks.length > 0 || userUsage.length > 0 || userLists.length > 0 || userRelations.length > 0 || userQuotes.length > 0 || assistantSessions.length > 0 || assistantMemories.length > 0
   if (!hasData) return { ...EMPTY_SNAPSHOT }
 
   const detectedAt = Number(window.localStorage.getItem(MIGRATION_DETECTED_AT)) || Date.now()
@@ -79,7 +82,7 @@ export async function inspectLocalMigration(options: { includeDismissed?: boolea
   return {
     hasData: true,
     detectedAt,
-    deadlineAt: detectedAt + MIGRATION_WINDOW_MS,
+    deadlineAt: MIGRATION_CUTOFF_AT,
     payload,
     books: userBooks.length,
     aiUsageRecords: userUsage.length,

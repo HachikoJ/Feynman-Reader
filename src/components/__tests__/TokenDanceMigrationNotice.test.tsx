@@ -16,7 +16,7 @@ describe('TokenDanceMigrationNotice', () => {
     render(<TokenDanceMigrationNotice lang="zh" onClose={jest.fn()} />)
 
     expect(screen.getByText(/账号与云端保存已升级/)).toBeInTheDocument()
-    expect(screen.getByText(/3 天内完成迁移/)).toBeInTheDocument()
+    expect(screen.getByText(/2026 年 10 月 1 日前完成迁移/)).toBeInTheDocument()
     expect(screen.getByText(/只有服务端确认迁移写入成功后/)).toBeInTheDocument()
     expect(screen.getByText(/永久关闭自动提醒/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /查看 TokenDance 实时价目/ })).toHaveAttribute(
@@ -43,7 +43,7 @@ describe('TokenDanceMigrationNotice', () => {
     render(<TokenDanceMigrationNotice lang="en" onClose={jest.fn()} />)
 
     expect(screen.getByText(/Accounts and cloud storage have been upgraded/)).toBeInTheDocument()
-    expect(screen.getByText(/within 3 days/)).toBeInTheDocument()
+    expect(screen.getByText(/before October 1, 2026/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Account Center' })).toHaveAttribute('href', '/account?tab=data')
   })
 })

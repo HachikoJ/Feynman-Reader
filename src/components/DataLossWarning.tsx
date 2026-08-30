@@ -71,8 +71,8 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
             <Download size={19} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
             <p>
               {isZh
-                ? '请前往“账号中心 > 数据管理”迁移历史数据并定期导出云端备份。备份不包含 API Key，未迁移或未备份的内容无法代为恢复。'
-                : 'Use Account Center > Data Management to migrate history and export cloud backups regularly. Backups exclude API keys, and unmigrated or unbacked-up data cannot be recovered for you.'}
+                ? '请前往“账号中心 > 数据管理”迁移历史数据。导入与导出工具始终保留，备份不包含 API Key；未迁移或未备份的内容无法代为恢复。'
+                : 'Use Account Center > Data Management to migrate history. Import and export tools remain available, and backups exclude API keys; unmigrated or unbacked-up data cannot be recovered for you.'}
             </p>
           </div>
           </div>

@@ -18,6 +18,9 @@ export interface PersistenceAdapter extends AuthStore {
   getUserDataSummary?(userId: string): Promise<UserDataSummary>
   exportUserData?(userId: string): Promise<unknown>
   saveUserSettings?(userId: string, data: unknown): Promise<void>
+  getUserProfile?(userId: string): Promise<UserProfile>
+  saveUserProfile?(userId: string, profile: UserProfile): Promise<UserProfile>
+  syncWatchaProfile?(userId: string, profile: { nickname?: string; avatarUrl?: string | null }): Promise<void>
   getMigrationState?(userId: string, activateWindow?: boolean): Promise<MigrationState>
   migrateUserData?(userId: string, payload: unknown): Promise<MigrationResult>
   listRecycleBin?(userId: string): Promise<RecycleBinItem[]>
@@ -45,6 +48,13 @@ export interface MigrationState {
   completedAt: string | null
   lastError: string | null
   syncVersion: number
+}
+
+export interface UserProfile {
+  displayName: string
+  avatarUrl: string | null
+  customDisplayName: string | null
+  customAvatarUrl: string | null
 }
 
 export interface MigrationResult {

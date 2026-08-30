@@ -113,7 +113,7 @@ export default function AuthGuard({ children }: Props) {
         <section className="card w-full max-w-lg p-6" aria-labelledby="legacy-migration-title">
           <h1 id="legacy-migration-title" className="text-xl font-bold">先迁移本机历史数据</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">检测到本浏览器中有 {localMigration?.books || 0} 本历史书籍、{localMigration?.assistantSessions || 0} 个助手会话和 {localMigration?.assistantMemories || 0} 条长期记忆。迁移会与账号云端数据合并，同一记录以更新时间较新的内容为准；系统示例书不会上传。</p>
-          <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">迁移入口只保留 3 天。服务端确认写入成功后，浏览器中的历史用户数据才会被清理，并保留已迁移标记。选择“不再提醒”会保留本机数据，之后仍可从账号中心手动迁移。</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">历史数据迁移入口开放至 2026 年 10 月 1 日。服务端确认写入成功后，浏览器中的历史用户数据才会被清理，并保留已迁移标记。选择“不再提醒”会保留本机数据，之后仍可从账号中心手动迁移。</p>
           <button type="button" onClick={() => void handleMigration()} disabled={migrationBusy} className="btn-primary mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2">
             {migrationBusy && <RefreshCw size={16} className="animate-spin" aria-hidden="true" />}
             {migrationBusy ? '正在迁移…' : '迁移到云端并继续'}

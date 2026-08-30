@@ -410,6 +410,10 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
       setAnswers(Object.fromEntries(updatedQuestions.flatMap((question, index) =>
         !question.passed && question.userAnswer ? [[index, question.userAnswer]] : []
       )))
+      setShowHistory(true)
+      setTimeout(() => {
+        historyRef?.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
       
       if (onBookUpdate) {
         onBookUpdate()

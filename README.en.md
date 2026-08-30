@@ -9,7 +9,7 @@
 ![Account cloud](https://img.shields.io/badge/data-account_cloud-22c55e)
 [![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
 
-[Personal site](https://www.deline.top) · [Open Feynman Reader](https://reader.deline.top/) · [中文 README](README.md) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
+[Personal site](https://www.deline.top) · [Open Feynman Reader](https://reader.feline.top/) · [中文 README](README.md) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
 
 **Reading is not understanding until you can explain it.**
 
@@ -46,7 +46,7 @@ Open <http://localhost:8080>. You can inspect the system sample without signing 
 
 ### Local Account Preview
 
-The current Watcha client registers only the production callback at `https://reader.deline.top/api/auth/tokendance/callback`, so a localhost session cannot complete real Watcha authorization. To inspect Account Center locally, add this to the Git-ignored `.env.local` file:
+The current Watcha client registers only the production callback at `https://reader.feline.top/api/auth/tokendance/callback`, so a localhost session cannot complete real Watcha authorization. To inspect Account Center locally, add this to the Git-ignored `.env.local` file:
 
 ```env
 NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
@@ -73,7 +73,7 @@ git diff --check
 ## Documentation
 
 - [Product materials](docs/product/submission/README.md)
-- [Privacy policy](https://reader.deline.top/privacy/)
+- [Privacy policy](https://reader.feline.top/privacy/)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)

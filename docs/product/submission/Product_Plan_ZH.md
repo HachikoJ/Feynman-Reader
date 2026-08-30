@@ -5,7 +5,7 @@
 - **产品名称：** 费曼读书助手（Feynman Reader）
 - **一句话介绍：** 读完一本书后，用自己的话讲给 AI 听；AI 不替用户总结，而是通过阶段化学习、评分和 3 个角色追问，找出讲不通的地方，直到用户能讲清楚。
 - **当前形态：** 可运行的 Next.js Web 产品，AI 服务使用 DeepSeek V4 Flash，学习数据默认保存在浏览器 IndexedDB。
-- **产品访问：** [https://reader.deline.top](https://reader.deline.top)
+- **产品访问：** [https://reader.feline.top](https://reader.feline.top)
 
 本项目的核心不是“让 AI 帮我读完一本书”，而是建立一个强制输出的练习闭环：**输入资料 -> 形成自己的解释 -> 接受追问与评分 -> 根据反馈重答 -> 留下学习记录**。
 

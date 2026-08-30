@@ -11,6 +11,7 @@ import type {
   MigrationState,
   PersistenceAdapter,
   RecycleBinItem,
+  UserProfile,
   UserDataSummary,
 } from './persistence'
 import { normalizeImportData } from '@/lib/backupValidation'
@@ -26,6 +27,15 @@ type UserRow = {
   email_verified_at: Date | string | null
   created_at: Date | string
   updated_at: Date | string
+}
+
+type ProfileSettings = {
+  profile?: {
+    watchaNickname?: unknown
+    watchaAvatarUrl?: unknown
+    customDisplayName?: unknown
+    customAvatarUrl?: unknown
+  }
 }
 
 type SessionRow = {
@@ -59,6 +69,23 @@ function mapUser(row: UserRow): AuthUser {
     ...(row.email_verified_at ? { emailVerifiedAt: iso(row.email_verified_at) } : {}),
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
+  }
+}
+
+function profileFromSettings(settings: unknown): UserProfile {
+  const item = settings && typeof settings === 'object' && !Array.isArray(settings)
+    ? settings as ProfileSettings
+    : {}
+  const profile = item.profile && typeof item.profile === 'object' ? item.profile : {}
+  const watchaName = typeof profile.watchaNickname === 'string' ? profile.watchaNickname.trim() : ''
+  const watchaAvatar = typeof profile.watchaAvatarUrl === 'string' && profile.watchaAvatarUrl.trim() ? profile.watchaAvatarUrl.trim() : null
+  const customName = typeof profile.customDisplayName === 'string' && profile.customDisplayName.trim() ? profile.customDisplayName.trim() : null
+  const customAvatar = typeof profile.customAvatarUrl === 'string' && profile.customAvatarUrl.trim() ? profile.customAvatarUrl.trim() : null
+  return {
+    displayName: customName || watchaName || '观猹用户',
+    avatarUrl: customAvatar || watchaAvatar,
+    customDisplayName: customName,
+    customAvatarUrl: customAvatar,
   }
 }
 
@@ -121,25 +148,33 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
 
   async findUserById(userId: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where id = $1', [userId])
-    return row ? mapUser(row) : null
+    if (!row) return null
+    const profile = await this.getUserProfile(userId)
+    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
   }
 
   async findByTokendanceSubject(subject: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where tokendance_subject = $1', [subject])
-    return row ? mapUser(row) : null
+    if (!row) return null
+    const profile = await this.getUserProfile(row.id)
+    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
   }
 
   async findByPhone(phone: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where phone = $1', [phone])
-    return row ? mapUser(row) : null
+    if (!row) return null
+    const profile = await this.getUserProfile(row.id)
+    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
   }
 
   async findByEmail(email: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where email = $1', [email])
-    return row ? mapUser(row) : null
+    if (!row) return null
+    const profile = await this.getUserProfile(row.id)
+    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
   }
 
-  async createUser(input: { tokendanceSubject?: string; phone?: string; email?: string }): Promise<AuthUser> {
+  async createUser(input: { tokendanceSubject?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser> {
     const row = await this.one<UserRow>(
       `insert into public.app_users (tokendance_subject, phone, email)
        values ($1, $2, $3)
@@ -148,7 +183,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     )
     if (!row) throw new Error('User creation returned no row.')
     await this.ensureDefaultQuotes(row.id)
-    return mapUser(row)
+    return this.findUserById(row.id) as Promise<AuthUser>
   }
 
   async updateUser(userId: string, patch: Partial<Pick<AuthUser, 'tokendanceSubject' | 'phone' | 'email' | 'phoneVerifiedAt' | 'emailVerifiedAt'>>): Promise<AuthUser> {
@@ -172,7 +207,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       values,
     )
     if (!row) throw new Error('User not found.')
-    return mapUser(row)
+    return this.findUserById(row.id) as Promise<AuthUser>
   }
 
   async createSession(userId: string, ttlSeconds: number): Promise<AuthSession> {
@@ -330,12 +365,57 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     )
   }
 
+  async getUserProfile(userId: string): Promise<UserProfile> {
+    const settings = await this.one<{ data: unknown }>('select data from public.user_settings where user_id = $1', [userId])
+    return profileFromSettings(settings?.data)
+  }
+
+  async saveUserProfile(userId: string, profile: UserProfile): Promise<UserProfile> {
+    const current = await this.ensureDefaultQuotes(userId)
+    const customDisplayName = profile.customDisplayName?.trim() || null
+    const customAvatarUrl = profile.customAvatarUrl?.trim() || null
+    if (customDisplayName && (customDisplayName.length > 40 || /[\u0000-\u001f]/.test(customDisplayName))) throw new Error('昵称长度或格式无效。')
+    if (customAvatarUrl && (customAvatarUrl.length > 2000 || !/^https:\/\//i.test(customAvatarUrl))) throw new Error('头像地址必须是 HTTPS 链接。')
+    const nextProfile = {
+      ...(current.profile && typeof current.profile === 'object' ? current.profile : {}),
+      customDisplayName,
+      customAvatarUrl,
+    }
+    await this.pool.query(
+      `insert into public.user_settings (user_id, data, version, updated_at)
+       values ($1, $2::jsonb, 1, now())
+       on conflict (user_id) do update set data = excluded.data,
+         version = public.user_settings.version + 1, updated_at = now()`,
+      [userId, JSON.stringify({ ...current, profile: nextProfile, apiKey: '' })],
+    )
+    return profileFromSettings({ ...current, profile: nextProfile })
+  }
+
+  async syncWatchaProfile(userId: string, profile: { nickname?: string; avatarUrl?: string | null }): Promise<void> {
+    const current = await this.ensureDefaultQuotes(userId)
+    const currentProfile = current.profile && typeof current.profile === 'object' ? current.profile as Record<string, unknown> : {}
+    const nickname = typeof profile.nickname === 'string' ? profile.nickname.trim().slice(0, 80) : ''
+    const avatarUrl = typeof profile.avatarUrl === 'string' && profile.avatarUrl.trim() ? profile.avatarUrl.trim().slice(0, 2000) : null
+    const nextProfile = {
+      ...currentProfile,
+      ...(nickname ? { watchaNickname: nickname } : {}),
+      watchaAvatarUrl: avatarUrl,
+    }
+    await this.pool.query(
+      `insert into public.user_settings (user_id, data, version, updated_at)
+       values ($1, $2::jsonb, 1, now())
+       on conflict (user_id) do update set data = excluded.data,
+         version = public.user_settings.version + 1, updated_at = now()`,
+      [userId, JSON.stringify({ ...current, profile: nextProfile, apiKey: '' })],
+    )
+  }
+
   async getMigrationState(userId: string, activateWindow = false): Promise<MigrationState> {
     if (activateWindow) {
       await this.pool.query(
         `insert into public.user_data_state (user_id, migration_deadline_at)
-         values ($1, now() + interval '3 days')
-         on conflict (user_id) do update set migration_deadline_at = coalesce(public.user_data_state.migration_deadline_at, excluded.migration_deadline_at)
+         values ($1, timestamptz '2026-10-01 00:00:00+08')
+         on conflict (user_id) do update set migration_deadline_at = excluded.migration_deadline_at
          where public.user_data_state.migration_status <> 'completed'`,
         [userId],
       )
@@ -387,16 +467,17 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       if (current?.migration_status === 'completed') {
         throw new Error('历史数据已经迁移完成。')
       }
-      if (current?.migration_deadline_at && new Date(current.migration_deadline_at).getTime() < Date.now()) {
+      const migrationCutoff = Date.parse('2026-10-01T00:00:00+08:00')
+      if (migrationCutoff <= Date.now()) {
         throw new Error('历史数据迁移入口已过期。')
       }
       await client.query(
         `insert into public.user_data_state
            (user_id, migration_status, migration_version, migration_started_at, migration_deadline_at, last_migration_error, updated_at)
-         values ($1, 'running', $2, now(), now() + interval '3 days', null, now())
+         values ($1, 'running', $2, now(), timestamptz '2026-10-01 00:00:00+08', null, now())
          on conflict (user_id) do update set migration_status = 'running', migration_version = $2,
            migration_started_at = coalesce(public.user_data_state.migration_started_at, now()),
-           migration_deadline_at = coalesce(public.user_data_state.migration_deadline_at, now() + interval '3 days'),
+           migration_deadline_at = timestamptz '2026-10-01 00:00:00+08',
            last_migration_error = null, updated_at = now()`,
         [userId, migrationVersion],
       )

@@ -37,16 +37,20 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (typeof token.access_token !== 'string' || !token.access_token.trim()) return NextResponse.json({ error: '观猹未返回有效访问令牌。' }, { status: 502 })
     const userResponse = await fetch(process.env.TOKENDANCE_OAUTH_USERINFO_URL?.trim() || TOKENDANCE_OAUTH_USERINFO_URL, { headers: { Authorization: `Bearer ${token.access_token}` } })
     if (!userResponse.ok) return NextResponse.json({ error: '观猹用户信息读取失败。' }, { status: 502 })
-    const userData = await userResponse.json() as { statusCode?: unknown; data?: { user_id?: unknown } }
+    const userData = await userResponse.json() as { statusCode?: unknown; data?: { user_id?: unknown; nickname?: unknown; name?: unknown; avatar?: unknown; avatar_url?: unknown; avatarUrl?: unknown } }
     const subjectValue = userData.data?.user_id
     const subject = typeof subjectValue === 'number' ? String(subjectValue) : typeof subjectValue === 'string' ? subjectValue.trim() : ''
     if (!subject || subject.length > 255) return NextResponse.json({ error: '观猹未返回稳定用户标识。' }, { status: 502 })
+    const profileName = [userData.data?.nickname, userData.data?.name].find(value => typeof value === 'string' && value.trim())
+    const displayName = typeof profileName === 'string' ? profileName.trim().slice(0, 40) : undefined
+    const profileAvatar = [userData.data?.avatar_url, userData.data?.avatarUrl, userData.data?.avatar].find(value => typeof value === 'string' && value.trim())
+    const avatarUrl = typeof profileAvatar === 'string' && /^https?:\/\//i.test(profileAvatar.trim()) ? profileAvatar.trim().slice(0, 2048) : undefined
     const store = getPersistence()
     const existing = await store.findByTokendanceSubject(subject)
     let user = existing ? await store.updateUser(existing.id, { tokendanceSubject: subject }) : null
     if (!user) {
       try {
-        user = await store.createUser({ tokendanceSubject: subject })
+        user = await store.createUser({ tokendanceSubject: subject, displayName, avatarUrl })
       } catch (error) {
         // Two callbacks can race after a user authorizes in multiple tabs. The
         // unique subject constraint makes the second request resolve to the
@@ -55,6 +59,9 @@ export async function GET(request: Request): Promise<NextResponse> {
         user = await store.findByTokendanceSubject(subject)
         if (!user) throw error
       }
+    }
+    if (store.syncWatchaProfile) {
+      await store.syncWatchaProfile(user.id, { nickname: displayName, avatarUrl: avatarUrl || null })
     }
     const session = await store.createSession(user.id, COOKIE_TTL_SECONDS)
     const destination = new URL(parsedState.returnTo, new URL(callback).origin)
