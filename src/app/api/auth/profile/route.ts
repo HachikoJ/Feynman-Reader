@@ -45,18 +45,20 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     if (!userId) return NextResponse.json({ error: '未登录。' }, { status: 401 })
     const body = await request.json() as { displayName?: unknown; avatarUrl?: unknown }
     const store = getPersistence()
-    if (!store.saveUserProfilePatch && (!store.getUserProfile || !store.saveUserProfile)) {
-      return NextResponse.json({ error: '账号资料服务尚未启用。' }, { status: 501 })
-    }
     if (body.displayName === undefined && body.avatarUrl === undefined) return NextResponse.json({ error: '没有需要更新的资料。' }, { status: 400 })
     const patch = {
       ...(body.displayName !== undefined ? { customDisplayName: cleanName(body.displayName) || null } : {}),
       ...(body.avatarUrl !== undefined ? { customAvatarUrl: cleanAvatar(body.avatarUrl) || null } : {}),
     }
-    const saveProfilePatch = store.saveUserProfilePatch
-    const saved = saveProfilePatch
-      ? await saveProfilePatch.call(store, userId, patch)
-      : await store.saveUserProfile!(userId, { ...(await store.getUserProfile!(userId)), ...patch })
+    let saved
+    if (store.saveUserProfilePatch) {
+      saved = await store.saveUserProfilePatch(userId, patch)
+    } else {
+      const getUserProfile = store.getUserProfile
+      const saveUserProfile = store.saveUserProfile
+      if (!getUserProfile || !saveUserProfile) return NextResponse.json({ error: '账号资料服务尚未启用。' }, { status: 501 })
+      saved = await saveUserProfile.call(store, userId, { ...(await getUserProfile.call(store, userId)), ...patch })
+    }
     const user = await store.findUserById(userId)
     if (!user) return NextResponse.json({ error: '账号不存在。' }, { status: 404 })
     return NextResponse.json({ user, profile: saved }, { headers: { 'Cache-Control': 'no-store' } })

@@ -10,7 +10,8 @@ import {
   getBooks,
   getSettings,
   initializeStore,
-  subscribeToPersistenceErrors
+  subscribeToPersistenceErrors,
+  PersistenceErrorInfo
 } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import Settings from '@/components/Settings'
@@ -148,7 +149,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false)
   const [initializationError, setInitializationError] = useState(false)
   const [initializationAttempt, setInitializationAttempt] = useState(0)
-  const [storageWriteError, setStorageWriteError] = useState(false)
+  const [storageWriteError, setStorageWriteError] = useState<PersistenceErrorInfo | null>(null)
   const [bookshelfKey, setBookshelfKey] = useState(0) // 用于强制刷新书架
   const [showOnboarding, setShowOnboarding] = useState(false) // P0 新增：新手引导
   const [showTokenDanceWelcome, setShowTokenDanceWelcome] = useState(false)
@@ -180,14 +181,14 @@ export default function Home() {
         storageErrorTimer = null
       }
       if (error === null) {
-        if (!cancelled) setStorageWriteError(false)
+        if (!cancelled) setStorageWriteError(null)
         return
       }
       // A short network/auth blip is common during OAuth redirects. Wait before
       // showing the blocking warning; a successful retry clears it immediately.
       storageErrorTimer = setTimeout(() => {
         storageErrorTimer = null
-        if (!cancelled) setStorageWriteError(true)
+        if (!cancelled) setStorageWriteError(error as PersistenceErrorInfo)
       }, 1500)
     })
 
@@ -409,12 +410,24 @@ export default function Home() {
           <AITaskStatus lang={lang} />
           <AssistantWorkspace lang={lang} settings={settings} books={getBooks()} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} />
           {storageWriteError && (
-            <div role="alert" className="sticky top-0 z-50 border-b border-red-500/50 bg-red-950 px-4 py-3 text-sm text-red-100">
+            <div role="alert" className={`sticky top-0 z-50 border-b px-4 py-3 text-sm ${storageWriteError.code === 'local' ? 'border-amber-500/50 bg-amber-950 text-amber-100' : 'border-red-500/50 bg-red-950 text-red-100'}`}>
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
                 <span>
                   {lang === 'zh'
-                    ? '最新修改尚未保存到账号云端，刷新后可能丢失。请勿刷新，并前往账号中心检查登录、云端同步或导出备份。'
-                    : 'Recent changes were not saved to your account cloud and may be lost after refresh. Do not refresh; check sign-in, cloud sync, or export a backup from Account Center.'}
+                    ? storageWriteError.code === 'payload-too-large'
+                      ? '本次内容较大，暂未同步到云端。请先导出备份，或减少单本书的文档内容后再试。'
+                      : storageWriteError.code === 'auth'
+                        ? '账号登录状态已失效，最新修改暂未同步。请重新登录后再试。'
+                        : storageWriteError.code === 'local'
+                          ? '浏览器本地存储暂时不可用，最新修改可能无法保留。请检查浏览器存储权限。'
+                          : '云端同步暂时失败，最新修改尚未确认保存。请保持页面打开并稍后重试。'
+                    : storageWriteError.code === 'payload-too-large'
+                      ? 'This content is too large to sync. Export a backup or reduce the document size and try again.'
+                      : storageWriteError.code === 'auth'
+                        ? 'Your sign-in session expired and recent changes were not synced. Sign in again and retry.'
+                        : storageWriteError.code === 'local'
+                          ? 'Browser storage is unavailable, so recent changes may not be retained. Check storage permissions.'
+                          : 'Cloud sync failed and recent changes are not confirmed. Keep this page open and retry shortly.'}
                 </span>
                 <button
                   type="button"

@@ -199,17 +199,44 @@ let cloudWriteQueue = Promise.resolve()
 let cloudSettingsWriteQueue = Promise.resolve()
 let cloudSnapshotTimer: ReturnType<typeof setTimeout> | null = null
 let cloudSnapshotPending = false
+let cloudSnapshotQueued = false
 let cloudMode = false
+const MAX_CLOUD_SNAPSHOT_BYTES = 19 * 1024 * 1024
 type PersistenceErrorEntry = { scope: string; error: unknown }
 let persistenceErrors: PersistenceErrorEntry[] = []
 const persistenceErrorListeners = new Set<(error: unknown | null) => void>()
 const aiUsageListeners = new Set<() => void>()
+export type PersistenceErrorCode = 'auth' | 'payload-too-large' | 'network' | 'server' | 'local' | 'unknown'
+export type PersistenceErrorInfo = Error & { scope?: string; code?: PersistenceErrorCode; status?: number; retryable?: boolean }
+
+function normalizePersistenceError(scope: string, error: unknown): PersistenceErrorInfo {
+  const normalized = (error instanceof Error ? error : new Error(String(error || '数据保存失败。'))) as PersistenceErrorInfo
+  normalized.scope = normalized.scope || scope
+  if (!normalized.code) {
+    const status = normalized.status
+    const message = normalized.message
+    normalized.code = status === 401 || status === 403 || /未登录|登录状态|unauthori[sz]ed|forbidden/i.test(message)
+      ? 'auth'
+      : status === 413 || /超过 .*限制|payload too large|request entity too large/i.test(message)
+        ? 'payload-too-large'
+        : !scope.startsWith('cloud-')
+          ? 'local'
+          : status !== undefined && status >= 400 && status < 500
+            ? 'server'
+            : /网络|timeout|timed out|fetch|aborted|中止|请求失败/i.test(message) || (status !== undefined && status >= 500)
+              ? 'network'
+              : 'unknown'
+  }
+  normalized.retryable = normalized.retryable ?? (normalized.code === 'network' || normalized.code === 'server')
+  return normalized
+}
 
 function reportPersistenceError(scope: string, error: unknown): void {
-  persistenceErrors = [...persistenceErrors.filter(entry => entry.scope !== scope), { scope, error }]
+  const normalized = normalizePersistenceError(scope, error)
+  persistenceErrors = [...persistenceErrors.filter(entry => entry.scope !== scope), { scope, error: normalized }]
   persistenceErrorListeners.forEach(listener => {
     try {
-      listener(error)
+      listener(normalized)
     } catch (listenerError) {
       logger.error('Persistence error listener failed:', listenerError)
     }
@@ -257,37 +284,58 @@ async function fetchWithRetry(
   return response
 }
 
+async function toCloudPersistenceError(response: Response, fallback: string): Promise<PersistenceErrorInfo> {
+  let message = fallback
+  try {
+    const payload = await response.clone().json() as { error?: unknown }
+    if (typeof payload.error === 'string' && payload.error.trim()) message = payload.error
+  } catch { /* preserve the fallback when the response is not JSON */ }
+  const error = new Error(message) as PersistenceErrorInfo
+  error.status = response.status
+  return error
+}
+
 function enqueueCloudSnapshot(): void {
-  const payload = {
-    version: DATA_VERSION,
-    exportDate: Date.now(),
-    settings: { ...cloneForStorage(settingsCache), apiKey: '' },
-    books: cloneForStorage(booksCache.filter(book => !book.isSample && book.id !== 'sample-the-kite-runner')),
-    aiUsageRecords: cloneForStorage(aiUsageCache),
-    bookLists: cloneForStorage(bookListsCache),
-    bookRelations: cloneForStorage(bookRelationsCache),
+  // Collapse rapid mutations into one request carrying the newest state.
+  if (cloudSnapshotQueued) {
+    cloudSnapshotPending = true
+    return
   }
+  cloudSnapshotQueued = true
   cloudWriteQueue = cloudWriteQueue.then(async () => {
+    const payload = {
+      version: DATA_VERSION,
+      exportDate: Date.now(),
+      settings: { ...cloneForStorage(settingsCache), apiKey: '' },
+      books: cloneForStorage(booksCache.filter(book => !book.isSample && book.id !== 'sample-the-kite-runner')),
+      aiUsageRecords: cloneForStorage(aiUsageCache),
+      bookLists: cloneForStorage(bookListsCache),
+      bookRelations: cloneForStorage(bookRelationsCache),
+    }
+    const body = JSON.stringify(payload)
+    const bodyBytes = typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(body).byteLength : body.length
+    if (bodyBytes > MAX_CLOUD_SNAPSHOT_BYTES) {
+      const error = new Error('云端保存内容超过 20 MB 限制，请先导出备份或减少单本书文档内容。') as PersistenceErrorInfo
+      error.code = 'payload-too-large'
+      throw error
+    }
     const response = await fetchWithRetry('/api/account/import/', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body,
     })
-    if (!response.ok) throw new Error('云端保存失败。')
-    clearPersistenceErrors('cloud-snapshot')
-  }, async () => {
-    const response = await fetchWithRetry('/api/account/import/', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) throw new Error('云端保存失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '云端保存失败。')
     clearPersistenceErrors('cloud-snapshot')
   }).catch(error => {
     reportPersistenceError('cloud-snapshot', error)
     logger.error('Failed to persist cloud snapshot:', error)
+  }).finally(() => {
+    cloudSnapshotQueued = false
+    if (cloudSnapshotPending) {
+      cloudSnapshotPending = false
+      enqueueCloudSnapshot()
+    }
   })
 }
 
@@ -321,7 +369,7 @@ function queueCloudSettings(settings: AppSettings): void {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ settings: payload }),
     })
-    if (!response.ok) throw new Error('云端设置保存失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '云端设置保存失败。')
     clearPersistenceErrors('cloud-settings')
   }).catch(error => {
     reportPersistenceError('cloud-settings', error)
@@ -332,7 +380,7 @@ function queueCloudSettings(settings: AppSettings): void {
 function queueCloudBookDeletion(id: string): void {
   cloudWriteQueue = cloudWriteQueue.then(async () => {
     const response = await fetchWithRetry(`/api/account/books/${encodeURIComponent(id)}/`, { method: 'DELETE', credentials: 'include' })
-    if (!response.ok) throw new Error('云端书籍删除失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍删除失败。')
     clearPersistenceErrors('cloud-book')
   }).catch(error => {
     reportPersistenceError('cloud-book', error)
@@ -346,7 +394,7 @@ function queueCloudBookRestore(id: string): void {
       method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bookId: id, action: 'restore' }),
     })
-    if (!response.ok) throw new Error('云端书籍恢复失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍恢复失败。')
     clearPersistenceErrors('cloud-book')
   }).catch(error => {
     reportPersistenceError('cloud-book', error)
@@ -608,7 +656,10 @@ export function saveSettings(settings: AppSettings): void {
     return
   }
   settingsWriteQueue = settingsWriteQueue
-    .then(() => saveIndexedDBSettings(snapshot), () => saveIndexedDBSettings(snapshot))
+    .then(
+      async () => { await saveIndexedDBSettings(snapshot); clearPersistenceErrors('settings') },
+      async () => { await saveIndexedDBSettings(snapshot); clearPersistenceErrors('settings') }
+    )
     .catch(error => {
       reportPersistenceError('settings', error)
       logger.error('Failed to persist settings to IndexedDB:', error)
@@ -661,7 +712,10 @@ function persistBookOrganization(): void {
     return
   }
   bookOrganizationWriteQueue = bookOrganizationWriteQueue
-    .then(() => saveIndexedDBBookOrganization(snapshot), () => saveIndexedDBBookOrganization(snapshot))
+    .then(
+      async () => { await saveIndexedDBBookOrganization(snapshot); clearPersistenceErrors('book-organization') },
+      async () => { await saveIndexedDBBookOrganization(snapshot); clearPersistenceErrors('book-organization') }
+    )
     .catch(error => {
       reportPersistenceError('book-organization', error)
       logger.error('Failed to persist book lists and relations:', error)
@@ -797,7 +851,10 @@ export function addAIUsageRecord(record: Omit<AIUsageRecord, 'id'>): AIUsageReco
   if (cloudMode) {
     queueCloudSnapshot()
   } else aiUsageWriteQueue = aiUsageWriteQueue
-    .then(() => saveIndexedDBAIUsageRecords(snapshot), () => saveIndexedDBAIUsageRecords(snapshot))
+    .then(
+      async () => { await saveIndexedDBAIUsageRecords(snapshot); clearPersistenceErrors('ai-usage') },
+      async () => { await saveIndexedDBAIUsageRecords(snapshot); clearPersistenceErrors('ai-usage') }
+    )
     .catch(error => {
       reportPersistenceError('ai-usage', error)
       logger.error('Failed to persist AI usage records to IndexedDB:', error)
@@ -828,7 +885,10 @@ export function saveBooks(books: Book[]): void {
     return
   }
   booksWriteQueue = booksWriteQueue
-    .then(() => saveIndexedDBBooks(snapshot), () => saveIndexedDBBooks(snapshot))
+    .then(
+      async () => { await saveIndexedDBBooks(snapshot); clearPersistenceErrors('books') },
+      async () => { await saveIndexedDBBooks(snapshot); clearPersistenceErrors('books') }
+    )
     .catch(error => {
       reportPersistenceError('books', error)
       logger.error('Failed to persist books to IndexedDB:', error)
@@ -842,7 +902,10 @@ function persistBook(book: Book): void {
     return
   }
   booksWriteQueue = booksWriteQueue
-    .then(() => saveIndexedDBBook(snapshot), () => saveIndexedDBBook(snapshot))
+    .then(
+      async () => { await saveIndexedDBBook(snapshot); clearPersistenceErrors('books') },
+      async () => { await saveIndexedDBBook(snapshot); clearPersistenceErrors('books') }
+    )
     .catch(error => {
       reportPersistenceError('books', error)
       logger.error('Failed to persist book to IndexedDB:', error)
@@ -857,8 +920,8 @@ function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
   }
   booksWriteQueue = booksWriteQueue
     .then(
-      () => saveExistingIndexedDBBook(snapshot, expectedUpdatedAt),
-      () => saveExistingIndexedDBBook(snapshot, expectedUpdatedAt)
+      async () => { await saveExistingIndexedDBBook(snapshot, expectedUpdatedAt); clearPersistenceErrors('books') },
+      async () => { await saveExistingIndexedDBBook(snapshot, expectedUpdatedAt); clearPersistenceErrors('books') }
     )
     .catch(error => {
       reportPersistenceError('books', error)
@@ -873,7 +936,10 @@ function persistRestoredBook(book: Book): void {
     return
   }
   booksWriteQueue = booksWriteQueue
-    .then(() => restoreDeletedIndexedDBBook(snapshot), () => restoreDeletedIndexedDBBook(snapshot))
+    .then(
+      async () => { await restoreDeletedIndexedDBBook(snapshot); clearPersistenceErrors('books') },
+      async () => { await restoreDeletedIndexedDBBook(snapshot); clearPersistenceErrors('books') }
+    )
     .catch(error => {
       reportPersistenceError('books', error)
       logger.error('Failed to restore deleted book in IndexedDB:', error)
@@ -887,8 +953,8 @@ function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
   }
   booksWriteQueue = booksWriteQueue
     .then(
-      () => deleteExistingIndexedDBBook(id, expectedUpdatedAt),
-      () => deleteExistingIndexedDBBook(id, expectedUpdatedAt)
+      async () => { await deleteExistingIndexedDBBook(id, expectedUpdatedAt); clearPersistenceErrors('books') },
+      async () => { await deleteExistingIndexedDBBook(id, expectedUpdatedAt); clearPersistenceErrors('books') }
     )
     .catch(error => {
       reportPersistenceError('books', error)
@@ -1021,6 +1087,7 @@ export function resetStoreCache(): void {
   bookOrganizationWriteQueue = Promise.resolve()
   cloudWriteQueue = Promise.resolve()
   cloudSettingsWriteQueue = Promise.resolve()
+  cloudSnapshotQueued = false
   cloudMode = false
   persistenceErrors = []
 }
