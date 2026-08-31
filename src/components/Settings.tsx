@@ -105,6 +105,7 @@ export default function Settings({
   onOpenMigrationNotice
 }: Props) {
   const { checking: checkingAccount, hasSignedInAccount, requestLogin } = useAccountAccess()
+  const watchaOAuthEnabled = process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED !== 'false'
   const localOnlyMode = !hasSignedInAccount && process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
@@ -205,8 +206,8 @@ export default function Settings({
     if (checkingAccount) return false
     if (hasSignedInAccount) return true
     requestLogin(settings.language === 'zh'
-      ? '请先使用观猹登录。登录成功后，才能配置 TokenDance API Key，并将密钥加密保存到当前账号。'
-      : 'Sign in with Watcha first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.', '/?view=settings')
+      ? watchaOAuthEnabled ? '请先使用观猹登录。登录成功后，才能配置 TokenDance API Key，并将密钥加密保存到当前账号。' : '请先登录账号。登录成功后，才能配置 TokenDance API Key，并将密钥加密保存到当前账号。'
+      : watchaOAuthEnabled ? 'Sign in with Watcha first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.' : 'Sign in first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.', '/?view=settings')
     return false
   }
 
@@ -1200,7 +1201,7 @@ export default function Settings({
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '备案期间暂不开放账号登录' : 'Account sign-in is paused during domain filing') : (lang === 'zh' ? '先使用观猹登录，再配置 TokenDance' : 'Sign in with Watcha before configuring TokenDance')}</h2>
+                  <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '备案期间使用本地数据模式' : 'Local data mode during domain filing') : (lang === 'zh' ? watchaOAuthEnabled ? '先使用观猹登录，再配置 TokenDance' : '先登录账号，再配置 TokenDance' : watchaOAuthEnabled ? 'Sign in with Watcha before configuring TokenDance' : 'Sign in before configuring TokenDance')}</h2>
                   <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
                     {localOnlyMode
                       ? (lang === 'zh' ? '当前使用本地模式，书籍和学习数据会保存在此浏览器。备案完成后重新开启登录，即可在账号中心迁移到云端。' : 'Local-only mode is active, so books and learning data stay in this browser. Sign-in will return after filing and the data can then be migrated to your account cloud.')
@@ -1208,7 +1209,7 @@ export default function Settings({
                   </p>
                   {!localOnlyMode && <button type="button" onClick={requireAccountForApi} className="btn-primary mt-3 inline-flex min-h-11 items-center gap-2 px-4">
                     <LogIn size={17} aria-hidden="true" />
-                    {lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha'}
+                    {lang === 'zh' ? watchaOAuthEnabled ? '使用观猹登录' : '登录账号' : watchaOAuthEnabled ? 'Sign in with Watcha' : 'Sign in'}
                   </button>}
                 </div>
               </div>

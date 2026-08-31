@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createOAuthState, oauthPkceCookieHeader, safeAuthReturnTo } from '@/lib/server/auth'
-import { getTokendanceCallbackUrl, TOKENDANCE_OAUTH_AUTHORIZE_URL, TOKENDANCE_OAUTH_SCOPE } from '@/lib/server/authConfig'
+import { getTokendanceCallbackUrl, isWatchaOAuthEnabled, TOKENDANCE_OAUTH_AUTHORIZE_URL, TOKENDANCE_OAUTH_SCOPE } from '@/lib/server/authConfig'
 import { createHash, randomBytes } from 'node:crypto'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request): Promise<NextResponse> {
+  if (!isWatchaOAuthEnabled()) return NextResponse.json({ error: '观猹登录暂时关闭，请使用用户名和密码登录。' }, { status: 503 })
   const clientId = process.env.TOKENDANCE_OAUTH_CLIENT_ID?.trim()
   if (!clientId || !process.env.FEYNMAN_AUTH_STATE_SECRET?.trim()) return NextResponse.json({ error: '观猹登录尚未配置。' }, { status: 503 })
   let target: URL

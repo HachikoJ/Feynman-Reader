@@ -779,7 +779,7 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
                     <div className="mb-2 flex items-center gap-2 text-xs leading-5 text-[var(--text-secondary)]">
                       <p className="min-w-0 flex-1">
                         {!hasSignedInAccount
-                          ? (isZh ? '请先使用观猹登录；登录后再配置 TokenDance API Key 与数据传输同意。' : 'Sign in with Watcha first, then configure a TokenDance API key and data transfer consent.')
+                          ? (isZh ? '请先登录账号；登录后再配置 TokenDance API Key 与数据传输同意。' : 'Sign in first, then configure a TokenDance API key and data transfer consent.')
                           : settings.aiProvider === 'tokendance'
                             ? (isZh ? '完成 TokenDance API Key 与数据传输同意后，即可使用费曼小助手。' : 'Complete the TokenDance API key and data consent to use Feynman Assistant.')
                             : (isZh ? '费曼小助手当前仅支持 TokenDance。' : 'Feynman Assistant currently supports TokenDance only.')}
@@ -790,7 +790,7 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
                           return
                         }
                         onOpenSettings?.()
-                      }}>{!hasSignedInAccount ? (isZh ? '观猹登录' : 'Watcha sign-in') : (isZh ? '去设置' : 'Open Settings')}</button>}
+                      }}>{!hasSignedInAccount ? (isZh ? '登录账号' : 'Sign in') : (isZh ? '去设置' : 'Open Settings')}</button>}
                     </div>
                   )}
                   {(detectedBook || contextHint) && (

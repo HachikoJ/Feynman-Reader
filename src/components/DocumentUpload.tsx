@@ -339,7 +339,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
               }} className="btn-secondary min-h-10 shrink-0 !px-3 !text-sm">
                 {isAuthenticated
                   ? (lang === 'zh' ? '去配置 TokenDance' : 'Set up TokenDance')
-                  : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
+                  : (lang === 'zh' ? '登录账号' : 'Sign in')}
               </button>
             )}
           </div>

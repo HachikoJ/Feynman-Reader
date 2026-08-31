@@ -3,10 +3,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, LogIn, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
-import { getAccount, isLocalAuthBypassEnabled, tokendanceLoginHref, type AccountUser } from '@/lib/accountClient'
+import { getAccount, isLocalAuthBypassEnabled, isWatchaOAuthEnabled, tokendanceLoginHref, type AccountUser } from '@/lib/accountClient'
 
 export default function LoginPage() {
   const localOnlyMode = isLocalAuthBypassEnabled()
+  const watchaEnabled = isWatchaOAuthEnabled()
   const [user, setUser] = useState<AccountUser | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -55,7 +56,7 @@ export default function LoginPage() {
             <UserRound size={26} aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold">登录费曼读书助手</h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{localOnlyMode ? '备案期间暂不开放账号登录。当前数据会保存在此浏览器，登录恢复后可在账号中心迁移到云端。' : '使用观猹账号登录后，你的账号和学习数据可以与服务器安全关联。'}</p>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{localOnlyMode ? '当前使用本地数据模式。' : watchaEnabled ? '使用观猹账号登录后，你的账号和学习数据可以与服务器安全关联。' : '备案期间观猹登录暂时关闭，可使用用户名和密码注册或登录；登录后账号和学习数据会安全保存到云端。'}</p>
           {checking ? (
             <div className="mt-6 flex min-h-11 items-center justify-center text-sm text-[var(--text-secondary)]" role="status">
               <RefreshCw size={16} className="mr-2 animate-spin" aria-hidden="true" />正在检查登录状态
@@ -93,8 +94,8 @@ export default function LoginPage() {
                 <label className="block text-sm"><span className="mb-1 block text-[var(--text-secondary)]">密码</span><input required minLength={8} maxLength={128} type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} className="input w-full" /></label>
                 <button type="submit" disabled={busy} className="btn-primary inline-flex min-h-11 w-full items-center justify-center gap-2"><LogIn size={17} aria-hidden="true" />{busy ? '处理中…' : mode === 'register' ? '注册并登录' : '登录'}</button>
               </form>
-              <div className="my-5 flex items-center gap-3 text-xs text-[var(--text-secondary)]"><span className="h-px flex-1 bg-[var(--border)]" />或<span className="h-px flex-1 bg-[var(--border)]" /></div>
-              <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-secondary inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用观猹登录</a>
+              {watchaEnabled && <><div className="my-5 flex items-center gap-3 text-xs text-[var(--text-secondary)]"><span className="h-px flex-1 bg-[var(--border)]" />或<span className="h-px flex-1 bg-[var(--border)]" /></div>
+              <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-secondary inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用观猹登录</a></>}
               <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">邮箱仅用于账号识别，不需要验证；密码会以加密哈希保存。</p>
             </>
           )}

@@ -55,6 +55,10 @@ export function isLocalAuthBypassEnabled(): boolean {
   return process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
 }
 
+export function isWatchaOAuthEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED !== 'false'
+}
+
 // Keep this helper as the single feature flag for callers that need to know
 // whether account-backed data requires an authenticated session.
 export function isAccountRequired(): boolean {

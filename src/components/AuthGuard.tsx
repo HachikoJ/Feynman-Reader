@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react'
 import { ExternalLink, LogIn, RefreshCw } from 'lucide-react'
-import { accountLoginHref, getAccount, getMigrationState, isLocalAuthBypassEnabled, migrateLocalData, type AccountUser, type MigrationState } from '@/lib/accountClient'
+import { accountLoginHref, getAccount, getMigrationState, isLocalAuthBypassEnabled, isWatchaOAuthEnabled, migrateLocalData, type AccountUser, type MigrationState } from '@/lib/accountClient'
 import { clearMigratedLocalData, dismissLocalMigrationNotice, inspectLocalMigration, type LocalMigrationSnapshot } from '@/lib/accountMigration'
 import { initializeStore } from '@/lib/store'
 
@@ -158,7 +158,7 @@ export default function AuthGuard({ children }: Props) {
             {serviceUnavailable && <p role="alert" className="mt-3 text-sm text-amber-600">账号服务暂时不可用，请稍后重试。</p>}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" className="btn-secondary min-h-10 px-4" onClick={() => setLoginPrompt(null)}>稍后</button>
-              <a href={loginHref} className="btn-primary inline-flex min-h-10 items-center gap-2 px-4">使用观猹登录 <ExternalLink size={16} aria-hidden="true" /></a>
+              <a href={loginHref} className="btn-primary inline-flex min-h-10 items-center gap-2 px-4">{isWatchaOAuthEnabled() ? '前往登录' : '用户名密码登录'} <ExternalLink size={16} aria-hidden="true" /></a>
             </div>
           </section>
         </div>

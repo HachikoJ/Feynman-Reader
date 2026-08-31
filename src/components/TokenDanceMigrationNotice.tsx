@@ -2,6 +2,7 @@
 
 import { BadgePercent, CheckCircle2, Database, ExternalLink, X } from 'lucide-react'
 import { Language } from '@/lib/i18n'
+import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 import { useAccountAccess } from './AuthGuard'
 
 interface Props {
@@ -66,8 +67,8 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
           <div className="space-y-4">
           <p>
             {isZh
-              ? '感谢你一直使用费曼读书助手。现在请使用观猹登录确认账号身份；登录后的书籍、学习记录、金句、助手会话和长期记忆会保存到账号云端。'
-              : 'Thank you for using Feynman Reader. Sign in with Watcha to identify your account. Books, learning records, quotes, assistant sessions, and long-term memories are then saved to your account cloud.'}
+              ? `感谢你一直使用费曼读书助手。现在请${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录确认账号身份；登录后的书籍、学习记录、金句、助手会话和长期记忆会保存到账号云端。`
+              : `Thank you for using Feynman Reader. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} to identify your account. Books, learning records, quotes, assistant sessions, and long-term memories are then saved to your account cloud.`}
           </p>
 
           <div className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/8 p-3">
@@ -104,8 +105,8 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
               </p>
               <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                 {isZh
-                  ? '请先使用观猹登录，再为当前账号配置 TokenDance API Key 并同意相关数据传输。API Key 加密保存在服务端，不进入云端备份。'
-                  : 'Sign in with Watcha first, then configure a TokenDance API key for the current account and consent to the relevant data transfer. The key is encrypted on the server and excluded from cloud backups.'}
+                ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再为当前账号配置 TokenDance API Key 并同意相关数据传输。API Key 加密保存在服务端，不进入云端备份。`
+                : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first, then configure a TokenDance API key for the current account and consent to the relevant data transfer. The key is encrypted on the server and excluded from cloud backups.`}
               </p>
             </div>
           </div>

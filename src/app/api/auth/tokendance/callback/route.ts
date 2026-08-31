@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { COOKIE_TTL_SECONDS, oauthPkceCookieHeader, readOAuthState, sessionCookieHeader } from '@/lib/server/auth'
-import { getTokendanceCallbackUrl, TOKENDANCE_OAUTH_TOKEN_URL, TOKENDANCE_OAUTH_USERINFO_URL } from '@/lib/server/authConfig'
+import { getTokendanceCallbackUrl, isWatchaOAuthEnabled, TOKENDANCE_OAUTH_TOKEN_URL, TOKENDANCE_OAUTH_USERINFO_URL } from '@/lib/server/authConfig'
 import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 
 export const runtime = 'nodejs'
@@ -10,6 +10,7 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
+  if (!isWatchaOAuthEnabled()) return NextResponse.json({ error: '观猹登录暂时关闭，请使用用户名和密码登录。' }, { status: 503 })
   const url = new URL(request.url)
   const code = url.searchParams.get('code')?.trim()
   const state = url.searchParams.get('state')?.trim()

@@ -26,8 +26,13 @@ export function getTokendanceCallbackUrl(request?: Request): string {
 
 export function getAuthConfig(): AuthConfig {
   const tokendanceAuthorizationUrl = process.env.TOKENDANCE_OAUTH_AUTHORIZE_URL?.trim() || TOKENDANCE_OAUTH_AUTHORIZE_URL
+  const watchaEnabled = isWatchaOAuthEnabled()
   return {
     tokendanceAuthorizationUrl,
-    enabledProviders: ['tokendance', 'password'],
+    enabledProviders: watchaEnabled ? ['tokendance', 'password'] : ['password'],
   }
+}
+
+export function isWatchaOAuthEnabled(): boolean {
+  return process.env.FEYNMAN_WATCHA_OAUTH_ENABLED?.trim().toLowerCase() !== 'false'
 }

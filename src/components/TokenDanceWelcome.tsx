@@ -2,6 +2,7 @@
 
 import { ArrowRight, Cloud, CreditCard, ExternalLink, KeyRound, UserRound } from 'lucide-react'
 import { Language } from '@/lib/i18n'
+import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 
 interface Props {
   lang: Language
@@ -19,9 +20,9 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
     ? {
         eyebrow: '新账号与云端能力已上线',
         title: '先登录账号，再配置 AI',
-        description: '你可以直接浏览系统示例。添加自己的书、保存学习记录或使用 AI 前，请先使用观猹登录；登录后再为当前账号配置 TokenDance API Key。',
+        description: `你可以直接浏览系统示例。添加自己的书、保存学习记录或使用 AI 前，请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录账号；登录后再为当前账号配置 TokenDance API Key。`,
         features: [
-          { icon: UserRound, title: '观猹登录', text: '确认账号身份和数据归属，用于登录费曼读书助手' },
+          { icon: UserRound, title: isWatchaOAuthEnabled() ? '观猹登录' : '账号登录', text: '确认账号身份和数据归属，用于登录费曼读书助手' },
           { icon: Cloud, title: '账号云端', text: '书籍、学习记录、金句、助手会话和长期记忆按账号保存' },
           { icon: KeyRound, title: 'TokenDance AI', text: 'API Key 和数据传输同意用于生成分析、推荐及助手回复' },
           { icon: CreditCard, title: '余额与计费', text: '在 TokenDance 查询余额、充值并管理路由；费用由用户自己的 Key 承担' }
@@ -32,9 +33,9 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
     : {
         eyebrow: 'Accounts and cloud data are now available',
         title: 'Sign in before configuring AI',
-        description: 'You can browse the system sample immediately. Before adding books, saving learning records, or using AI, sign in with Watcha; then configure a TokenDance API key for the current account.',
+        description: `You can browse the system sample immediately. Before adding books, saving learning records, or using AI, sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''}; then configure a TokenDance API key for the current account.`,
         features: [
-          { icon: UserRound, title: 'Watcha sign-in', text: 'Identifies your account and owns your Feynman Reader cloud data' },
+          { icon: UserRound, title: isWatchaOAuthEnabled() ? 'Watcha sign-in' : 'Account sign-in', text: 'Identifies your account and owns your Feynman Reader cloud data' },
           { icon: Cloud, title: 'Account cloud', text: 'Books, learning records, quotes, sessions, and long-term memories are saved per account' },
           { icon: KeyRound, title: 'TokenDance AI', text: 'An API key and data consent enable analyses, recommendations, and assistant replies' },
           { icon: CreditCard, title: 'Balance and billing', text: 'Check balance, top up, and manage routes in TokenDance; usage is billed to your key' }
