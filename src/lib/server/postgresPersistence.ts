@@ -375,7 +375,11 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const customDisplayName = profile.customDisplayName?.trim() || null
     const customAvatarUrl = profile.customAvatarUrl?.trim() || null
     if (customDisplayName && (customDisplayName.length > 40 || /[\u0000-\u001f]/.test(customDisplayName))) throw new Error('昵称长度或格式无效。')
-    if (customAvatarUrl && (customAvatarUrl.length > 2000 || !/^https:\/\//i.test(customAvatarUrl))) throw new Error('头像地址必须是 HTTPS 链接。')
+    if (customAvatarUrl?.startsWith('data:image/')) {
+      if (!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i.test(customAvatarUrl) || customAvatarUrl.length > 1_500_000) throw new Error('头像图片格式或大小无效。')
+    } else if (customAvatarUrl && (customAvatarUrl.length > 2000 || !/^https:\/\//i.test(customAvatarUrl))) {
+      throw new Error('头像地址必须是 HTTPS 链接。')
+    }
     const nextProfile = {
       ...(current.profile && typeof current.profile === 'object' ? current.profile : {}),
       customDisplayName,
@@ -672,7 +676,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
         await client.query(`insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at)
           values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), now(), null)
           on conflict (user_id, book_id) do update set name=excluded.name, author=excluded.author, status=excluded.status,
-            current_phase=excluded.current_phase, best_score=excluded.best_score, data=excluded.data, updated_at=excluded.updated_at, deleted_at=null, purge_at=null
+            current_phase=excluded.current_phase, best_score=excluded.best_score, data=excluded.data, updated_at=excluded.updated_at
             where excluded.updated_at >= public.user_books.updated_at`,
         [userId, book.id, book.name, book.author || null, book.status, book.currentPhase, book.bestScore, JSON.stringify(book), book.createdAt, book.updatedAt])
       }

@@ -196,6 +196,9 @@ let booksWriteQueue = Promise.resolve()
 let aiUsageWriteQueue = Promise.resolve()
 let bookOrganizationWriteQueue = Promise.resolve()
 let cloudWriteQueue = Promise.resolve()
+let cloudSettingsWriteQueue = Promise.resolve()
+let cloudSnapshotTimer: ReturnType<typeof setTimeout> | null = null
+let cloudSnapshotPending = false
 let cloudMode = false
 let persistenceErrors: unknown[] = []
 const persistenceErrorListeners = new Set<(error: unknown) => void>()
@@ -212,7 +215,7 @@ function reportPersistenceError(error: unknown): void {
   })
 }
 
-function queueCloudSnapshot(): void {
+function enqueueCloudSnapshot(): void {
   const payload = {
     version: DATA_VERSION,
     exportDate: Date.now(),
@@ -241,6 +244,66 @@ function queueCloudSnapshot(): void {
   }).catch(error => {
     reportPersistenceError(error)
     logger.error('Failed to persist cloud snapshot:', error)
+  })
+}
+
+function queueCloudSnapshot(): void {
+  cloudSnapshotPending = true
+  if (cloudSnapshotTimer !== null) clearTimeout(cloudSnapshotTimer)
+  cloudSnapshotTimer = setTimeout(() => {
+    cloudSnapshotTimer = null
+    if (!cloudSnapshotPending) return
+    cloudSnapshotPending = false
+    enqueueCloudSnapshot()
+  }, 120)
+}
+
+function flushScheduledCloudSnapshot(): void {
+  if (cloudSnapshotTimer !== null) {
+    clearTimeout(cloudSnapshotTimer)
+    cloudSnapshotTimer = null
+  }
+  if (cloudSnapshotPending) {
+    cloudSnapshotPending = false
+    enqueueCloudSnapshot()
+  }
+}
+
+function queueCloudSettings(settings: AppSettings): void {
+  const payload = { ...cloneForStorage(settings), apiKey: '' }
+  cloudSettingsWriteQueue = cloudSettingsWriteQueue.then(async () => {
+    const response = await fetch('/api/account/data/', {
+      method: 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: payload }),
+    })
+    if (!response.ok) throw new Error('云端设置保存失败。')
+  }).catch(error => {
+    reportPersistenceError(error)
+    logger.error('Failed to persist cloud settings:', error)
+  })
+}
+
+function queueCloudBookDeletion(id: string): void {
+  cloudWriteQueue = cloudWriteQueue.then(async () => {
+    const response = await fetch(`/api/account/books/${encodeURIComponent(id)}/`, { method: 'DELETE', credentials: 'include' })
+    if (!response.ok) throw new Error('云端书籍删除失败。')
+  }).catch(error => {
+    reportPersistenceError(error)
+    logger.error('Failed to delete cloud book:', error)
+  })
+}
+
+function queueCloudBookRestore(id: string): void {
+  cloudWriteQueue = cloudWriteQueue.then(async () => {
+    const response = await fetch('/api/account/recycle-bin/', {
+      method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookId: id, action: 'restore' }),
+    })
+    if (!response.ok) throw new Error('云端书籍恢复失败。')
+  }).catch(error => {
+    reportPersistenceError(error)
+    logger.error('Failed to restore cloud book:', error)
   })
 }
 
@@ -489,7 +552,7 @@ export function saveSettings(settings: AppSettings): void {
   settingsCache = migrateToTokenDanceAfterSunset(settings)
   const snapshot = cloneForStorage(settingsCache)
   if (cloudMode) {
-    queueCloudSnapshot()
+    queueCloudSettings(snapshot)
     return
   }
   settingsWriteQueue = settingsWriteQueue
@@ -754,7 +817,7 @@ function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
 function persistRestoredBook(book: Book): void {
   const snapshot = cloneForStorage(book)
   if (cloudMode) {
-    queueCloudSnapshot()
+    queueCloudBookRestore(book.id)
     return
   }
   booksWriteQueue = booksWriteQueue
@@ -767,7 +830,7 @@ function persistRestoredBook(book: Book): void {
 
 function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
   if (cloudMode) {
-    queueCloudSnapshot()
+    queueCloudBookDeletion(id)
     return
   }
   booksWriteQueue = booksWriteQueue
@@ -782,11 +845,22 @@ function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
 }
 
 export async function flushPendingStoreWrites(): Promise<void> {
-  await Promise.all([settingsWriteQueue, booksWriteQueue, aiUsageWriteQueue, bookOrganizationWriteQueue, cloudWriteQueue])
+  flushScheduledCloudSnapshot()
+  await Promise.all([settingsWriteQueue, booksWriteQueue, aiUsageWriteQueue, bookOrganizationWriteQueue, cloudWriteQueue, cloudSettingsWriteQueue])
   if (persistenceErrors.length === 0) return
 
   const [error] = persistenceErrors.splice(0, persistenceErrors.length)
   throw error instanceof Error ? error : new Error('Failed to persist local data')
+}
+
+/** Wait only for settings persistence so quick preference changes are not held
+ * up by book, assistant, or analytics writes queued at the same time. */
+export async function flushPendingSettingsWrites(): Promise<void> {
+  await Promise.all([settingsWriteQueue, cloudSettingsWriteQueue])
+  if (persistenceErrors.length === 0) return
+
+  const [error] = persistenceErrors.splice(0, persistenceErrors.length)
+  throw error instanceof Error ? error : new Error('Failed to persist settings')
 }
 
 export function addBook(name: string, author?: string, cover?: string, description?: string, tags?: BookTag[], documentContent?: string): Book {
@@ -878,6 +952,9 @@ export function restoreBook(book: Book): void {
 
 /** Reset in-memory state after the browser database has been deleted. */
 export function resetStoreCache(): void {
+  if (cloudSnapshotTimer !== null) clearTimeout(cloudSnapshotTimer)
+  cloudSnapshotTimer = null
+  cloudSnapshotPending = false
   settingsCache = { ...DEFAULT_SETTINGS }
   booksCache = []
   aiUsageCache = []
@@ -889,6 +966,7 @@ export function resetStoreCache(): void {
   aiUsageWriteQueue = Promise.resolve()
   bookOrganizationWriteQueue = Promise.resolve()
   cloudWriteQueue = Promise.resolve()
+  cloudSettingsWriteQueue = Promise.resolve()
   cloudMode = false
   persistenceErrors = []
 }

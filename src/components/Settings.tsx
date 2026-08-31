@@ -51,6 +51,7 @@ import {
   ExportData,
   resetStoreCache,
   flushPendingStoreWrites,
+  flushPendingSettingsWrites,
   initializeStore,
   reloadBooksFromPersistence,
   reloadSettingsFromPersistence,
@@ -73,6 +74,14 @@ import { deepSeekSunsetMessage, isTokenDanceOnly } from '@/lib/aiProviderPolicy'
 import { DEEPSEEK_OFFICIAL_CHANNEL_SUNSET } from '@/lib/deepseek'
 import { isAIConfigurationComplete } from '@/lib/startupPrompt'
 import { useAccountAccess } from './AuthGuard'
+
+// Keep tests and older integrations that mock the store without the scoped
+// helper working; production uses the settings-only queue.
+const flushSettingsWrites = (): Promise<void> => (
+  typeof flushPendingSettingsWrites === 'function'
+    ? flushPendingSettingsWrites()
+    : flushPendingStoreWrites()
+)
 
 // P0 新增：IndexedDB 支持
 import {
@@ -509,12 +518,12 @@ export default function Settings({
     }
 
     try {
-      await flushPendingStoreWrites()
       const settingsToPersist = activeProvider === 'tokendance'
         ? { ...settingsToSave, apiKey: '' }
         : settingsToSave
-      saveSettings(settingsToPersist)
-      await flushPendingStoreWrites()
+
+      // TokenDance keys are kept server-side. Save the encrypted key first, then
+      // persist the lightweight settings snapshot once with the runtime marker.
       if (activeProvider === 'tokendance' && !usesServerManagedKey) {
         await saveAccountApiKey(trimmedApiKey)
       }
@@ -522,7 +531,7 @@ export default function Settings({
         ? { ...settingsToPersist, apiKey: SERVER_MANAGED_API_KEY }
         : settingsToPersist
       saveSettings(runtimeSettings)
-      await flushPendingStoreWrites()
+      await flushSettingsWrites()
       setSettings(runtimeSettings)
       onSettingsChange(runtimeSettings)
       setApiKeyConsentError(null)
@@ -624,9 +633,8 @@ export default function Settings({
     if (key === 'theme') document.documentElement.setAttribute('data-theme', value as string)
 
     try {
-      await flushPendingStoreWrites()
       const persistedSettings = saveSetting(key, value)
-      await flushPendingStoreWrites()
+      await flushSettingsWrites()
       onSettingsChange(persistedSettings)
     } catch (error) {
       logger.error(`Failed to persist ${key}:`, error)
@@ -655,7 +663,6 @@ export default function Settings({
     setSettings(current => ({ ...current, language: newLang, quotes: localizedDraftQuotes }))
 
     try {
-      await flushPendingStoreWrites()
       const persisted = getSettings()
       const persistedSettings = {
         ...persisted,
@@ -663,7 +670,7 @@ export default function Settings({
         quotes: localizePresetQuotes(persisted.quotes, newLang)
       }
       saveSettings(persistedSettings)
-      await flushPendingStoreWrites()
+      await flushSettingsWrites()
       onSettingsChange(persistedSettings)
     } catch (error) {
       logger.error('Failed to persist language:', error)
@@ -695,10 +702,9 @@ export default function Settings({
     setApiKeyConsentError(null)
 
     try {
-      await flushPendingStoreWrites()
       const persistedSettings = { ...getSettings(), ...updates }
       saveSettings(persistedSettings)
-      await flushPendingStoreWrites()
+      await flushSettingsWrites()
       setSettings(current => ({ ...current, ...updates }))
       onSettingsChange(persistedSettings)
       setApiActionStatus(successMessage)

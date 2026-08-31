@@ -23,6 +23,12 @@ function cleanAvatar(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const avatar = value.trim()
   if (!avatar) return ''
+  if (avatar.startsWith('data:image/')) {
+    if (!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i.test(avatar) || avatar.length > 1_500_000) {
+      throw new Error('头像图片格式或大小无效。')
+    }
+    return avatar
+  }
   if (avatar.length > 2048) throw new Error('头像地址过长。')
   try {
     const parsed = new URL(avatar)

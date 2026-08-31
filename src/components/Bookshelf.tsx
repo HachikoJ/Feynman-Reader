@@ -487,6 +487,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     }
   }
 
+
   // 全局标签管理函数
   const handleEditGlobalTag = (tag: BookTag) => {
     if (!isAuthenticated) {
@@ -780,7 +781,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
       }}
       className={virtualized ? 'h-[170px] pb-2 sm:h-[124px]' : ''}
     >
-      <div className={`card card-hover relative flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-3 ${virtualized ? 'h-full overflow-hidden' : ''}`}>
+      <div className={`card card-hover relative flex flex-col gap-2 p-3 pr-28 sm:flex-row sm:items-center sm:gap-3 sm:pr-32 ${virtualized ? 'h-full overflow-hidden' : ''}`}>
         {batchMode && (
           <div className="flex items-center">
             <input
@@ -796,7 +797,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
         <div className="flex min-w-0 flex-1 gap-3">
           <button
             type="button"
-            className="relative h-20 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
+            className="relative h-20 w-14 flex-shrink-0 overflow-hidden rounded-md bg-[var(--bg-secondary)]"
             onClick={() => handleSelectBook(book)}
             aria-label={lang === 'zh' ? `打开《${book.name}》` : `Open ${book.name}`}
           >
@@ -892,21 +893,19 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
         </div>
 
         {!batchMode && (
-          <div className="flex shrink-0 items-center justify-end gap-1.5 sm:ml-auto sm:border-l sm:border-[var(--border)] sm:pl-3">
-            <button type="button" onClick={() => handleSelectBook(book)} className="btn-primary min-h-11 whitespace-nowrap px-3 py-1.5 text-xs sm:min-h-9">
-              <AppIcon name="bookOpen" size={14} />
-              {book.status === 'unread' ? t(lang, 'bookshelf.startReading') : t(lang, 'bookshelf.continueReading')}
+          <div className="absolute right-3 top-3 flex items-center gap-1">
+            <button type="button" onClick={() => handleSelectBook(book)} className="icon-button h-9 w-9 text-[var(--accent)]" aria-label={lang === 'zh' ? '阅读' : 'Read'} title={lang === 'zh' ? '阅读' : 'Read'}>
+              <AppIcon name="bookOpen" size={15} />
             </button>
-            <button type="button" onClick={() => openEditModal(book)} className="btn-secondary min-h-11 whitespace-nowrap px-2.5 py-1.5 text-xs sm:min-h-9">
-              <AppIcon name="edit" tone="amber" size={14} />
-              {lang === 'zh' ? '编辑' : 'Edit'}
+            <button type="button" onClick={() => openEditModal(book)} className="icon-button h-9 w-9 text-amber-600" aria-label={lang === 'zh' ? '编辑' : 'Edit'} title={lang === 'zh' ? '编辑' : 'Edit'}>
+              <AppIcon name="edit" size={15} />
             </button>
-            <button type="button" onClick={() => handleDeleteBook(book)} className="btn-secondary min-h-11 whitespace-nowrap border-red-400/30 px-2.5 py-1.5 text-xs text-red-500 hover:border-red-400 sm:min-h-9">
-              <AppIcon name="trash" size={14} />
-              {lang === 'zh' ? '删除' : 'Delete'}
+            <button type="button" onClick={() => handleDeleteBook(book)} className="icon-button h-9 w-9 text-red-500" aria-label={lang === 'zh' ? '删除' : 'Delete'} title={lang === 'zh' ? '删除' : 'Delete'}>
+              <AppIcon name="trash" size={15} />
             </button>
           </div>
         )}
+
       </div>
     </MobileSwipeCard>
   )
@@ -1087,6 +1086,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
             <List size={18} aria-hidden="true" />
           </button>
         </div>
+
       </div>
       </div>
 
@@ -1232,7 +1232,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               
               {/* Cover */}
               <div
-                className="bookshelf-book-cover relative aspect-[3/4] cursor-pointer bg-gradient-to-br from-[var(--accent)]/20 to-[var(--accent-secondary)]/20"
+                className="bookshelf-book-cover relative aspect-[3/4] cursor-pointer bg-[var(--bg-secondary)]"
                 onClick={() => handleSelectBook(book)}
               >
                 {getSafeImageSrc(book.cover) ? (
