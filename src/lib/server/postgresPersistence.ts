@@ -137,10 +137,11 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     if (!row || currentQuotes !== JSON.stringify(quotes) || current.apiKey !== '') {
       await this.pool.query(
         `insert into public.user_settings (user_id, data, version, updated_at)
-         values ($1, $2::jsonb, 1, now())
-         on conflict (user_id) do update set data = excluded.data,
+         values ($1, jsonb_build_object('quotes', $2::jsonb), 1, now())
+         on conflict (user_id) do update set
+           data = jsonb_set(coalesce(public.user_settings.data, '{}'::jsonb), '{quotes}', $2::jsonb, true) - 'apiKey',
            version = public.user_settings.version + 1, updated_at = now()`,
-        [userId, JSON.stringify(next)],
+        [userId, JSON.stringify(quotes)],
       )
     }
     return next
@@ -355,11 +356,14 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   async saveUserSettings(userId: string, data: unknown): Promise<void> {
     const incoming = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {}
     const current = await this.ensureDefaultQuotes(userId)
-    const settings = { ...current, ...incoming, quotes: mergeDefaultQuotes(incoming.quotes ?? current.quotes), apiKey: '' }
+    // Profile fields have their own atomic endpoint. Ignore a stale profile
+    // snapshot from the client so settings writes cannot revert a new name/avatar.
+    const { profile: _profile, ...settingsIncoming } = incoming
+    const settings = { ...settingsIncoming, quotes: mergeDefaultQuotes(incoming.quotes ?? current.quotes), apiKey: '' }
     await this.pool.query(
       `insert into public.user_settings (user_id, data, version, updated_at)
        values ($1, $2::jsonb, 1, now())
-       on conflict (user_id) do update set data = excluded.data,
+       on conflict (user_id) do update set data = coalesce(public.user_settings.data, '{}'::jsonb) || excluded.data,
          version = public.user_settings.version + 1, updated_at = now()`,
       [userId, JSON.stringify(settings)],
     )
@@ -371,46 +375,54 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   }
 
   async saveUserProfile(userId: string, profile: UserProfile): Promise<UserProfile> {
-    const current = await this.ensureDefaultQuotes(userId)
-    const customDisplayName = profile.customDisplayName?.trim() || null
-    const customAvatarUrl = profile.customAvatarUrl?.trim() || null
+    return this.saveUserProfilePatch(userId, {
+      customDisplayName: profile.customDisplayName,
+      customAvatarUrl: profile.customAvatarUrl,
+    })
+  }
+
+  async saveUserProfilePatch(userId: string, patch: { customDisplayName?: string | null; customAvatarUrl?: string | null }): Promise<UserProfile> {
+    await this.ensureDefaultQuotes(userId)
+    const customDisplayName = patch.customDisplayName?.trim() || null
+    const customAvatarUrl = patch.customAvatarUrl?.trim() || null
     if (customDisplayName && (customDisplayName.length > 40 || /[\u0000-\u001f]/.test(customDisplayName))) throw new Error('昵称长度或格式无效。')
     if (customAvatarUrl?.startsWith('data:image/')) {
       if (!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i.test(customAvatarUrl) || customAvatarUrl.length > 1_500_000) throw new Error('头像图片格式或大小无效。')
     } else if (customAvatarUrl && (customAvatarUrl.length > 2000 || !/^https:\/\//i.test(customAvatarUrl))) {
       throw new Error('头像地址必须是 HTTPS 链接。')
     }
-    const nextProfile = {
-      ...(current.profile && typeof current.profile === 'object' ? current.profile : {}),
-      customDisplayName,
-      customAvatarUrl,
+    const profilePatch = {
+      ...(patch.customDisplayName !== undefined ? { customDisplayName } : {}),
+      ...(patch.customAvatarUrl !== undefined ? { customAvatarUrl } : {}),
     }
     await this.pool.query(
       `insert into public.user_settings (user_id, data, version, updated_at)
-       values ($1, $2::jsonb, 1, now())
-       on conflict (user_id) do update set data = excluded.data,
+       values ($1, jsonb_build_object('profile', $2::jsonb), 1, now())
+       on conflict (user_id) do update set
+         data = jsonb_set(coalesce(public.user_settings.data, '{}'::jsonb), '{profile}',
+           coalesce(public.user_settings.data->'profile', '{}'::jsonb) || $2::jsonb, true) - 'apiKey',
          version = public.user_settings.version + 1, updated_at = now()`,
-      [userId, JSON.stringify({ ...current, profile: nextProfile, apiKey: '' })],
+      [userId, JSON.stringify(profilePatch)],
     )
-    return profileFromSettings({ ...current, profile: nextProfile })
+    return this.getUserProfile(userId)
   }
 
   async syncWatchaProfile(userId: string, profile: { nickname?: string; avatarUrl?: string | null }): Promise<void> {
-    const current = await this.ensureDefaultQuotes(userId)
-    const currentProfile = current.profile && typeof current.profile === 'object' ? current.profile as Record<string, unknown> : {}
+    await this.ensureDefaultQuotes(userId)
     const nickname = typeof profile.nickname === 'string' ? profile.nickname.trim().slice(0, 80) : ''
     const avatarUrl = typeof profile.avatarUrl === 'string' && profile.avatarUrl.trim() ? profile.avatarUrl.trim().slice(0, 2000) : null
-    const nextProfile = {
-      ...currentProfile,
+    const profilePatch = {
       ...(nickname ? { watchaNickname: nickname } : {}),
       watchaAvatarUrl: avatarUrl,
     }
     await this.pool.query(
       `insert into public.user_settings (user_id, data, version, updated_at)
-       values ($1, $2::jsonb, 1, now())
-       on conflict (user_id) do update set data = excluded.data,
+       values ($1, jsonb_build_object('profile', $2::jsonb), 1, now())
+       on conflict (user_id) do update set
+         data = jsonb_set(coalesce(public.user_settings.data, '{}'::jsonb), '{profile}',
+           coalesce(public.user_settings.data->'profile', '{}'::jsonb) || $2::jsonb, true) - 'apiKey',
          version = public.user_settings.version + 1, updated_at = now()`,
-      [userId, JSON.stringify({ ...current, profile: nextProfile, apiKey: '' })],
+      [userId, JSON.stringify(profilePatch)],
     )
   }
 

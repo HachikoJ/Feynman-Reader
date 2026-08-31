@@ -20,6 +20,7 @@ export interface PersistenceAdapter extends AuthStore {
   saveUserSettings?(userId: string, data: unknown): Promise<void>
   getUserProfile?(userId: string): Promise<UserProfile>
   saveUserProfile?(userId: string, profile: UserProfile): Promise<UserProfile>
+  saveUserProfilePatch?(userId: string, patch: { customDisplayName?: string | null; customAvatarUrl?: string | null }): Promise<UserProfile>
   syncWatchaProfile?(userId: string, profile: { nickname?: string; avatarUrl?: string | null }): Promise<void>
   getMigrationState?(userId: string, activateWindow?: boolean): Promise<MigrationState>
   migrateUserData?(userId: string, payload: unknown): Promise<MigrationResult>
