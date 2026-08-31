@@ -172,8 +172,22 @@ export default function Home() {
     if (isTokenDanceCallback || shouldOpenSettings) {
       setView('settings')
     }
-    const unsubscribePersistenceErrors = subscribeToPersistenceErrors(() => {
-      if (!cancelled) setStorageWriteError(true)
+    let storageErrorTimer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribePersistenceErrors = subscribeToPersistenceErrors(error => {
+      if (storageErrorTimer !== null) {
+        clearTimeout(storageErrorTimer)
+        storageErrorTimer = null
+      }
+      if (error === null) {
+        if (!cancelled) setStorageWriteError(false)
+        return
+      }
+      // A short network/auth blip is common during OAuth redirects. Wait before
+      // showing the blocking warning; a successful retry clears it immediately.
+      storageErrorTimer = setTimeout(() => {
+        storageErrorTimer = null
+        if (!cancelled) setStorageWriteError(true)
+      }, 1500)
     })
 
     const initialize = async () => {
@@ -250,6 +264,7 @@ export default function Home() {
     void initialize()
     return () => {
       cancelled = true
+      if (storageErrorTimer !== null) clearTimeout(storageErrorTimer)
       unsubscribePersistenceErrors()
     }
   }, [])

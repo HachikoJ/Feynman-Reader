@@ -53,9 +53,10 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       ...(body.displayName !== undefined ? { customDisplayName: cleanName(body.displayName) || null } : {}),
       ...(body.avatarUrl !== undefined ? { customAvatarUrl: cleanAvatar(body.avatarUrl) || null } : {}),
     }
-    const saved = store.saveUserProfilePatch
-      ? await store.saveUserProfilePatch(userId, patch)
-      : await store.saveUserProfile(userId, { ...(await store.getUserProfile(userId)), ...patch })
+    const saveProfilePatch = store.saveUserProfilePatch
+    const saved = saveProfilePatch
+      ? await saveProfilePatch.call(store, userId, patch)
+      : await store.saveUserProfile!(userId, { ...(await store.getUserProfile!(userId)), ...patch })
     const user = await store.findUserById(userId)
     if (!user) return NextResponse.json({ error: '账号不存在。' }, { status: 404 })
     return NextResponse.json({ user, profile: saved }, { headers: { 'Cache-Control': 'no-store' } })

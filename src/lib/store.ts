@@ -200,12 +200,13 @@ let cloudSettingsWriteQueue = Promise.resolve()
 let cloudSnapshotTimer: ReturnType<typeof setTimeout> | null = null
 let cloudSnapshotPending = false
 let cloudMode = false
-let persistenceErrors: unknown[] = []
-const persistenceErrorListeners = new Set<(error: unknown) => void>()
+type PersistenceErrorEntry = { scope: string; error: unknown }
+let persistenceErrors: PersistenceErrorEntry[] = []
+const persistenceErrorListeners = new Set<(error: unknown | null) => void>()
 const aiUsageListeners = new Set<() => void>()
 
-function reportPersistenceError(error: unknown): void {
-  persistenceErrors.push(error)
+function reportPersistenceError(scope: string, error: unknown): void {
+  persistenceErrors = [...persistenceErrors.filter(entry => entry.scope !== scope), { scope, error }]
   persistenceErrorListeners.forEach(listener => {
     try {
       listener(error)
@@ -213,6 +214,36 @@ function reportPersistenceError(error: unknown): void {
       logger.error('Persistence error listener failed:', listenerError)
     }
   })
+}
+
+function clearPersistenceErrors(scope?: string): void {
+  const next = scope ? persistenceErrors.filter(entry => entry.scope !== scope) : []
+  if (next.length === persistenceErrors.length) return
+  persistenceErrors = next
+  if (persistenceErrors.length === 0) {
+    persistenceErrorListeners.forEach(listener => {
+      try {
+        listener(null)
+      } catch (listenerError) {
+        logger.error('Persistence status listener failed:', listenerError)
+      }
+    })
+  }
+}
+
+async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attempts = 2): Promise<Response> {
+  let response: Response | undefined
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      response = await fetch(input, init)
+      if (response.ok || (response.status >= 400 && response.status < 500)) return response
+    } catch (error) {
+      if (attempt === attempts - 1) throw error
+    }
+    if (attempt < attempts - 1) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)))
+  }
+  if (!response) throw new Error('云端请求失败。')
+  return response
 }
 
 function enqueueCloudSnapshot(): void {
@@ -226,23 +257,25 @@ function enqueueCloudSnapshot(): void {
     bookRelations: cloneForStorage(bookRelationsCache),
   }
   cloudWriteQueue = cloudWriteQueue.then(async () => {
-    const response = await fetch('/api/account/import/', {
+    const response = await fetchWithRetry('/api/account/import/', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     if (!response.ok) throw new Error('云端保存失败。')
+    clearPersistenceErrors('cloud-snapshot')
   }, async () => {
-    const response = await fetch('/api/account/import/', {
+    const response = await fetchWithRetry('/api/account/import/', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     if (!response.ok) throw new Error('云端保存失败。')
+    clearPersistenceErrors('cloud-snapshot')
   }).catch(error => {
-    reportPersistenceError(error)
+    reportPersistenceError('cloud-snapshot', error)
     logger.error('Failed to persist cloud snapshot:', error)
   })
 }
@@ -272,42 +305,45 @@ function flushScheduledCloudSnapshot(): void {
 function queueCloudSettings(settings: AppSettings): void {
   const payload = { ...cloneForStorage(settings), apiKey: '' }
   cloudSettingsWriteQueue = cloudSettingsWriteQueue.then(async () => {
-    const response = await fetch('/api/account/data/', {
+    const response = await fetchWithRetry('/api/account/data/', {
       method: 'PUT', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ settings: payload }),
     })
     if (!response.ok) throw new Error('云端设置保存失败。')
+    clearPersistenceErrors('cloud-settings')
   }).catch(error => {
-    reportPersistenceError(error)
+    reportPersistenceError('cloud-settings', error)
     logger.error('Failed to persist cloud settings:', error)
   })
 }
 
 function queueCloudBookDeletion(id: string): void {
   cloudWriteQueue = cloudWriteQueue.then(async () => {
-    const response = await fetch(`/api/account/books/${encodeURIComponent(id)}/`, { method: 'DELETE', credentials: 'include' })
+    const response = await fetchWithRetry(`/api/account/books/${encodeURIComponent(id)}/`, { method: 'DELETE', credentials: 'include' })
     if (!response.ok) throw new Error('云端书籍删除失败。')
+    clearPersistenceErrors('cloud-book')
   }).catch(error => {
-    reportPersistenceError(error)
+    reportPersistenceError('cloud-book', error)
     logger.error('Failed to delete cloud book:', error)
   })
 }
 
 function queueCloudBookRestore(id: string): void {
   cloudWriteQueue = cloudWriteQueue.then(async () => {
-    const response = await fetch('/api/account/recycle-bin/', {
+    const response = await fetchWithRetry('/api/account/recycle-bin/', {
       method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bookId: id, action: 'restore' }),
     })
     if (!response.ok) throw new Error('云端书籍恢复失败。')
+    clearPersistenceErrors('cloud-book')
   }).catch(error => {
-    reportPersistenceError(error)
+    reportPersistenceError('cloud-book', error)
     logger.error('Failed to restore cloud book:', error)
   })
 }
 
-export function subscribeToPersistenceErrors(listener: (error: unknown) => void): () => void {
+export function subscribeToPersistenceErrors(listener: (error: unknown | null) => void): () => void {
   persistenceErrorListeners.add(listener)
   return () => persistenceErrorListeners.delete(listener)
 }
@@ -558,7 +594,7 @@ export function saveSettings(settings: AppSettings): void {
   settingsWriteQueue = settingsWriteQueue
     .then(() => saveIndexedDBSettings(snapshot), () => saveIndexedDBSettings(snapshot))
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('settings', error)
       logger.error('Failed to persist settings to IndexedDB:', error)
     })
 }
@@ -611,7 +647,7 @@ function persistBookOrganization(): void {
   bookOrganizationWriteQueue = bookOrganizationWriteQueue
     .then(() => saveIndexedDBBookOrganization(snapshot), () => saveIndexedDBBookOrganization(snapshot))
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('book-organization', error)
       logger.error('Failed to persist book lists and relations:', error)
     })
 }
@@ -747,7 +783,7 @@ export function addAIUsageRecord(record: Omit<AIUsageRecord, 'id'>): AIUsageReco
   } else aiUsageWriteQueue = aiUsageWriteQueue
     .then(() => saveIndexedDBAIUsageRecords(snapshot), () => saveIndexedDBAIUsageRecords(snapshot))
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('ai-usage', error)
       logger.error('Failed to persist AI usage records to IndexedDB:', error)
     })
   aiUsageListeners.forEach(listener => listener())
@@ -762,7 +798,7 @@ export function replaceAIUsageRecords(records: AIUsageRecord[]): void {
   } else aiUsageWriteQueue = aiUsageWriteQueue
     .then(() => saveIndexedDBAIUsageRecords(snapshot), () => saveIndexedDBAIUsageRecords(snapshot))
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('ai-usage', error)
       logger.error('Failed to replace AI usage records in IndexedDB:', error)
     })
   aiUsageListeners.forEach(listener => listener())
@@ -778,7 +814,7 @@ export function saveBooks(books: Book[]): void {
   booksWriteQueue = booksWriteQueue
     .then(() => saveIndexedDBBooks(snapshot), () => saveIndexedDBBooks(snapshot))
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('books', error)
       logger.error('Failed to persist books to IndexedDB:', error)
     })
 }
@@ -792,7 +828,7 @@ function persistBook(book: Book): void {
   booksWriteQueue = booksWriteQueue
     .then(() => saveIndexedDBBook(snapshot), () => saveIndexedDBBook(snapshot))
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('books', error)
       logger.error('Failed to persist book to IndexedDB:', error)
     })
 }
@@ -809,7 +845,7 @@ function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
       () => saveExistingIndexedDBBook(snapshot, expectedUpdatedAt)
     )
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('books', error)
       logger.error('Failed to update existing book in IndexedDB:', error)
     })
 }
@@ -823,7 +859,7 @@ function persistRestoredBook(book: Book): void {
   booksWriteQueue = booksWriteQueue
     .then(() => restoreDeletedIndexedDBBook(snapshot), () => restoreDeletedIndexedDBBook(snapshot))
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('books', error)
       logger.error('Failed to restore deleted book in IndexedDB:', error)
     })
 }
@@ -839,7 +875,7 @@ function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
       () => deleteExistingIndexedDBBook(id, expectedUpdatedAt)
     )
     .catch(error => {
-      reportPersistenceError(error)
+      reportPersistenceError('books', error)
       logger.error('Failed to delete book from IndexedDB:', error)
     })
 }
@@ -849,7 +885,8 @@ export async function flushPendingStoreWrites(): Promise<void> {
   await Promise.all([settingsWriteQueue, booksWriteQueue, aiUsageWriteQueue, bookOrganizationWriteQueue, cloudWriteQueue, cloudSettingsWriteQueue])
   if (persistenceErrors.length === 0) return
 
-  const [error] = persistenceErrors.splice(0, persistenceErrors.length)
+  const [entry] = persistenceErrors.splice(0, persistenceErrors.length)
+  const error = entry?.error
   throw error instanceof Error ? error : new Error('Failed to persist local data')
 }
 
@@ -859,7 +896,8 @@ export async function flushPendingSettingsWrites(): Promise<void> {
   await Promise.all([settingsWriteQueue, cloudSettingsWriteQueue])
   if (persistenceErrors.length === 0) return
 
-  const [error] = persistenceErrors.splice(0, persistenceErrors.length)
+  const [entry] = persistenceErrors.splice(0, persistenceErrors.length)
+  const error = entry?.error
   throw error instanceof Error ? error : new Error('Failed to persist settings')
 }
 
