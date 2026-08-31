@@ -64,6 +64,19 @@ const phaseIconTones: Record<string, AppIconTone> = {
 
 function aiTaskErrorMessage(error: unknown, lang: Language): string | null {
   if (!(error instanceof Error)) return null
+  const status = typeof error === 'object' && error && 'status' in error
+    ? Number((error as { status?: unknown }).status)
+    : 0
+  if (status === 401 || status === 403) {
+    return lang === 'zh'
+      ? 'TokenDance API Key 未授权或已失效，请前往设置重新授权后重试。'
+      : 'The TokenDance API key is not authorized or has expired. Reauthorize it in Settings and retry.'
+  }
+  if (status === 429) {
+    return lang === 'zh'
+      ? 'TokenDance 当前请求较多，请稍后重试。'
+      : 'TokenDance is handling many requests right now. Please retry shortly.'
+  }
   if (error.message === 'Failed to fetch' || error.message.toLowerCase().includes('networkerror')) {
     return lang === 'zh'
       ? '无法连接 AI 服务。请检查网络、浏览器扩展拦截和 TokenDance API Key，然后重试。'

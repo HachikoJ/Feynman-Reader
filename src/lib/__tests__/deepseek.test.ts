@@ -17,6 +17,7 @@ import {
   DEEPSEEK_OFFICIAL_CHANNEL_SUNSET,
   DEEPSEEK_MODEL,
   evaluatePersonaAnswers,
+  requestDeepSeekCompletion,
   generateBookMetadata,
   generateBookTags,
   generatePersonaQuestions,
@@ -74,11 +75,32 @@ describe('TokenDance recovery headers', () => {
       }))
 
       const headers = new Headers(fetchMock.mock.calls[0][1]?.headers)
-      expect(headers.get('X-App-URL')).toBe('https://deline.top')
+      expect(headers.get('X-App-URL')).toBe('https://reader.deline.top')
       expect(Array.from(headers.keys()).some(name => name.startsWith('x-stainless-'))).toBe(false)
     } finally {
       global.fetch = originalFetch
     }
+  })
+
+  it('retries TokenDance JSON requests without unsupported structured output', async () => {
+    const create = jest.fn()
+      .mockRejectedValueOnce({ status: 400, message: 'response_format json_object is not supported' })
+      .mockResolvedValueOnce({
+        choices: [{ finish_reason: 'stop', message: { content: '{"ok":true}' } }]
+      })
+    ;(getSettings as jest.MockedFunction<typeof getSettings>).mockReturnValue({
+      aiDataConsent: true,
+      aiProvider: 'tokendance'
+    } as ReturnType<typeof getSettings>)
+
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+    await expect(requestDeepSeekCompletion(client, withDeepSeekDefaults({
+      messages: [{ role: 'user', content: 'return json' }],
+      response_format: { type: 'json_object' }
+    }), { task: 'test' })).resolves.toEqual(expect.objectContaining({ choices: expect.any(Array) }))
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create.mock.calls[0][0].response_format).toEqual({ type: 'json_object' })
+    expect(create.mock.calls[1][0]).not.toHaveProperty('response_format')
   })
 })
 

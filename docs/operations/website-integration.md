@@ -146,7 +146,7 @@ curl -fsSI https://reader.deline.top/manifest.json
 - `www.deline.top/reader`、`www.deline.top/feynmanreader` 及其子路径均为 `410`。
 - `reader.deline.top/` 返回费曼读书助手页面，不能返回官网页面。
 - `reader.deline.top/reader`、`reader.deline.top/feynmanreader` 及其子路径均为 `410`。
-- 产品页面的 canonical、Open Graph、PWA manifest 和 OAuth callback 使用 `reader.deline.top`；TokenDance `app_url` 保持已登记的应用归因标识 `https://deline.top`。
+- 产品页面的 canonical、Open Graph、PWA manifest 和 OAuth callback 使用 `reader.deline.top`；TokenDance `app_url` 保持已登记的应用归因标识 `https://reader.deline.top`。
 - 官网和产品均无混合内容、证书错误或跨域存储假设。
 
 ## 8. 变更责任

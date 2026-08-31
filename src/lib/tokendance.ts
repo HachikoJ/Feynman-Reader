@@ -2,9 +2,9 @@ import { APP_ROUTES } from './appRoutes'
 
 export const TOKENDANCE_BASE_URL = 'https://tokendance.space'
 export const TOKENDANCE_GATEWAY_URL = `${TOKENDANCE_BASE_URL}/gateway/v1`
-// TokenDance app_url is the stable attribution identifier registered for this app.
-// It is intentionally independent from the product's current hosting origin.
-export const TOKENDANCE_APP_URL = 'https://deline.top'
+// Keep the originally registered product URL for TokenDance attribution. This
+// identifier is independent from the OAuth callback URL below.
+export const TOKENDANCE_APP_URL = 'https://reader.deline.top'
 export const TOKENDANCE_CALLBACK_ORIGIN = 'https://reader.deline.top'
 export type TokendanceRecoveryAction = 'top_up_balance' | 'reauthorize_api_key' | 'api_key_quota'
 export const TOKENDANCE_RECOVERY_PREFIX = 'TOKENDANCE_RECOVERY:'

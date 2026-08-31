@@ -117,6 +117,34 @@ export async function withDocumentContextRetry<T>(
 
 type CompletionParams = OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming
 
+function isTokendanceStructuredOutputUnsupported(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as Record<string, unknown>
+  if (candidate.status !== 400) return false
+  const details = [
+    error instanceof Error ? error.message : undefined,
+    candidate.code,
+    candidate.type,
+    candidate.message,
+    candidate.error && typeof candidate.error === 'object'
+      ? (candidate.error as Record<string, unknown>).message
+      : undefined,
+    candidate.error && typeof candidate.error === 'object'
+      ? (candidate.error as Record<string, unknown>).code
+      : undefined,
+    candidate.error && typeof candidate.error === 'object'
+      ? (candidate.error as Record<string, unknown>).param
+      : undefined
+  ]
+    .filter(value => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+  return details.includes('response_format')
+    || details.includes('json_object')
+    || details.includes('structured output')
+    || details.includes('structured_output')
+}
+
 export async function requestDeepSeekCompletion(
   client: OpenAI,
   params: CompletionParams,
@@ -131,6 +159,14 @@ export async function requestDeepSeekCompletion(
         client.chat.completions.create(requestParams, { signal })
       ))
     } catch (error) {
+      // Some TokenDance gateway deployments do not expose OpenAI's optional
+      // structured-output parameter. The prompt still requires JSON, so retry
+      // once without only that optional field instead of failing the task.
+      if (getSettings().aiProvider === 'tokendance' && requestParams.response_format && isTokendanceStructuredOutputUnsupported(error)) {
+        const { response_format: _responseFormat, ...fallbackParams } = requestParams
+        requestParams = fallbackParams as CompletionParams
+        continue
+      }
       const recoveryAction = getSettings().aiProvider === 'tokendance'
         ? getTokendanceRecoveryAction(error)
         : null

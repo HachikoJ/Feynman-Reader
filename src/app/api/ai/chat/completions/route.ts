@@ -7,6 +7,16 @@ import { TOKENDANCE_APP_URL, TOKENDANCE_GATEWAY_URL } from '@/lib/tokendance'
 
 export const runtime = 'nodejs'
 
+function getRecoveryAction(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null
+  const headers = (error as { headers?: unknown }).headers
+  if (!headers || typeof headers !== 'object') return null
+  const value = 'get' in headers && typeof (headers as { get?: unknown }).get === 'function'
+    ? (headers as { get(name: string): string | null }).get('TokenDance-Recovery-Action')
+    : (headers as Record<string, unknown>)['TokenDance-Recovery-Action']
+  return value === 'top_up_balance' || value === 'reauthorize_api_key' || value === 'api_key_quota' ? value : null
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   if (Number(request.headers.get('content-length') || 0) > 4 * 1024 * 1024) {
     return NextResponse.json({ error: { message: '请求内容超过 4 MB 限制。' } }, { status: 413 })
@@ -28,6 +38,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       ? Number((error as { status: number }).status)
       : 500
     const message = error instanceof Error ? error.message : 'AI 请求失败。'
-    return NextResponse.json({ error: { message } }, { status: status >= 400 && status < 600 ? status : 500 })
+    const headers = new Headers({ 'Cache-Control': 'no-store' })
+    const recoveryAction = getRecoveryAction(error)
+    if (recoveryAction) headers.set('TokenDance-Recovery-Action', recoveryAction)
+    return NextResponse.json({ error: { message } }, { status: status >= 400 && status < 600 ? status : 500, headers })
   }
 }

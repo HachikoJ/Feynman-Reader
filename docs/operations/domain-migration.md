@@ -35,4 +35,4 @@
 1. `reader.deline.top` 的 DNS、TLS 证书和 WAF 已就绪。
 2. 官网项目验证 `/reader`、`/feynmanreader` 及其子路径均返回 `410`。
 3. 本项目验证 `/`、`/privacy/`、`/manifest.json`、`/sw.js` 和所有停用入口均返回预期状态。
-4. TokenDance `app_url` 继续使用已登记的应用归因标识 `https://deline.top`；OAuth callback 使用新产品地址 `https://reader.deline.top/?view=settings&tokendance_callback=1`。
+4. TokenDance `app_url` 继续使用已登记的应用归因标识 `https://reader.deline.top`；OAuth callback 使用新产品地址 `https://reader.deline.top/?view=settings&tokendance_callback=1`。
