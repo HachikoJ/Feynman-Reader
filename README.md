@@ -178,9 +178,9 @@ npm run dev
 NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
 ```
 
-预览模式只展示 Mock 账号与示例云端数据，并禁用云端写入；生产构建会忽略该开关。真实 OAuth、会话 Cookie 和 Supabase 读写必须部署后通过正式域名验证。Client Secret、数据库密码和随机密钥只能放在服务器环境文件中，不能写入前端代码或提交到 GitHub。
+预览模式只展示 Mock 账号与示例云端数据，并禁用云端写入；生产构建会忽略该开关。真实 OAuth、会话 Cookie 和 PostgreSQL 读写必须部署后通过正式域名验证。Client Secret、数据库密码和随机密钥只能放在服务器环境文件中，不能写入前端代码或提交到 GitHub。
 
-### 生产部署（腾讯云 + Supabase）
+### 生产部署（腾讯云 + PostgreSQL）
 
 生产环境由 `deploy.sh` 构建 Next.js standalone 服务，并通过 PM2 监听 `127.0.0.1:8080`；Nginx 负责 `https://reader.deline.top` 的 HTTPS 反向代理。服务器只需要准备 `/etc/feynman-reader.env`（权限 `600`），填写 `.env.example` 中的生产值，尤其是 PostgreSQL 的 `DATABASE_URL` 和完全一致的回调地址：
 
@@ -197,7 +197,7 @@ DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存�
 
 - **前端**：Next.js 16、TypeScript、Tailwind CSS
 - **AI**：DeepSeek API
-- **云端数据**：Supabase / PostgreSQL（IndexedDB 仅用于历史迁移）
+- **云端数据**：PostgreSQL（IndexedDB 仅用于历史迁移）
 - **文档解析**：PDF.js、Mammoth、XLSX
 - **测试**：Jest、Playwright
 
