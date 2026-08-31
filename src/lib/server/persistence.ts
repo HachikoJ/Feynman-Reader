@@ -129,7 +129,7 @@ export interface ActivityDay {
 
 /**
  * Database access is intentionally explicit. Set this from the server bootstrap
- * with a PostgreSQL/Supabase adapter; never silently fall back to process memory.
+ * with the server-side PostgreSQL adapter; never silently fall back to process memory.
  */
 let adapter: PersistenceAdapter | null = null
 

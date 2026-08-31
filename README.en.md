@@ -21,7 +21,7 @@ Feynman Reader is an AI-assisted deep-reading workspace based on the Feynman tec
 - Guides each book through six sequential learning phases.
 - Stores teaching attempts, four-dimension scores, role-based questions, and revisions.
 - Supports PDF, Word, Excel, and text document input.
-- Lets signed-out visitors browse the system sample. Personal books, learning records, quotes, assistant sessions, and long-term memories are saved to account-scoped Supabase after Watcha sign-in; IndexedDB is used only to migrate legacy history.
+- Lets signed-out visitors browse the system sample. Personal books, learning records, quotes, assistant sessions, and long-term memories are saved to the signed-in account's PostgreSQL database; IndexedDB is used only to migrate legacy history.
 - Uses a separately configured TokenDance API key and AI data transfer consent for model access. The key is encrypted on the server and excluded from exports.
 
 ## Preview
@@ -52,11 +52,11 @@ The current Watcha client registers only the production callback at `https://rea
 NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
 ```
 
-Preview mode uses mock account data and disables cloud writes. Production builds ignore this switch. Validate real OAuth, session cookies, and Supabase reads and writes only after deployment through the production domain. Keep the Client Secret, database password, and generated secrets in the server environment file; never expose them to browser code or GitHub.
+Preview mode uses mock account data and disables cloud writes. Production builds ignore this switch. Validate real OAuth, session cookies, and PostgreSQL reads and writes only after deployment through the production domain. Keep the Client Secret, database password, and generated secrets in the server environment file; never expose them to browser code or GitHub.
 
 ## Privacy, Cost, and Model Limits
 
-Signed-out visitors can inspect only the system sample. Legacy browser data from earlier releases can be imported after Watcha sign-in, after which personal records are stored in account-scoped Supabase storage. API keys are encrypted server-side, excluded from exports, and never displayed in full.
+Signed-out visitors can inspect only the system sample. Legacy browser data from earlier releases can be imported after Watcha sign-in, after which personal records are stored in the account-scoped PostgreSQL database. API keys are encrypted server-side, excluded from exports, and never displayed in full.
 
 According to TokenDance's official clarification, `v4flash0731` offers limited-time savings of up to about 20% on the Volcengine Ark route at peak hours, and users can set route preferences in TokenDance. Actual prices, eligible routes, periods, and offer dates follow [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731) and subsequent notices. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
 
@@ -80,7 +80,7 @@ git diff --check
 
 ## Project Status
 
-This is an actively maintained public product. Voice input, OCR, and automated review scheduling are not part of the current release. Account-scoped cloud storage requires a configured Supabase database and Watcha OAuth credentials on the server.
+This is an actively maintained public product. Voice input, OCR, and automated review scheduling are not part of the current release. Account-scoped storage requires a configured PostgreSQL database and Watcha OAuth credentials on the server.
 
 ## License
 

@@ -7,7 +7,7 @@ Notable changes to Feynman Reader are recorded here.
 ### Added
 
 - Watcha OAuth account login with persistent server-side sessions.
-- Supabase-backed books, settings, quotes, assistant sessions, long-term memories, activity history, and account statistics.
+- PostgreSQL-backed books, settings, quotes, assistant sessions, long-term memories, activity history, and account statistics.
 - Account Center with cloud bookshelf, quote management, recycle bin, data transfer, and activity calendar.
 - Legacy IndexedDB migration with newer-record conflict resolution and sample-book exclusion.
 
