@@ -32,6 +32,7 @@ import { ASSISTANT_OPEN_EVENT } from '@/lib/assistantEvents'
 import AssistantMarkdownEditor, { type AssistantMarkdownEditorHandle } from './AssistantMarkdownEditor'
 import MarkdownRenderer from './MarkdownRenderer'
 import { useAccountAccess } from './AuthGuard'
+import { isLocalAuthBypassEnabled } from '@/lib/accountClient'
 
 interface Props {
   lang: Language
@@ -158,6 +159,7 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
   const accountAccess = useAccountAccess()
   const { isAuthenticated, requestLogin } = accountAccess
   const hasSignedInAccount = accountAccess.hasSignedInAccount ?? isAuthenticated
+  const localOnlyMode = isLocalAuthBypassEnabled()
   const isZh = lang === 'zh'
   const [open, setOpen] = useState(false)
   const [sessions, setSessions] = useState<AssistantSession[]>([])
@@ -190,6 +192,10 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
   const canUseAssistant = settings.aiProvider === 'tokendance' && settings.apiKey.trim().length > 0 && settings.aiDataConsent === true
   const requestAssistantLogin = (message: string) => {
     setOpen(false)
+    if (localOnlyMode) {
+      setError(isZh ? '备案期间账号登录暂未开放，费曼小助手需要在登录恢复后使用。书籍和学习数据仍会保存在当前浏览器。' : 'Account sign-in is paused during filing, so Feynman Assistant will be available after sign-in returns. Books and learning data remain in this browser.')
+      return
+    }
     requestLogin(message)
   }
   const handleQuoteSelected = async (text: string) => {

@@ -1,5 +1,6 @@
 import { initDB, indexedDB } from './db'
 import { createLocalId } from './localId'
+import { isLocalAuthBypassEnabled } from './accountClient'
 
 /** A persisted message in the independent AI assistant workspace. */
 export type AssistantMessageRole = 'user' | 'assistant' | 'system'
@@ -203,7 +204,7 @@ async function clearLocalSessions(): Promise<void> {
 }
 
 function canUseCloudSessions(): boolean {
-  return typeof window !== 'undefined' && process.env.NODE_ENV !== 'test'
+  return typeof window !== 'undefined' && process.env.NODE_ENV !== 'test' && !isLocalAuthBypassEnabled()
 }
 
 async function resolveCloudAccount(): Promise<'authenticated' | 'anonymous'> {

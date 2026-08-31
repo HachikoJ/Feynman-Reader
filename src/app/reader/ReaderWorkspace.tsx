@@ -45,7 +45,7 @@ import { LoadingState, Skeleton } from '@/components/Skeleton'
 import AppDialogHost from '@/components/AppDialogHost'
 import AssistantWorkspace from '@/components/AssistantWorkspace'
 import { APP_ROUTES } from '@/lib/appRoutes'
-import { accountLoginHref } from '@/lib/accountClient'
+import { accountLoginHref, isLocalAuthBypassEnabled } from '@/lib/accountClient'
 
 type View = 'bookshelf' | 'reading' | 'settings'
 
@@ -55,7 +55,21 @@ const ACCOUNT_CLOUD_NOTICE_KEY = 'feynman-account-cloud-notice-v1'
 
 function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; returnTo: string }) {
   const { user, checking, isAuthenticated } = useAccountAccess()
+  const localOnlyMode = isLocalAuthBypassEnabled()
   const signedIn = Boolean(user) || isAuthenticated
+
+  if (localOnlyMode && !user) {
+    return (
+      <span
+        className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--bg-secondary)]/55 px-2.5 text-sm font-medium text-[var(--text-secondary)] sm:px-3"
+        aria-label={lang === 'zh' ? '备案期间本地模式' : 'Local-only mode during domain filing'}
+        title={lang === 'zh' ? '备案期间本地模式' : 'Local-only mode'}
+      >
+        <UserRound size={16} aria-hidden="true" />
+        <span className="hidden sm:inline">{lang === 'zh' ? '本地模式' : 'Local mode'}</span>
+      </span>
+    )
+  }
 
   return (
     <a
@@ -83,13 +97,14 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
 
 function AccountCloudNotice({ lang, hidden, returnTo }: { lang: AppSettings['language']; hidden: boolean; returnTo: string }) {
   const { checking, isAuthenticated } = useAccountAccess()
+  const localOnlyMode = isLocalAuthBypassEnabled()
   const [dismissed, setDismissed] = useState(true)
 
   useEffect(() => {
     setDismissed(localStorage.getItem(ACCOUNT_CLOUD_NOTICE_KEY) === 'dismissed')
   }, [])
 
-  if (hidden || checking || isAuthenticated || dismissed) return null
+  if (hidden || localOnlyMode || checking || isAuthenticated || dismissed) return null
 
   const dismiss = () => {
     localStorage.setItem(ACCOUNT_CLOUD_NOTICE_KEY, 'dismissed')
@@ -126,6 +141,7 @@ function GitHubMark() {
 
 export default function Home() {
   const { hasSignedInAccount, checking: checkingAccount } = useAccountAccess()
+  const localOnlyMode = isLocalAuthBypassEnabled()
   const [view, setView] = useState<View>('bookshelf')
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
@@ -211,10 +227,10 @@ export default function Home() {
       const userHasHistory = hasUserHistory(books)
 
       const completedOnboardingVersion = localStorage.getItem(ONBOARDING_COMPLETED_KEY)
-      const showOnboardingCandidate = shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION, isTokenDanceCallback)
+      const showOnboardingCandidate = !localOnlyMode && shouldShowOnboarding(completedOnboardingVersion, ONBOARDING_VERSION, isTokenDanceCallback)
 
       const completedTokenDanceWelcomeVersion = localStorage.getItem(TOKENDANCE_WELCOME_KEY)
-      const showTokenDanceWelcomeCandidate = shouldShowTokenDanceWelcome(
+      const showTokenDanceWelcomeCandidate = !localOnlyMode && shouldShowTokenDanceWelcome(
         completedTokenDanceWelcomeVersion,
         TOKENDANCE_WELCOME_VERSION,
         isTokenDanceCallback,
@@ -227,7 +243,7 @@ export default function Home() {
         completedMigrationNoticeVersion,
         TOKENDANCE_MIGRATION_NOTICE_VERSION,
         isTokenDanceCallback,
-        !checkingAccount && !hasSignedInAccount && userHasHistory
+        !localOnlyMode && !checkingAccount && !hasSignedInAccount && userHasHistory
       )
 
       // Only one blocking startup message is shown per visit. Lower-priority
@@ -245,7 +261,7 @@ export default function Home() {
       if (storageErrorTimer !== null) clearTimeout(storageErrorTimer)
       unsubscribePersistenceErrors()
     }
-  }, [checkingAccount, hasSignedInAccount, initializationAttempt])
+  }, [checkingAccount, hasSignedInAccount, initializationAttempt, localOnlyMode])
 
   const handleSettingsChange = (newSettings: AppSettings) => {
     setSettings(newSettings)
@@ -400,7 +416,7 @@ export default function Home() {
                     setView('settings')
                   }}
                 >
-                  {lang === 'zh' ? '前往账号中心' : 'Open Account Center'}
+                  {localOnlyMode ? (lang === 'zh' ? '打开本地数据管理' : 'Open local data management') : (lang === 'zh' ? '前往账号中心' : 'Open Account Center')}
                 </button>
               </div>
             </div>

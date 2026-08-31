@@ -1,5 +1,6 @@
 import { indexedDB, initDB } from './db'
 import { createLocalId } from './localId'
+import { isLocalAuthBypassEnabled } from './accountClient'
 
 export type AssistantMemoryCategory = 'preference' | 'learning-style' | 'goal' | 'workflow'
 
@@ -29,7 +30,7 @@ function enqueueMemoryWrite(task: () => Promise<void>): Promise<void> {
  * is authenticated all reads and writes go through the account API.
  */
 async function accountMode(): Promise<AccountMode> {
-  if (process.env.NODE_ENV === 'test' || typeof window === 'undefined') return 'anonymous'
+  if (process.env.NODE_ENV === 'test' || typeof window === 'undefined' || isLocalAuthBypassEnabled()) return 'anonymous'
   let response: Response
   try {
     response = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })

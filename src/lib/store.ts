@@ -45,6 +45,7 @@ import type {
 import { getBookRelationIdentity } from './bookRelations'
 import { migrateToTokenDanceAfterSunset } from './aiProviderPolicy'
 import { createSampleBook, SAMPLE_BOOK_DATA_VERSION, SAMPLE_BOOK_ID, SAMPLE_BOOK_SEEDED_KEY } from './sampleBook'
+import { isLocalAuthBypassEnabled } from './accountClient'
 
 export type Theme = 'dark' | 'light' | 'cyber'
 export type BookStatus = 'unread' | 'reading' | 'finished'
@@ -494,7 +495,7 @@ export async function initializeStore(): Promise<void> {
   initializationPromise = (async () => {
     // Logged-in production users use the server-backed snapshot. IndexedDB is
     // intentionally skipped here; it is only read by the one-time migration flow.
-    if (process.env.NODE_ENV !== 'test') {
+    if (process.env.NODE_ENV !== 'test' && !isLocalAuthBypassEnabled()) {
       const accountResponse = await fetchWithRetry('/api/auth/me/', { credentials: 'include', cache: 'no-store' }, 3, {
         retryStatuses: new Set([401, 408, 425, 429, 500, 502, 503, 504]),
       })

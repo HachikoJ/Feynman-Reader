@@ -51,6 +51,11 @@ export default function AuthGuard({ children }: Props) {
 
   useEffect(() => {
     setNow(Date.now())
+    if (isLocalAuthBypassEnabled()) {
+      setServiceUnavailable(false)
+      setChecking(false)
+      return
+    }
     let cancelled = false
     void getAccount().then(async state => {
       if (cancelled) return
@@ -96,13 +101,20 @@ export default function AuthGuard({ children }: Props) {
     }
   }
 
+  const localOnlyMode = isLocalAuthBypassEnabled()
   const accessValue: AccountAccessValue = {
     user,
     configured: !serviceUnavailable,
     checking,
     isAuthenticated: Boolean(user) || isLocalAuthBypassEnabled(),
     hasSignedInAccount: Boolean(user),
-    requestLogin: (message, returnTo) => setLoginPrompt({ message: message || '登录后才能保存你的学习内容，并在其他设备继续使用。', returnTo }),
+    requestLogin: (message, returnTo) => {
+      // OAuth is deliberately hidden during the temporary IP/local-only
+      // deployment. Keep the callback in place for the normal mode, but do
+      // not surface dead login links or modal prompts while bypass is active.
+      if (localOnlyMode) return
+      setLoginPrompt({ message: message || '登录后才能保存你的学习内容，并在其他设备继续使用。', returnTo })
+    },
   }
   const loginHref = accountLoginHref(loginPrompt?.returnTo || (typeof window === 'undefined' ? '/' : `${window.location.pathname}${window.location.search}${window.location.hash}`))
 
@@ -133,7 +145,7 @@ export default function AuthGuard({ children }: Props) {
         </section>
       </main>
       ) : children}
-      {loginPrompt && (
+      {loginPrompt && !localOnlyMode && (
         <div className="modal-overlay z-[100]" role="dialog" aria-modal="true" aria-labelledby="login-required-title" onClick={() => setLoginPrompt(null)}>
           <section className="card w-[min(92vw,28rem)] p-6" onClick={event => event.stopPropagation()}>
             <div className="flex items-start gap-3">

@@ -105,6 +105,7 @@ export default function Settings({
   onOpenMigrationNotice
 }: Props) {
   const { checking: checkingAccount, hasSignedInAccount, requestLogin } = useAccountAccess()
+  const localOnlyMode = !hasSignedInAccount && process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
     aiProvider: 'tokendance',
@@ -317,9 +318,10 @@ export default function Settings({
 
   useEffect(() => {
     if (openDataManagement) {
-      window.location.assign('/account?tab=data')
+      if (!localOnlyMode) window.location.assign('/account?tab=data')
+      else setShowDataManagement(true)
     }
-  }, [openDataManagement])
+  }, [openDataManagement, localOnlyMode])
 
   useEffect(() => {
     if (
@@ -1140,7 +1142,7 @@ export default function Settings({
         </div>
       </div>
 
-      {onOpenMigrationNotice && (
+      {onOpenMigrationNotice && !localOnlyMode && (
         <button
           type="button"
           onClick={onOpenMigrationNotice}
@@ -1198,16 +1200,16 @@ export default function Settings({
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold">{lang === 'zh' ? '先使用观猹登录，再配置 TokenDance' : 'Sign in with Watcha before configuring TokenDance'}</h2>
+                  <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '备案期间暂不开放账号登录' : 'Account sign-in is paused during domain filing') : (lang === 'zh' ? '先使用观猹登录，再配置 TokenDance' : 'Sign in with Watcha before configuring TokenDance')}</h2>
                   <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-                    {lang === 'zh'
-                      ? 'API Key 必须绑定到当前账号，并由服务端加密保存。未登录时不会显示、接收或保存 API Key。'
-                      : 'The API key must be linked to the current account and encrypted by the server. Signed-out users cannot view, enter, or save an API key.'}
+                    {localOnlyMode
+                      ? (lang === 'zh' ? '当前使用本地模式，书籍和学习数据会保存在此浏览器。备案完成后重新开启登录，即可在账号中心迁移到云端。' : 'Local-only mode is active, so books and learning data stay in this browser. Sign-in will return after filing and the data can then be migrated to your account cloud.')
+                      : (lang === 'zh' ? 'API Key 必须绑定到当前账号，并由服务端加密保存。未登录时不会显示、接收或保存 API Key。' : 'The API key must be linked to the current account and encrypted by the server. Signed-out users cannot view, enter, or save an API key.')}
                   </p>
-                  <button type="button" onClick={requireAccountForApi} className="btn-primary mt-3 inline-flex min-h-11 items-center gap-2 px-4">
+                  {!localOnlyMode && <button type="button" onClick={requireAccountForApi} className="btn-primary mt-3 inline-flex min-h-11 items-center gap-2 px-4">
                     <LogIn size={17} aria-hidden="true" />
                     {lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha'}
-                  </button>
+                  </button>}
                 </div>
               </div>
             </div>
@@ -1516,10 +1518,17 @@ export default function Settings({
 
         <div className="grid gap-4 sm:grid-cols-2">
         <div className="card p-2 sm:col-span-2">
-          <a href="/account?tab=data" className="flex min-h-10 items-center justify-between gap-3 rounded-md px-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
-            <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="truncate">{lang === 'zh' ? '账号中心 · 云端数据与历史迁移' : 'Account center · Cloud data and migration'}</span></span>
-            <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
-          </a>
+          {!localOnlyMode ? (
+            <a href="/account?tab=data" className="flex min-h-10 items-center justify-between gap-3 rounded-md px-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
+              <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="truncate">{lang === 'zh' ? '账号中心 · 云端数据与历史迁移' : 'Account center · Cloud data and migration'}</span></span>
+              <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
+            </a>
+          ) : (
+            <button type="button" onClick={() => setShowDataManagement(true)} className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
+              <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="min-w-0"><span className="block truncate text-[var(--text-primary)]">{lang === 'zh' ? '本地数据管理' : 'Local data management'}</span><span className="mt-0.5 block truncate text-xs">{lang === 'zh' ? '备案期间保存在当前浏览器，之后可迁移到账号云端' : 'Stored in this browser during filing; migrate to your account later'}</span></span></span>
+              <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
+            </button>
+          )}
         </div>
 
         <div className="card p-2 sm:col-span-2">
@@ -1727,17 +1736,17 @@ export default function Settings({
                 <AlertTriangle size={19} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
                 <div className="text-sm leading-5">
                   <p className="font-semibold text-amber-700 dark:text-amber-300">
-                    {lang === 'zh' ? '云端数据自动保存，本机历史数据请及时迁移' : 'Cloud data saves automatically; migrate legacy local data promptly'}
+                    {localOnlyMode ? (lang === 'zh' ? '备案期间使用本地数据模式' : 'Local data mode during domain filing') : (lang === 'zh' ? '云端数据自动保存，本机历史数据请及时迁移' : 'Cloud data saves automatically; migrate legacy local data promptly')}
                   </p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                    {lang === 'zh'
-                      ? '登录后的学习数据会按账号保存到云端；尚未迁移的 IndexedDB 历史数据仍只在当前浏览器，清理网站数据会使这部分内容永久丢失。'
-                      : 'Signed-in learning data is saved to your account cloud. Unmigrated IndexedDB history remains only in this browser and is permanently lost if site data is cleared.'}
+                    {localOnlyMode
+                      ? (lang === 'zh' ? '备案期间书籍、笔记和学习记录会保存在当前浏览器的 IndexedDB。请勿清理网站数据；备案完成后重新开启登录即可迁移到账号云端。' : 'During filing, books, notes, and learning records stay in this browser\'s IndexedDB. Do not clear site data; migrate them to your account cloud after sign-in returns.')
+                      : (lang === 'zh' ? '登录后的学习数据会按账号保存到云端；尚未迁移的 IndexedDB 历史数据仍只在当前浏览器，清理网站数据会使这部分内容永久丢失。' : 'Signed-in learning data is saved to your account cloud. Unmigrated IndexedDB history remains only in this browser and is permanently lost if site data is cleared.')}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
-                    {lang === 'zh'
-                      ? '云端会自动保存日常修改；导出仅用于你主动备份或迁移到其他账号。数据较大时会自动分卷，导入时需一次选择全部分卷。'
-                      : 'Daily changes are saved to the cloud automatically. Export is only for an intentional backup or migration to another account. Large backups are split automatically; select every part together when importing.'}
+                    {localOnlyMode
+                      ? (lang === 'zh' ? '本地数据会持续保存；导出用于主动备份或备案完成后的迁移。数据较大时会自动分卷，导入时需一次选择全部分卷。' : 'Local data is saved continuously. Export is useful for a manual backup or migration after filing. Large backups are split automatically; select every part together when importing.')
+                      : (lang === 'zh' ? '云端会自动保存日常修改；导出仅用于你主动备份或迁移到其他账号。数据较大时会自动分卷，导入时需一次选择全部分卷。' : 'Daily changes are saved to the cloud automatically. Export is only for an intentional backup or migration to another account. Large backups are split automatically; select every part together when importing.')}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     <strong className="text-amber-700 dark:text-amber-300">
@@ -1765,7 +1774,7 @@ export default function Settings({
                   <div className="text-sm font-medium">{lang === 'zh' ? '本机历史数据状态' : 'Legacy local data status'}</div>
                   <div className="text-xs text-[var(--text-secondary)]">
                     {dbInfo.usingIndexedDB
-                      ? (lang === 'zh' ? 'IndexedDB（仅用于历史迁移）' : 'IndexedDB (legacy migration only)')
+                      ? (localOnlyMode ? (lang === 'zh' ? 'IndexedDB（备案期间本地模式）' : 'IndexedDB (local-only mode during filing)') : (lang === 'zh' ? 'IndexedDB（仅用于历史迁移）' : 'IndexedDB (legacy migration only)'))
                       : (lang === 'zh' ? 'LocalStorage（旧版兼容数据）' : 'LocalStorage (legacy compatibility data)')}
                   </div>
                 </div>

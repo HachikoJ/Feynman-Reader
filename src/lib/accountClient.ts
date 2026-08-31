@@ -47,7 +47,11 @@ export interface ActivityDay {
 }
 
 export function isLocalAuthBypassEnabled(): boolean {
-  return process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
+  // This flag is intentionally build-time configurable so a temporary
+  // production deployment can run in local-only mode while OAuth callbacks
+  // are unavailable (for example during domain备案). Remove it or set it to
+  // false before the next build to restore account sign-in and cloud sync.
+  return process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
 }
 
 // Keep this helper as the single feature flag for callers that need to know
