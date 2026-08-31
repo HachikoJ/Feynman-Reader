@@ -1,4 +1,4 @@
-export type StartupPrompt = 'data-risk' | 'tokendance-welcome' | 'tokendance-migration' | 'onboarding' | 'api-key' | null
+export type StartupPrompt = 'tokendance-welcome' | 'tokendance-migration' | 'onboarding' | 'api-key' | null
 
 export function isAIConfigurationComplete(settings: { apiKey: string; aiDataConsent?: boolean }): boolean {
   return settings.apiKey.trim().length > 0 && settings.aiDataConsent === true
@@ -36,19 +36,16 @@ export function shouldShowTokenDanceMigration(
 }
 
 export function getActiveStartupPrompt({
-  showDataLossWarning,
   showTokenDanceWelcome,
   showTokenDanceMigration = false,
   showOnboarding,
   showApiKeyAlert
 }: {
-  showDataLossWarning: boolean
   showTokenDanceWelcome: boolean
   showTokenDanceMigration?: boolean
   showOnboarding: boolean
   showApiKeyAlert: boolean
 }): StartupPrompt {
-  if (showDataLossWarning) return 'data-risk'
   if (showTokenDanceWelcome) return 'tokendance-welcome'
   if (showTokenDanceMigration) return 'tokendance-migration'
   if (showOnboarding) return 'onboarding'

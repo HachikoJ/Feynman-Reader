@@ -43,19 +43,17 @@ describe('TokenDance welcome visibility', () => {
 })
 
 describe('startup prompt priority', () => {
-  it('shows only the data-risk acknowledgement when every prompt is pending', () => {
+  it('shows the TokenDance welcome before lower-priority prompts', () => {
     expect(getActiveStartupPrompt({
-      showDataLossWarning: true,
       showTokenDanceWelcome: true,
       showTokenDanceMigration: true,
       showOnboarding: true,
       showApiKeyAlert: true
-    })).toBe('data-risk')
+    })).toBe('tokendance-welcome')
   })
 
-  it('shows the one-time TokenDance welcome after the data-risk acknowledgement', () => {
+  it('shows the one-time TokenDance welcome when no migration is pending', () => {
     expect(getActiveStartupPrompt({
-      showDataLossWarning: false,
       showTokenDanceWelcome: true,
       showTokenDanceMigration: false,
       showOnboarding: true,
@@ -65,7 +63,6 @@ describe('startup prompt priority', () => {
 
   it('shows onboarding after the TokenDance welcome is complete', () => {
     expect(getActiveStartupPrompt({
-      showDataLossWarning: false,
       showTokenDanceWelcome: false,
       showTokenDanceMigration: true,
       showOnboarding: true,
@@ -75,7 +72,6 @@ describe('startup prompt priority', () => {
 
   it('shows onboarding after the migration notice is complete', () => {
     expect(getActiveStartupPrompt({
-      showDataLossWarning: false,
       showTokenDanceWelcome: false,
       showTokenDanceMigration: false,
       showOnboarding: true,
@@ -85,7 +81,6 @@ describe('startup prompt priority', () => {
 
   it('shows the API key reminder only after higher-priority prompts are complete', () => {
     expect(getActiveStartupPrompt({
-      showDataLossWarning: false,
       showTokenDanceWelcome: false,
       showTokenDanceMigration: false,
       showOnboarding: false,
@@ -95,7 +90,6 @@ describe('startup prompt priority', () => {
 
   it('renders no startup prompt when none is pending', () => {
     expect(getActiveStartupPrompt({
-      showDataLossWarning: false,
       showTokenDanceWelcome: false,
       showTokenDanceMigration: false,
       showOnboarding: false,

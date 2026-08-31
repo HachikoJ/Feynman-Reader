@@ -1727,7 +1727,7 @@ export default function Settings({
                 <AlertTriangle size={19} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
                 <div className="text-sm leading-5">
                   <p className="font-semibold text-amber-700 dark:text-amber-300">
-                    {lang === 'zh' ? '云端数据也建议定期导出，本机历史数据请及时迁移' : 'Export cloud data regularly and migrate legacy local data promptly'}
+                    {lang === 'zh' ? '云端数据自动保存，本机历史数据请及时迁移' : 'Cloud data saves automatically; migrate legacy local data promptly'}
                   </p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
                     {lang === 'zh'
@@ -1736,8 +1736,8 @@ export default function Settings({
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     {lang === 'zh'
-                      ? '云端会自动保存日常修改，但导出备份仍需由你手动完成；数据较大时会自动分卷，导入时需一次选择全部分卷。只有确认文件保存成功后才会记录备份时间。'
-                      : 'Daily changes are saved to the cloud automatically, but exported backups are manual. Large backups are split automatically; select every part together when importing. Backup time is recorded only after files are confirmed saved.'}
+                      ? '云端会自动保存日常修改；导出仅用于你主动备份或迁移到其他账号。数据较大时会自动分卷，导入时需一次选择全部分卷。'
+                      : 'Daily changes are saved to the cloud automatically. Export is only for an intentional backup or migration to another account. Large backups are split automatically; select every part together when importing.'}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     <strong className="text-amber-700 dark:text-amber-300">
@@ -1750,9 +1750,9 @@ export default function Settings({
                   <p className="mt-2 text-xs font-medium">
                     {lastBackupAt
                       ? (lang === 'zh'
-                        ? `上次成功备份：${new Date(lastBackupAt).toLocaleString('zh-CN')}`
-                        : `Last successful backup: ${new Date(lastBackupAt).toLocaleString('en-US')}`)
-                      : (lang === 'zh' ? '当前未记录到任何备份' : 'No backup has been recorded')}
+                        ? `最近一次主动备份：${new Date(lastBackupAt).toLocaleString('zh-CN')}（云端自动保存不受影响）`
+                        : `Last manual backup: ${new Date(lastBackupAt).toLocaleString('en-US')} (automatic cloud saving is unaffected)`)
+                      : (lang === 'zh' ? '尚未进行主动备份（云端数据仍会自动保存）' : 'No manual backup yet (cloud data is still saved automatically)')}
                   </p>
                 </div>
               </div>

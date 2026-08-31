@@ -1,17 +1,15 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { AlertTriangle, Cloud, Download, HardDrive } from 'lucide-react'
+import { AlertTriangle, Cloud, HardDrive } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 
 interface Props {
   lang: Language
-  backupDue: boolean
   onContinue: () => void
-  onOpenBackup: () => void
 }
 
-export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBackup }: Props) {
+export default function DataLossWarning({ lang, onContinue }: Props) {
   const [confirmed, setConfirmed] = useState(false)
   const [confirmationError, setConfirmationError] = useState(false)
   const confirmationCheckboxRef = useRef<HTMLInputElement>(null)
@@ -45,9 +43,7 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
               {isZh ? '请确认数据保存与迁移规则' : 'Confirm data storage and migration'}
             </h2>
             <p className="mt-1 text-sm font-medium text-amber-600 dark:text-amber-400">
-              {backupDue
-                ? (isZh ? '你的学习数据尚未导出云端备份，或距离上次导出已超过 7 天。' : 'Your cloud learning data has not been exported, or the last export was over 7 days ago.')
-                : (isZh ? '登录后的新数据保存到账号云端；本机旧数据需登录后迁移。' : 'New signed-in data is saved to your account cloud; legacy local data must be migrated after sign-in.')}
+              {isZh ? '登录后的新数据自动保存到账号云端；仅本机旧数据需要迁移。' : 'New signed-in data is saved automatically to your account cloud; only legacy local data needs migration.'}
             </p>
           </div>
           </div>
@@ -68,11 +64,11 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
             </p>
           </div>
           <div className="flex items-start gap-3">
-            <Download size={19} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
+            <Cloud size={19} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
             <p>
               {isZh
-                ? '请前往“账号中心 > 数据管理”迁移历史数据。导入与导出工具始终保留，备份不包含 API Key；未迁移或未备份的内容无法代为恢复。'
-                : 'Use Account Center > Data Management to migrate history. Import and export tools remain available, and backups exclude API keys; unmigrated or unbacked-up data cannot be recovered for you.'}
+                ? '请前往“账号中心 > 数据管理”迁移历史数据。导入与导出工具用于主动迁移或备份，不影响云端自动保存；API Key 不会包含在导出文件中。'
+                : 'Use Account Center > Data Management to migrate history. Import and export are optional tools for intentional migration or backup and do not affect automatic cloud saving; API keys are excluded.'}
             </p>
           </div>
           </div>
@@ -110,21 +106,11 @@ export default function DataLossWarning({ lang, backupDue, onContinue, onOpenBac
           )}
         </div>
 
-        <div className={`shrink-0 grid grid-cols-1 gap-2 border-t border-[var(--border)] p-5 md:p-6 ${backupDue ? 'sm:grid-cols-2' : ''}`}>
-          {backupDue && (
-            <button
-              type="button"
-              onClick={() => runConfirmedAction(onOpenBackup)}
-              className="btn-primary flex items-center justify-center gap-2"
-            >
-              <Download size={17} aria-hidden="true" />
-              {isZh ? '前往数据管理' : 'Open Data Management'}
-            </button>
-          )}
+        <div className="shrink-0 border-t border-[var(--border)] p-5 md:p-6">
           <button
             type="button"
             onClick={() => runConfirmedAction(onContinue)}
-            className="btn-secondary"
+            className="btn-secondary w-full"
           >
             {isZh ? '我已了解，继续使用' : 'I understand, continue'}
           </button>

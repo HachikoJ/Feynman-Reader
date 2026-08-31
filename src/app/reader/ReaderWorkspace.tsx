@@ -28,19 +28,9 @@ import TokenDanceMigrationNotice, {
   TOKENDANCE_MIGRATION_NOTICE_KEY,
   TOKENDANCE_MIGRATION_NOTICE_VERSION
 } from '@/components/TokenDanceMigrationNotice'
-import DataLossWarning from '@/components/DataLossWarning'
 import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import UndoRedoControls, { useUndoRedoShortcuts } from '@/components/UndoRedoControls'
-import {
-  DATA_RISK_ACKNOWLEDGED_KEY,
-  DATA_RISK_NOTICE_VERSION,
-  LAST_BACKUP_AT_KEY,
-  hasBackupRelevantLearningData,
-  hasAcknowledgedCurrentDataRisk,
-  isBackupReminderDue,
-  shouldShowBackupWarning
-} from '@/lib/backupReminder'
 import {
   getActiveStartupPrompt,
   isAIConfigurationComplete,
@@ -135,6 +125,7 @@ function GitHubMark() {
 }
 
 export default function Home() {
+  const { hasSignedInAccount, checking: checkingAccount } = useAccountAccess()
   const [view, setView] = useState<View>('bookshelf')
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
@@ -154,8 +145,6 @@ export default function Home() {
   const [showOnboarding, setShowOnboarding] = useState(false) // P0 新增：新手引导
   const [showTokenDanceWelcome, setShowTokenDanceWelcome] = useState(false)
   const [showTokenDanceMigration, setShowTokenDanceMigration] = useState(false)
-  const [showDataLossWarning, setShowDataLossWarning] = useState(false)
-  const [backupDue, setBackupDue] = useState(false)
   const [openDataManagement, setOpenDataManagement] = useState(false)
   const [focusApiConfigurationRequest, setFocusApiConfigurationRequest] = useState(0)
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
@@ -238,25 +227,12 @@ export default function Home() {
         completedMigrationNoticeVersion,
         TOKENDANCE_MIGRATION_NOTICE_VERSION,
         isTokenDanceCallback,
-        userHasHistory
+        !checkingAccount && !hasSignedInAccount && userHasHistory
       )
-
-      const acknowledged = hasAcknowledgedCurrentDataRisk(localStorage.getItem(DATA_RISK_ACKNOWLEDGED_KEY))
-      const lastBackupValue = localStorage.getItem(LAST_BACKUP_AT_KEY)
-      const lastBackupAt = lastBackupValue ? Number(lastBackupValue) : null
-      const learningDataCount = books.filter(hasBackupRelevantLearningData).length
-      const needsBackup = isBackupReminderDue({ bookCount: learningDataCount, lastBackupAt })
-      const showDataLossWarningCandidate = shouldShowBackupWarning({
-        acknowledged,
-        bookCount: learningDataCount,
-        lastBackupAt
-      })
-      setBackupDue(needsBackup)
 
       // Only one blocking startup message is shown per visit. Lower-priority
       // guidance remains available from the header and can appear next visit.
       if (showTokenDanceMigrationCandidate) setShowTokenDanceMigration(true)
-      else if (showDataLossWarningCandidate) setShowDataLossWarning(true)
       else if (showOnboardingCandidate) setShowOnboarding(true)
       else if (showTokenDanceWelcomeCandidate) setShowTokenDanceWelcome(true)
 
@@ -269,7 +245,7 @@ export default function Home() {
       if (storageErrorTimer !== null) clearTimeout(storageErrorTimer)
       unsubscribePersistenceErrors()
     }
-  }, [initializationAttempt])
+  }, [checkingAccount, hasSignedInAccount, initializationAttempt])
 
   const handleSettingsChange = (newSettings: AppSettings) => {
     setSettings(newSettings)
@@ -326,19 +302,6 @@ export default function Home() {
     window.history.replaceState({}, '', '/?view=settings')
   }
 
-  const acknowledgeDataRisk = (goToBackup: boolean) => {
-    localStorage.setItem(DATA_RISK_ACKNOWLEDGED_KEY, DATA_RISK_NOTICE_VERSION)
-    setShowDataLossWarning(false)
-
-    if (goToBackup) {
-      setShowApiKeyAlert(false)
-      setShowOnboarding(false)
-      setSelectedBook(null)
-      setOpenDataManagement(true)
-      setView('settings')
-    }
-  }
-
   const lang = settings.language
   const currentWorkspaceHref = view === 'settings'
     ? '/?view=settings'
@@ -346,7 +309,6 @@ export default function Home() {
       ? `/?view=reading&bookId=${encodeURIComponent(selectedBook.id)}`
       : '/'
   const activeStartupPrompt = getActiveStartupPrompt({
-    showDataLossWarning,
     showTokenDanceWelcome,
     showTokenDanceMigration,
     showOnboarding,
@@ -561,7 +523,6 @@ export default function Home() {
               focusApiConfigurationRequest={focusApiConfigurationRequest}
               onOpenMigrationNotice={handleOpenTokenDanceMigration}
               onBackupCompleted={() => {
-                setBackupDue(false)
                 setOpenDataManagement(false)
               }}
             />
@@ -643,15 +604,6 @@ export default function Home() {
             aiConfigured={isAIConfigurationComplete(settings)}
             onComplete={handleOnboardingComplete}
             onConfigureApi={handleOnboardingConfigureApi}
-          />
-        )}
-
-        {activeStartupPrompt === 'data-risk' && (
-          <DataLossWarning
-            lang={lang}
-            backupDue={backupDue}
-            onContinue={() => acknowledgeDataRisk(false)}
-            onOpenBackup={() => acknowledgeDataRisk(true)}
           />
         )}
 
