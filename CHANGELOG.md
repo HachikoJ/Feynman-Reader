@@ -6,6 +6,7 @@ Notable changes to Feynman Reader are recorded here.
 
 ### Added
 
+- Username/password registration and sign-in as a fallback account channel; email is collected as an unverified account identifier.
 - Watcha OAuth account login with persistent server-side sessions.
 - PostgreSQL-backed books, settings, quotes, assistant sessions, long-term memories, activity history, and account statistics.
 - Account Center with cloud bookshelf, quote management, recycle bin, data transfer, and activity calendar.

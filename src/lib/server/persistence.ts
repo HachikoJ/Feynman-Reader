@@ -11,6 +11,7 @@ export interface ApiKeyRecord {
 }
 
 export interface PersistenceAdapter extends AuthStore {
+  findPasswordHashByUsername?(username: string): Promise<string | null>
   saveApiKey(record: ApiKeyRecord): Promise<void>
   getApiKey(userId: string, provider: 'tokendance'): Promise<ApiKeyRecord | null>
   deleteApiKey(userId: string, provider: 'tokendance'): Promise<void>

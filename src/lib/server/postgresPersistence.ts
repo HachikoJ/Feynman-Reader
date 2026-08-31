@@ -20,6 +20,8 @@ import { mergeDefaultQuotes } from '@/lib/defaultQuotes'
 
 type UserRow = {
   id: string
+  username: string | null
+  password_hash: string | null
   tokendance_subject: string | null
   phone: string | null
   email: string | null
@@ -62,6 +64,7 @@ function iso(value: Date | string): string {
 function mapUser(row: UserRow): AuthUser {
   return {
     id: row.id,
+    ...(row.username ? { username: row.username } : {}),
     ...(row.tokendance_subject ? { tokendanceSubject: row.tokendance_subject } : {}),
     ...(row.phone ? { phone: row.phone } : {}),
     ...(row.email ? { email: row.email } : {}),
@@ -175,12 +178,24 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
   }
 
-  async createUser(input: { tokendanceSubject?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser> {
+  async findByUsername(username: string): Promise<AuthUser | null> {
+    const row = await this.one<UserRow>('select * from public.app_users where username = $1', [username])
+    if (!row) return null
+    const profile = await this.getUserProfile(row.id)
+    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
+  }
+
+  async findPasswordHashByUsername(username: string): Promise<string | null> {
+    const row = await this.one<{ password_hash: string | null }>('select password_hash from public.app_users where username = $1', [username])
+    return row?.password_hash || null
+  }
+
+  async createUser(input: { tokendanceSubject?: string; username?: string; passwordHash?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser> {
     const row = await this.one<UserRow>(
-      `insert into public.app_users (tokendance_subject, phone, email)
-       values ($1, $2, $3)
+      `insert into public.app_users (tokendance_subject, username, password_hash, phone, email)
+       values ($1, $2, $3, $4, $5)
        returning *`,
-      [input.tokendanceSubject || null, input.phone || null, input.email || null],
+      [input.tokendanceSubject || null, input.username || null, input.passwordHash || null, input.phone || null, input.email || null],
     )
     if (!row) throw new Error('User creation returned no row.')
     await this.ensureDefaultQuotes(row.id)

@@ -18,7 +18,7 @@ bash ./scripts/migrate-to-local-postgres.sh
 - 检查根分区至少有 8GB 可用空间，并确认 PM2 中存在 `feynman-reader`；
 - 安装并初始化本机 PostgreSQL，只监听 `127.0.0.1:5432`；
 - 导出迁移前完整备份；
-- 执行仓库内 `001`～`006` 迁移，跳过依赖 Supabase `pg_cron` 的 `007`；
+- 执行仓库内 `001`～`006` 和 `008_password_auth.sql` 迁移，跳过依赖 Supabase `pg_cron` 的 `007`；
 - 停止应用后再次导出最终数据并恢复；
 - 校验核心表行数；
 - 仅修改服务器环境文件中的 `DATABASE_URL` 和 `DATABASE_POOL_MAX=5`；

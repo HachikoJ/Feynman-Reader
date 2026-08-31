@@ -129,8 +129,8 @@ ALTER ROLE $TARGET_ROLE WITH LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATE
 SQL
 sudo -u postgres createdb --owner="$TARGET_ROLE" "$TARGET_DB"
 
-log '执行仓库内 001～006 迁移，跳过需要 Supabase pg_cron 的 007。'
-for migration in "$PROJECT_DIR"/supabase/migrations/00[1-6]_*.sql; do
+log '执行仓库内 001～006 和密码账号迁移，跳过需要 Supabase pg_cron 的 007。'
+for migration in "$PROJECT_DIR"/supabase/migrations/00[1-6]_*.sql "$PROJECT_DIR"/supabase/migrations/008_password_auth.sql; do
   sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" --file="$migration" >/dev/null
 done
 

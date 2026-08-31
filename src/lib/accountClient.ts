@@ -1,5 +1,6 @@
 export interface AccountUser {
   id: string
+  username?: string
   tokendanceSubject?: string
   displayName?: string
   avatarUrl?: string
@@ -61,6 +62,11 @@ export function isAccountRequired(): boolean {
 }
 
 export function accountLoginHref(returnTo = '/'): string {
+  const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/'
+  return `/login?returnTo=${encodeURIComponent(safeReturnTo)}`
+}
+
+export function tokendanceLoginHref(returnTo = '/'): string {
   const safeReturnTo = returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/'
   return `/api/auth/tokendance/start/?returnTo=${encodeURIComponent(safeReturnTo)}`
 }

@@ -1,26 +1,47 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, LogIn, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
-import { accountLoginHref, getAccount, isLocalAuthBypassEnabled, type AccountUser } from '@/lib/accountClient'
+import { getAccount, isLocalAuthBypassEnabled, tokendanceLoginHref, type AccountUser } from '@/lib/accountClient'
 
 export default function LoginPage() {
   const localOnlyMode = isLocalAuthBypassEnabled()
   const [user, setUser] = useState<AccountUser | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [loginHref, setLoginHref] = useState(accountLoginHref('/'))
+  const [mode, setMode] = useState<'password' | 'register'>('password')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (localOnlyMode) {
       setChecking(false)
       return
     }
-    const requested = new URLSearchParams(window.location.search).get('returnTo')
-    setLoginHref(accountLoginHref(requested && requested.startsWith('/') ? requested : '/'))
     void getAccount().then(state => setUser(state.user)).catch(() => setError('暂时无法读取登录状态，请刷新页面重试。')).finally(() => setChecking(false))
   }, [localOnlyMode])
+
+  async function submitPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const endpoint = mode === 'register' ? '/api/auth/password/register/' : '/api/auth/password/login/'
+      const payload = mode === 'register' ? { username, password, email } : { username, password }
+      const response = await fetch(endpoint, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const data = await response.json().catch(() => ({})) as { error?: string; user?: AccountUser }
+      if (!response.ok) throw new Error(data.error || (mode === 'register' ? '注册失败。' : '登录失败。'))
+      const target = new URLSearchParams(window.location.search).get('returnTo')
+      window.location.assign(target && target.startsWith('/') ? target : '/')
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : '操作失败，请稍后重试。')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--bg-primary)] px-4 py-8">
@@ -62,12 +83,19 @@ export default function LoginPage() {
             </div>
           ) : (
             <>
-              <a href={loginHref} className="btn-primary mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2">
-                <LogIn size={17} aria-hidden="true" />使用观猹登录<ExternalLink size={15} aria-hidden="true" />
-              </a>
-              <p className="mt-4 text-xs leading-5 text-[var(--text-secondary)]">
-                点击后会跳转到观猹官方授权页面。我们只申请基础账号信息，不读取手机号和邮箱。
-              </p>
+              <div className="mt-6 grid grid-cols-2 gap-2" role="tablist" aria-label="登录方式">
+                <button type="button" className={`min-h-10 rounded-md border px-3 text-sm ${mode === 'password' ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-[var(--border)]'}`} onClick={() => setMode('password')}>账号登录</button>
+                <button type="button" className={`min-h-10 rounded-md border px-3 text-sm ${mode === 'register' ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-[var(--border)]'}`} onClick={() => setMode('register')}>注册账号</button>
+              </div>
+              <form className="mt-4 space-y-3" onSubmit={submitPassword}>
+                <label className="block text-sm"><span className="mb-1 block text-[var(--text-secondary)]">用户名</span><input required minLength={3} maxLength={32} value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" className="input w-full" /></label>
+                {mode === 'register' && <label className="block text-sm"><span className="mb-1 block text-[var(--text-secondary)]">邮箱</span><input required type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" className="input w-full" /></label>}
+                <label className="block text-sm"><span className="mb-1 block text-[var(--text-secondary)]">密码</span><input required minLength={8} maxLength={128} type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} className="input w-full" /></label>
+                <button type="submit" disabled={busy} className="btn-primary inline-flex min-h-11 w-full items-center justify-center gap-2"><LogIn size={17} aria-hidden="true" />{busy ? '处理中…' : mode === 'register' ? '注册并登录' : '登录'}</button>
+              </form>
+              <div className="my-5 flex items-center gap-3 text-xs text-[var(--text-secondary)]"><span className="h-px flex-1 bg-[var(--border)]" />或<span className="h-px flex-1 bg-[var(--border)]" /></div>
+              <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-secondary inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用观猹登录</a>
+              <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">邮箱仅用于账号识别，不需要验证；密码会以加密哈希保存。</p>
             </>
           )}
         </div>

@@ -1,9 +1,10 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 
-export type AuthProvider = 'tokendance' | 'phone' | 'email'
+export type AuthProvider = 'tokendance' | 'phone' | 'email' | 'password'
 
 export interface AuthUser {
   id: string
+  username?: string
   tokendanceSubject?: string
   displayName?: string
   avatarUrl?: string
@@ -27,7 +28,8 @@ export interface AuthStore {
   findByTokendanceSubject(subject: string): Promise<AuthUser | null>
   findByPhone(phone: string): Promise<AuthUser | null>
   findByEmail(email: string): Promise<AuthUser | null>
-  createUser(input: { tokendanceSubject?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser>
+  findByUsername(username: string): Promise<AuthUser | null>
+  createUser(input: { tokendanceSubject?: string; username?: string; passwordHash?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser>
   updateUser(userId: string, patch: Partial<Pick<AuthUser, 'tokendanceSubject' | 'displayName' | 'avatarUrl' | 'phone' | 'email' | 'phoneVerifiedAt' | 'emailVerifiedAt'>>): Promise<AuthUser>
   createSession(userId: string, ttlSeconds: number): Promise<AuthSession>
   findSession(id: string): Promise<AuthSession | null>
@@ -47,6 +49,41 @@ export function normalizeEmail(value: string): string {
     throw new Error('请输入有效的邮箱地址。')
   }
   return email
+}
+
+export function normalizeUsername(value: string): string {
+  const username = value.trim().toLowerCase()
+  if (!/^[a-z0-9_\-\u4e00-\u9fff]{3,32}$/.test(username)) {
+    throw new Error('用户名需为 3～32 个字符，只能包含中文、字母、数字、下划线或短横线。')
+  }
+  return username
+}
+
+export function validatePassword(value: string): string {
+  if (typeof value !== 'string' || value.length < 8 || value.length > 128) {
+    throw new Error('密码长度需为 8～128 个字符。')
+  }
+  if (/^[\s]+$/.test(value)) throw new Error('密码不能全部为空格。')
+  return value
+}
+
+export function hashPassword(password: string): string {
+  const valid = validatePassword(password)
+  const salt = randomBytes(16)
+  const derived = scryptSync(valid, salt, 64, { N: 16_384, r: 8, p: 1 })
+  return `scrypt$16384$8$1$${salt.toString('base64url')}$${derived.toString('base64url')}`
+}
+
+export function verifyPassword(password: string, encoded: string): boolean {
+  try {
+    const [algorithm, n, r, p, saltText, hashText] = encoded.split('$')
+    if (algorithm !== 'scrypt' || n !== '16384' || r !== '8' || p !== '1' || !saltText || !hashText) return false
+    const expected = Buffer.from(hashText, 'base64url')
+    const actual = scryptSync(validatePassword(password), Buffer.from(saltText, 'base64url'), expected.length, { N: 16_384, r: 8, p: 1 })
+    return actual.length === expected.length && timingSafeEqual(actual, expected)
+  } catch {
+    return false
+  }
 }
 
 export function validateBinding(input: { provider: AuthProvider; phone?: string; email?: string }): { phone?: string; email?: string } {

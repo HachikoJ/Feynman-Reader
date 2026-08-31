@@ -28,6 +28,6 @@ export function getAuthConfig(): AuthConfig {
   const tokendanceAuthorizationUrl = process.env.TOKENDANCE_OAUTH_AUTHORIZE_URL?.trim() || TOKENDANCE_OAUTH_AUTHORIZE_URL
   return {
     tokendanceAuthorizationUrl,
-    enabledProviders: ['tokendance'],
+    enabledProviders: ['tokendance', 'password'],
   }
 }
