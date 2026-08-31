@@ -74,7 +74,15 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
       title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
       aria-disabled={checking}
     >
-      <UserRound size={16} aria-hidden="true" />
+      {user?.avatarUrl ? (
+        <img src={user.avatarUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
+      ) : user?.displayName ? (
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white" aria-hidden="true">
+          {user.displayName.slice(0, 1)}
+        </span>
+      ) : (
+        <UserRound size={16} aria-hidden="true" />
+      )}
       <span className="hidden sm:inline">
         {checking ? (lang === 'zh' ? '读取账号' : 'Checking') : signedIn ? (lang === 'zh' ? '账号中心' : 'Account') : (lang === 'zh' ? '观猹登录' : 'Watcha sign-in')}
       </span>
