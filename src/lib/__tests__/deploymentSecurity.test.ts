@@ -60,7 +60,7 @@ describe('production security header deployment', () => {
     expect(productNginx).toContain('location ^~ /reader/ { return 410; }')
     expect(productNginx).toContain('location = /feynmanreader { return 410; }')
     expect(productNginx).toContain('location ^~ /feynmanreader/ { return 410; }')
-    expect(tokendanceSource).toContain("TOKENDANCE_APP_URL = 'https://reader.deline.top'")
+    expect(tokendanceSource).toContain("TOKENDANCE_APP_URL = 'https://deline.top'")
     expect(tokendanceSource).toContain("TOKENDANCE_CALLBACK_ORIGIN = 'https://reader.deline.top'")
     expect(tokendanceSource).toContain('TOKENDANCE_CALLBACK_ORIGIN}${APP_ROUTES.home}')
     expect(tokendanceSource).not.toContain('window.location.origin}${APP_ROUTES.home}')
