@@ -7,6 +7,33 @@ import { TOKENDANCE_APP_URL, TOKENDANCE_GATEWAY_URL } from '@/lib/tokendance'
 
 export const runtime = 'nodejs'
 
+function isStructuredOutputUnsupported(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as Record<string, unknown>
+  if (candidate.status !== 400) return false
+  const details = [
+    candidate.message,
+    candidate.code,
+    candidate.type,
+    candidate.error && typeof candidate.error === 'object'
+      ? (candidate.error as Record<string, unknown>).message
+      : undefined,
+    candidate.error && typeof candidate.error === 'object'
+      ? (candidate.error as Record<string, unknown>).code
+      : undefined,
+    candidate.error && typeof candidate.error === 'object'
+      ? (candidate.error as Record<string, unknown>).param
+      : undefined
+  ]
+    .filter(value => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+  return details.includes('response_format')
+    || details.includes('json_object')
+    || details.includes('structured output')
+    || details.includes('structured_output')
+}
+
 function getRecoveryAction(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null
   const headers = (error as { headers?: unknown }).headers
@@ -31,7 +58,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (payload.stream === true) return NextResponse.json({ error: { message: '暂不支持流式请求。' } }, { status: 400 })
     const secret = decryptApiKey(record.secret)
     const client = new OpenAI({ baseURL: TOKENDANCE_GATEWAY_URL, apiKey: secret, defaultHeaders: { 'X-App-URL': TOKENDANCE_APP_URL }, maxRetries: 0 })
-    const completion = await client.chat.completions.create(payload as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming)
+    let completion: OpenAI.Chat.Completions.ChatCompletion
+    try {
+      completion = await client.chat.completions.create(payload as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming)
+    } catch (error) {
+      // TokenDance accepts the JSON instruction in the prompt even when a
+      // gateway deployment does not expose OpenAI's optional response_format.
+      if (payload.response_format && isStructuredOutputUnsupported(error)) {
+        const { response_format: _responseFormat, ...fallbackPayload } = payload
+        completion = await client.chat.completions.create(
+          fallbackPayload as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming
+        )
+      } else {
+        throw error
+      }
+    }
     return NextResponse.json(completion)
   } catch (error) {
     const status = typeof error === 'object' && error && 'status' in error && Number.isInteger((error as { status?: unknown }).status)
