@@ -231,14 +231,25 @@ function clearPersistenceErrors(scope?: string): void {
   }
 }
 
-async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attempts = 2): Promise<Response> {
+async function fetchWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  attempts = 3,
+  options: { retryStatuses?: Set<number>; timeoutMs?: number } = {},
+): Promise<Response> {
+  const retryStatuses = options.retryStatuses || new Set([408, 425, 429, 500, 502, 503, 504])
+  const timeoutMs = options.timeoutMs || 12_000
   let response: Response | undefined
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = typeof AbortController !== 'undefined' && !init.signal ? new AbortController() : null
+    const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
     try {
-      response = await fetch(input, init)
-      if (response.ok || (response.status >= 400 && response.status < 500)) return response
+      response = await fetch(input, controller ? { ...init, signal: controller.signal } : init)
+      if (response.ok || !retryStatuses.has(response.status) || attempt === attempts - 1) return response
     } catch (error) {
       if (attempt === attempts - 1) throw error
+    } finally {
+      if (timeout !== null) clearTimeout(timeout)
     }
     if (attempt < attempts - 1) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)))
   }
@@ -436,7 +447,9 @@ export async function initializeStore(): Promise<void> {
     // Logged-in production users use the server-backed snapshot. IndexedDB is
     // intentionally skipped here; it is only read by the one-time migration flow.
     if (process.env.NODE_ENV !== 'test') {
-      const accountResponse = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })
+      const accountResponse = await fetchWithRetry('/api/auth/me/', { credentials: 'include', cache: 'no-store' }, 3, {
+        retryStatuses: new Set([401, 408, 425, 429, 500, 502, 503, 504]),
+      })
       if (accountResponse.status === 401 || accountResponse.status === 403) {
         cloudMode = false
       } else {
@@ -446,7 +459,10 @@ export async function initializeStore(): Promise<void> {
         if (!account.user) {
           cloudMode = false
         } else {
-          const cloudResponse = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+          const cloudResponse = await fetchWithRetry('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' }, 3, {
+            retryStatuses: new Set([401, 408, 425, 429, 500, 502, 503, 504]),
+          })
+          if (cloudResponse.status === 401 || cloudResponse.status === 403) throw new Error('登录状态已失效，请重新登录。')
           if (!cloudResponse.ok) throw new Error('无法读取云端学习数据。')
           const cloudPayload = await cloudResponse.json()
           const normalized = normalizeImportData(cloudPayload)

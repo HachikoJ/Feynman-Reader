@@ -147,6 +147,7 @@ export default function Home() {
   const [showApiKeyAlert, setShowApiKeyAlert] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [initializationError, setInitializationError] = useState(false)
+  const [initializationAttempt, setInitializationAttempt] = useState(0)
   const [storageWriteError, setStorageWriteError] = useState(false)
   const [bookshelfKey, setBookshelfKey] = useState(0) // 用于强制刷新书架
   const [showOnboarding, setShowOnboarding] = useState(false) // P0 新增：新手引导
@@ -267,7 +268,7 @@ export default function Home() {
       if (storageErrorTimer !== null) clearTimeout(storageErrorTimer)
       unsubscribePersistenceErrors()
     }
-  }, [])
+  }, [initializationAttempt])
 
   const handleSettingsChange = (newSettings: AppSettings) => {
     setSettings(newSettings)
@@ -387,7 +388,11 @@ export default function Home() {
           <p className="mb-6 text-sm leading-6 text-[var(--text-secondary)]">
             为避免把空数据误当成真实书架，应用已暂停加载。请检查网络和登录状态后重试；如有尚未迁移的本机历史数据，请不要清除浏览器网站数据。
           </p>
-          <button type="button" onClick={() => window.location.reload()} className="btn-primary inline-flex items-center gap-2">
+          <button type="button" onClick={() => {
+            setInitializationError(false)
+            setMounted(false)
+            setInitializationAttempt(attempt => attempt + 1)
+          }} className="btn-primary inline-flex items-center gap-2">
             <RefreshCw size={18} aria-hidden="true" />
             重新读取
           </button>
