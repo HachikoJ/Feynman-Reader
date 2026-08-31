@@ -22,6 +22,8 @@ type UserRow = {
   id: string
   username: string | null
   password_hash: string | null
+  display_name: string | null
+  avatar_url: string | null
   tokendance_subject: string | null
   phone: string | null
   email: string | null
@@ -65,6 +67,8 @@ function mapUser(row: UserRow): AuthUser {
   return {
     id: row.id,
     ...(row.username ? { username: row.username } : {}),
+    ...(row.display_name ? { displayName: row.display_name } : {}),
+    ...(row.avatar_url ? { avatarUrl: row.avatar_url } : {}),
     ...(row.tokendance_subject ? { tokendanceSubject: row.tokendance_subject } : {}),
     ...(row.phone ? { phone: row.phone } : {}),
     ...(row.email ? { email: row.email } : {}),
@@ -75,7 +79,7 @@ function mapUser(row: UserRow): AuthUser {
   }
 }
 
-function profileFromSettings(settings: unknown): UserProfile {
+function profileFromSettings(settings: unknown, canonical?: { displayName?: string | null; avatarUrl?: string | null }): UserProfile {
   const item = settings && typeof settings === 'object' && !Array.isArray(settings)
     ? settings as ProfileSettings
     : {}
@@ -85,8 +89,8 @@ function profileFromSettings(settings: unknown): UserProfile {
   const customName = typeof profile.customDisplayName === 'string' && profile.customDisplayName.trim() ? profile.customDisplayName.trim() : null
   const customAvatar = typeof profile.customAvatarUrl === 'string' && profile.customAvatarUrl.trim() ? profile.customAvatarUrl.trim() : null
   return {
-    displayName: customName || watchaName || '观猹用户',
-    avatarUrl: customAvatar || watchaAvatar,
+    displayName: canonical?.displayName?.trim() || customName || watchaName || '观猹用户',
+    avatarUrl: canonical?.avatarUrl?.trim() || customAvatar || watchaAvatar,
     customDisplayName: customName,
     customAvatarUrl: customAvatar,
   }
@@ -154,35 +158,35 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const row = await this.one<UserRow>('select * from public.app_users where id = $1', [userId])
     if (!row) return null
     const profile = await this.getUserProfile(userId)
-    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
+    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByTokendanceSubject(subject: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where tokendance_subject = $1', [subject])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
+    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByPhone(phone: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where phone = $1', [phone])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
+    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByEmail(email: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where email = $1', [email])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
+    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByUsername(username: string): Promise<AuthUser | null> {
     const row = await this.one<UserRow>('select * from public.app_users where username = $1', [username])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: profile.displayName, ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}) }
+    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findPasswordHashByUsername(username: string): Promise<string | null> {
@@ -192,17 +196,17 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
 
   async createUser(input: { tokendanceSubject?: string; username?: string; passwordHash?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser> {
     const row = await this.one<UserRow>(
-      `insert into public.app_users (tokendance_subject, username, password_hash, phone, email)
-       values ($1, $2, $3, $4, $5)
+      `insert into public.app_users (tokendance_subject, username, password_hash, display_name, avatar_url, phone, email)
+       values ($1, $2, $3, $4, $5, $6, $7)
        returning *`,
-      [input.tokendanceSubject || null, input.username || null, input.passwordHash || null, input.phone || null, input.email || null],
+      [input.tokendanceSubject || null, input.username || null, input.passwordHash || null, input.displayName || null, input.avatarUrl || null, input.phone || null, input.email || null],
     )
     if (!row) throw new Error('User creation returned no row.')
     await this.ensureDefaultQuotes(row.id)
     return this.findUserById(row.id) as Promise<AuthUser>
   }
 
-  async updateUser(userId: string, patch: Partial<Pick<AuthUser, 'tokendanceSubject' | 'phone' | 'email' | 'phoneVerifiedAt' | 'emailVerifiedAt'>>): Promise<AuthUser> {
+  async updateUser(userId: string, patch: Partial<Pick<AuthUser, 'tokendanceSubject' | 'username' | 'displayName' | 'avatarUrl' | 'phone' | 'email' | 'phoneVerifiedAt' | 'emailVerifiedAt'>>): Promise<AuthUser> {
     const fields: string[] = []
     const values: unknown[] = []
     const add = (field: string, value: unknown) => {
@@ -210,6 +214,9 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       fields.push(`${field} = $${values.length}`)
     }
     if (patch.tokendanceSubject !== undefined) add('tokendance_subject', patch.tokendanceSubject)
+    if (patch.username !== undefined) add('username', patch.username)
+    if (patch.displayName !== undefined) add('display_name', patch.displayName)
+    if (patch.avatarUrl !== undefined) add('avatar_url', patch.avatarUrl)
     if (patch.phone !== undefined) add('phone', patch.phone)
     if (patch.email !== undefined) add('email', patch.email)
     if (patch.phoneVerifiedAt !== undefined) add('phone_verified_at', patch.phoneVerifiedAt)
@@ -385,8 +392,14 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   }
 
   async getUserProfile(userId: string): Promise<UserProfile> {
-    const settings = await this.one<{ data: unknown }>('select data from public.user_settings where user_id = $1', [userId])
-    return profileFromSettings(settings?.data)
+    const row = await this.one<{ data: unknown; display_name: string | null; avatar_url: string | null }>(
+      `select s.data, u.display_name, u.avatar_url
+       from public.app_users u
+       left join public.user_settings s on s.user_id = u.id
+       where u.id = $1`,
+      [userId],
+    )
+    return profileFromSettings(row?.data, row ? { displayName: row.display_name, avatarUrl: row.avatar_url } : undefined)
   }
 
   async saveUserProfile(userId: string, profile: UserProfile): Promise<UserProfile> {
@@ -411,6 +424,14 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       ...(patch.customAvatarUrl !== undefined ? { customAvatarUrl } : {}),
     }
     await this.pool.query(
+      `update public.app_users set
+         display_name = case when $2::boolean then $3 else display_name end,
+         avatar_url = case when $4::boolean then $5 else avatar_url end,
+         updated_at = now()
+       where id = $1`,
+      [userId, patch.customDisplayName !== undefined, customDisplayName, patch.customAvatarUrl !== undefined, customAvatarUrl],
+    )
+    await this.pool.query(
       `insert into public.user_settings (user_id, data, version, updated_at)
        values ($1, jsonb_build_object('profile', $2::jsonb), 1, now())
        on conflict (user_id) do update set
@@ -430,6 +451,20 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       ...(nickname ? { watchaNickname: nickname } : {}),
       watchaAvatarUrl: avatarUrl,
     }
+    await this.pool.query(
+      `update public.app_users set
+         display_name = coalesce(
+           nullif((select s.data->'profile'->>'customDisplayName' from public.user_settings s where s.user_id = public.app_users.id), ''),
+           nullif($2, ''), display_name
+         ),
+         avatar_url = coalesce(
+           nullif((select s.data->'profile'->>'customAvatarUrl' from public.user_settings s where s.user_id = public.app_users.id), ''),
+           $3, avatar_url
+         ),
+         updated_at = now()
+       where id = $1`,
+      [userId, nickname, avatarUrl],
+    )
     await this.pool.query(
       `insert into public.user_settings (user_id, data, version, updated_at)
        values ($1, jsonb_build_object('profile', $2::jsonb), 1, now())

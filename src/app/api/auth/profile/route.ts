@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { sessionCookieName } from '@/lib/server/auth'
+import { normalizeUsername, sessionCookieName } from '@/lib/server/auth'
 import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 
 export const runtime = 'nodejs'
@@ -43,9 +43,15 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   try {
     const userId = await currentUserId(request)
     if (!userId) return NextResponse.json({ error: '未登录。' }, { status: 401 })
-    const body = await request.json() as { displayName?: unknown; avatarUrl?: unknown }
+    const body = await request.json() as { username?: unknown; displayName?: unknown; avatarUrl?: unknown }
     const store = getPersistence()
-    if (body.displayName === undefined && body.avatarUrl === undefined) return NextResponse.json({ error: '没有需要更新的资料。' }, { status: 400 })
+    if (body.username === undefined && body.displayName === undefined && body.avatarUrl === undefined) return NextResponse.json({ error: '没有需要更新的资料。' }, { status: 400 })
+    const rawUsername = typeof body.username === 'string' ? body.username.trim() : ''
+    const username = rawUsername ? normalizeUsername(rawUsername) : undefined
+    if (username) {
+      const existing = await store.findByUsername(username)
+      if (existing && existing.id !== userId) return NextResponse.json({ error: '用户名已被使用。' }, { status: 409 })
+    }
     const patch = {
       ...(body.displayName !== undefined ? { customDisplayName: cleanName(body.displayName) || null } : {}),
       ...(body.avatarUrl !== undefined ? { customAvatarUrl: cleanAvatar(body.avatarUrl) || null } : {}),
@@ -59,6 +65,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       if (!getUserProfile || !saveUserProfile) return NextResponse.json({ error: '账号资料服务尚未启用。' }, { status: 501 })
       saved = await saveUserProfile.call(store, userId, { ...(await getUserProfile.call(store, userId)), ...patch })
     }
+    if (username !== undefined) await store.updateUser(userId, { username })
     const user = await store.findUserById(userId)
     if (!user) return NextResponse.json({ error: '账号不存在。' }, { status: 404 })
     return NextResponse.json({ user, profile: saved }, { headers: { 'Cache-Control': 'no-store' } })

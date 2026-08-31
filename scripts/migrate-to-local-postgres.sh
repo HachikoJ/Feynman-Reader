@@ -129,7 +129,7 @@ ALTER ROLE $TARGET_ROLE WITH LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATE
 SQL
 sudo -u postgres createdb --owner="$TARGET_ROLE" "$TARGET_DB"
 
-log '执行仓库内 001～006 和密码账号迁移，跳过需要 Supabase pg_cron 的 007。'
+log '执行仓库内 001～006、008 迁移，跳过需要 Supabase pg_cron 的 007。'
 for migration in "$PROJECT_DIR"/supabase/migrations/00[1-6]_*.sql "$PROJECT_DIR"/supabase/migrations/008_password_auth.sql; do
   sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" --file="$migration" >/dev/null
 done
@@ -144,6 +144,9 @@ sha256sum "$BACKUP_DIR/supabase-public-data-final.dump" >> "$BACKUP_DIR/SHA256SU
 
 log '恢复最终数据到本地 PostgreSQL。'
 sudo -u postgres pg_restore --data-only --no-owner --no-privileges --exit-on-error --dbname="$TARGET_DB" "$BACKUP_DIR/supabase-public-data-final.dump"
+
+log '在最终数据恢复后执行用户资料字段迁移和历史资料回填。'
+sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" --file="$PROJECT_DIR/supabase/migrations/009_profile_columns.sql" >/dev/null
 
 sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" <<SQL
 GRANT CONNECT ON DATABASE $TARGET_DB TO $TARGET_ROLE;

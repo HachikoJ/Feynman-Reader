@@ -30,7 +30,7 @@ export interface AuthStore {
   findByEmail(email: string): Promise<AuthUser | null>
   findByUsername(username: string): Promise<AuthUser | null>
   createUser(input: { tokendanceSubject?: string; username?: string; passwordHash?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser>
-  updateUser(userId: string, patch: Partial<Pick<AuthUser, 'tokendanceSubject' | 'displayName' | 'avatarUrl' | 'phone' | 'email' | 'phoneVerifiedAt' | 'emailVerifiedAt'>>): Promise<AuthUser>
+  updateUser(userId: string, patch: Partial<Pick<AuthUser, 'tokendanceSubject' | 'username' | 'displayName' | 'avatarUrl' | 'phone' | 'email' | 'phoneVerifiedAt' | 'emailVerifiedAt'>>): Promise<AuthUser>
   createSession(userId: string, ttlSeconds: number): Promise<AuthSession>
   findSession(id: string): Promise<AuthSession | null>
   deleteSession(id: string): Promise<void>
