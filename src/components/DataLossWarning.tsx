@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { AlertTriangle, Cloud, HardDrive } from 'lucide-react'
 import { Language } from '@/lib/i18n'
+import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 
 interface Props {
   lang: Language
@@ -53,7 +54,7 @@ export default function DataLossWarning({ lang, onContinue }: Props) {
           <div className="space-y-3">
           <div className="flex items-start gap-3">
             <Cloud size={19} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
-            <p>{isZh ? '使用观猹登录后，书籍、笔记、金句、学习记录和费曼小助手数据会按账号保存到云端。' : 'After Watcha sign-in, books, notes, quotes, learning records, and Feynman Assistant data are saved to the cloud per account.'}</p>
+            <p>{isZh ? `登录${isWatchaOAuthEnabled() ? '观猹' : '账号'}后，书籍、笔记、金句、学习记录和费曼小助手数据会按账号保存到云端。` : `After signing in${isWatchaOAuthEnabled() ? ' with Watcha' : ''}, books, notes, quotes, learning records, and Feynman Assistant data are saved to the cloud per account.`}</p>
           </div>
           <div className="flex items-start gap-3">
             <HardDrive size={19} className="mt-0.5 shrink-0 text-rose-500" aria-hidden="true" />

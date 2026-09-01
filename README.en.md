@@ -21,7 +21,7 @@ Feynman Reader is an AI-assisted deep-reading workspace based on the Feynman tec
 - Guides each book through six sequential learning phases.
 - Stores teaching attempts, four-dimension scores, role-based questions, and revisions.
 - Supports PDF, Word, Excel, and text document input.
-- Lets signed-out visitors browse the system sample. Personal books, learning records, quotes, assistant sessions, and long-term memories are saved to the signed-in account's PostgreSQL database after Watcha or username/password sign-in; IndexedDB is used only to migrate legacy history.
+- Lets signed-out visitors browse the system sample. Personal data is saved to the signed-in account's PostgreSQL database. Username/password accounts are temporary during ICP review; after approval, Watcha becomes the only sign-in method and users can merge one temporary account into their Watcha account before the old credentials are permanently disabled.
 - Uses a separately configured TokenDance API key and AI data transfer consent for model access. The key is encrypted on the server and excluded from exports.
 
 ## Preview

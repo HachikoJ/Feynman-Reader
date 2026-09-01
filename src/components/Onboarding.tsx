@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 import { useAccountAccess } from './AuthGuard'
+import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 
 interface Props {
   lang: Language
@@ -55,7 +56,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
     },
     {
       title: '登录后，学习数据自动上云',
-      description: '添加自己的书、使用 AI 和保存学习记录前，请先使用观猹登录。观猹账号用于确认数据归属。',
+      description: `添加自己的书、使用 AI 和保存学习记录前，请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。账号用于确认数据归属。`,
       icon: Cloud,
       iconTone: 'accent',
       tips: [
@@ -77,7 +78,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
     },
     {
       title: '需要 AI 时，配置 TokenDance',
-      description: '请先使用观猹登录，再为当前账号配置 TokenDance API Key。生成分析、评估、推荐或使用费曼小助手前，还需同意相关数据传输。',
+      description: `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再为当前账号配置 TokenDance API Key。生成分析、评估、推荐或使用费曼小助手前，还需同意相关数据传输。`,
       icon: Sparkles,
       iconTone: 'sky',
       tips: [
@@ -102,7 +103,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
     },
     {
       title: 'Sign in to save learning data to the cloud',
-      description: 'Sign in with Watcha before adding your own books, using AI, or saving learning records. Your Watcha account identifies the owner of the data.',
+      description: `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before adding your own books, using AI, or saving learning records. Your account identifies the owner of the data.`,
       icon: Cloud,
       iconTone: 'accent',
       tips: [
@@ -124,7 +125,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
     },
     {
       title: 'Configure TokenDance when you need AI',
-      description: 'Sign in with Watcha first, then configure a TokenDance API key for the current account. Analysis, evaluation, recommendations, and Feynman Assistant also require data transfer consent.',
+      description: `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first, then configure a TokenDance API key for the current account. Analysis, evaluation, recommendations, and Feynman Assistant also require data transfer consent.`,
       icon: Sparkles,
       iconTone: 'sky',
       tips: [
@@ -177,6 +178,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
   const [currentStep, setCurrentStep] = useState(0)
   const [showTour, setShowTour] = useState(true)
   const accountAiConfigured = hasSignedInAccount && aiConfigured
+  const watchaOAuthEnabled = isWatchaOAuthEnabled()
 
   // 检查是否已经完成过新手引导
   useEffect(() => {
@@ -192,7 +194,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
     steps[steps.length - 1] = lang === 'zh'
       ? {
           title: 'TokenDance 已连接',
-          description: '观猹账号已登录，TokenDance API Key 与 AI 数据传输同意均已保存，可以添加自己的书并开始分析。',
+          description: `${watchaOAuthEnabled ? '观猹' : '账号'}已登录，TokenDance API Key 与 AI 数据传输同意均已保存，可以添加自己的书并开始分析。`,
           icon: Sparkles,
           iconTone: 'emerald',
           tips: [
@@ -203,7 +205,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
         }
       : {
           title: 'TokenDance is connected',
-          description: 'Your Watcha account is signed in, and your TokenDance API key and data transfer consent are saved. You can add your own book and start analyzing.',
+          description: `Your${watchaOAuthEnabled ? ' Watcha' : ''} account is signed in, and your TokenDance API key and data transfer consent are saved. You can add your own book and start analyzing.`,
           icon: Sparkles,
           iconTone: 'emerald',
           tips: [
@@ -225,8 +227,8 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
       if (!accountAiConfigured) {
         if (!hasSignedInAccount) {
           requestLogin(lang === 'zh'
-            ? '请先使用观猹登录。登录成功后，再为当前账号配置 TokenDance API Key。'
-            : 'Sign in with Watcha first. After sign-in, configure a TokenDance API key for the current account.')
+            ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。登录成功后，再为当前账号配置 TokenDance API Key。`
+            : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first. After sign-in, configure a TokenDance API key for the current account.`)
         } else {
           onConfigureApi?.()
         }

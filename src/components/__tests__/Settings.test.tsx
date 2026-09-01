@@ -62,6 +62,7 @@ jest.mock('@/lib/tokendance', () => ({
 }))
 
 jest.mock('@/lib/accountClient', () => ({
+  isLocalAuthBypassEnabled: jest.fn(() => false),
   saveApiKey: jest.fn(() => Promise.resolve()),
   deleteApiKey: jest.fn(() => Promise.resolve())
 }))
@@ -117,6 +118,7 @@ describe('Settings AI privacy controls', () => {
     mockAccountAccess.checking = false
     mockAccountAccess.isAuthenticated = true
     mockAccountAccess.hasSignedInAccount = true
+    process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED = 'true'
     HTMLElement.prototype.scrollIntoView = jest.fn()
     getSettingsMock.mockReturnValue({ ...savedSettings })
     saveSettingsMock.mockImplementation(nextSettings => {

@@ -19,7 +19,7 @@ bash ./scripts/migrate-to-local-postgres.sh
 - 安装并初始化本机 PostgreSQL，只监听 `127.0.0.1:5432`；
 - 导出迁移前完整备份；
 - 停止应用后再次导出最终数据并恢复；
-- 执行仓库内 `001`～`006`、`008_password_auth.sql` 迁移，跳过依赖 Supabase `pg_cron` 的 `007`，再在最终数据恢复后执行 `009_profile_columns.sql` 回填用户名资料字段；
+- 执行仓库内 `001`～`006`、`008_password_auth.sql` 迁移，跳过依赖 `pg_cron` 的 `007`，再在最终数据恢复后执行 `009_profile_columns.sql` 和 `010_account_merge.sql`；
 - 校验核心表行数；
 - 仅修改服务器环境文件中的 `DATABASE_URL` 和 `DATABASE_POOL_MAX=5`；
 - 启动应用、检查 `/api/health/`，并写入回收站每日清理任务。

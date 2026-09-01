@@ -19,6 +19,7 @@
     "verify:waf": "bash scripts/verify-safeline-rollout.sh",
     "purge:recycle-bin": "node --experimental-strip-types scripts/purge-recycle-bin.mjs",
     "migrate:local-postgres": "bash scripts/migrate-to-local-postgres.sh",
+    "migrate:account-merge": "node scripts/apply-account-merge-migration.mjs",
     "test:all": "npm run test && npm run test:e2e"
   },
   "dependencies": {

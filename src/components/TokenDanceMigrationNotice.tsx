@@ -27,8 +27,8 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
     if (!hasSignedInAccount) {
       onClose()
       requestLogin(isZh
-        ? '请先使用观猹登录。登录成功后，再为当前账号配置 TokenDance API Key。'
-        : 'Sign in with Watcha first. After sign-in, configure a TokenDance API key for the current account.')
+        ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。登录成功后，再为当前账号配置 TokenDance API Key。`
+        : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first. After sign-in, configure a TokenDance API key for the current account.`)
       return
     }
     handleClose()

@@ -1,7 +1,9 @@
 export interface AccountUser {
   id: string
   username?: string
+  hasPassword?: boolean
   tokendanceSubject?: string
+  passwordAccountMergedAt?: string
   displayName?: string
   avatarUrl?: string
   phone?: string
@@ -52,11 +54,13 @@ export function isLocalAuthBypassEnabled(): boolean {
   // production deployment can run in local-only mode while OAuth callbacks
   // are unavailable (for example during domain备案). Remove it or set it to
   // false before the next build to restore account sign-in and cloud sync.
-  return process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
+  // Watcha takes precedence so a stale temporary bypass cannot leave a second
+  // login mode active after the OAuth-only transition is enabled.
+  return !isWatchaOAuthEnabled() && process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
 }
 
 export function isWatchaOAuthEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED !== 'false'
+  return process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED === 'true'
 }
 
 // Keep this helper as the single feature flag for callers that need to know
@@ -156,6 +160,17 @@ export async function migrateLocalData(payload: unknown): Promise<MigrationState
   const data = await response.json().catch(() => ({})) as { error?: string }
   if (!response.ok) throw new Error(data.error || '历史数据迁移失败。')
   return data as MigrationState & { booksImported: number; aiUsageImported: number; listsImported: number; relationsImported: number; assistantSessionsImported: number; assistantMemoriesImported: number }
+}
+
+export async function mergePasswordAccount(username: string, password: string): Promise<void> {
+  const response = await fetch('/api/account/merge-password-account/', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, confirm: true }),
+  })
+  const data = await response.json().catch(() => ({})) as { error?: string }
+  if (!response.ok) throw new Error(data.error || '原账号迁移失败。')
 }
 
 export async function getActivityCalendar(from: string, to: string): Promise<ActivityDay[]> {

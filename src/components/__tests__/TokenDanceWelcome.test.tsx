@@ -7,9 +7,20 @@ import TokenDanceWelcome, {
   TOKENDANCE_WELCOME_VERSION
 } from '../TokenDanceWelcome'
 
+const originalWatchaOAuthEnabled = process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED
+
 describe('TokenDanceWelcome', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED = 'true'
+  })
+
+  afterAll(() => {
+    if (originalWatchaOAuthEnabled === undefined) {
+      delete process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED
+      return
+    }
+    process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED = originalWatchaOAuthEnabled
   })
 
   it('explains the limited-time offer without forcing API authorization', () => {

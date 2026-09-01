@@ -93,7 +93,23 @@ echo "=========================================="
 echo "1. 安装锁定依赖..."
 npm ci
 
-echo "2. 构建并检查 Next.js 服务端产物..."
+server_watcha_enabled="$(tr '[:upper:]' '[:lower:]' <<< "${FEYNMAN_WATCHA_OAUTH_ENABLED:-false}")"
+export FEYNMAN_WATCHA_OAUTH_ENABLED="$server_watcha_enabled"
+export NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED="$server_watcha_enabled"
+
+if [[ "$server_watcha_enabled" == "true" ]]; then
+  for required_watcha_var in TOKENDANCE_OAUTH_CLIENT_ID TOKENDANCE_OAUTH_CLIENT_SECRET FEYNMAN_AUTH_STATE_SECRET; do
+    if [[ -z "${!required_watcha_var:-}" ]]; then
+      echo "部署失败：观猹登录已开启，但 $required_watcha_var 未配置。" >&2
+      exit 1
+    fi
+  done
+fi
+
+echo "2. 应用账号合并数据库迁移..."
+npm run migrate:account-merge
+
+echo "3. 构建并检查 Next.js 服务端产物..."
 NODE_ENV=production npm run build
 if [[ ! -f "$PROJECT_DIR/.next/standalone/server.js" ]]; then
   echo "部署失败：没有生成 .next/standalone/server.js" >&2
@@ -104,7 +120,7 @@ if find "$PROJECT_DIR/.next" "$PROJECT_DIR/public" -name '.DS_Store' -print -qui
   exit 1
 fi
 
-echo "3. 创建不可变发布目录并保留旧 Chunk..."
+echo "4. 创建不可变发布目录并保留旧 Chunk..."
 install -d -m 755 "$RELEASES_DIR" "$CONFIG_BACKUP_DIR"
 if [[ -e "$RELEASE_DIR" ]]; then
   echo "部署失败：发布目录已存在 $RELEASE_DIR" >&2
@@ -131,7 +147,7 @@ if find "$RELEASE_DIR" -name '.DS_Store' -print -quit | grep -q .; then
   exit 1
 fi
 
-echo "4. 原子更新并校验 Nginx 配置..."
+echo "5. 原子更新并校验 Nginx 配置..."
 [[ -f "$NGINX_CONFIG" ]] && cp -a "$NGINX_CONFIG" "$CONFIG_BACKUP_DIR/reader.deline.top.conf"
 [[ -f "$NGINX_SECURITY_CONFIG" ]] && cp -a "$NGINX_SECURITY_CONFIG" "$CONFIG_BACKUP_DIR/00-feynman-security-headers.conf"
 install -m 644 "$PROJECT_DIR/00-feynman-security-headers.conf" "$NGINX_SECURITY_CONFIG.new"
@@ -141,7 +157,7 @@ mv -f "$NGINX_CONFIG.new" "$NGINX_CONFIG"
 CONFIGS_INSTALLED=1
 /usr/sbin/nginx -t
 
-echo "5. 原子切换站点目录并启动 Node 服务..."
+echo "6. 原子切换站点目录并启动 Node 服务..."
 if [[ -L "$WEB_ROOT" ]]; then
   PREVIOUS_RELEASE="$(readlink -f "$WEB_ROOT")"
 elif [[ -d "$WEB_ROOT" ]]; then
@@ -158,7 +174,7 @@ reload_application
 curl -fsS --retry 5 --retry-connrefused --retry-delay 2 --connect-timeout 5 --max-time 10 "http://127.0.0.1:8080/api/health/" | grep -q '"status":"ok"'
 systemctl reload nginx
 
-echo "6. 验证公网首页、健康检查、新旧 Chunk 与 HTTPS 安全响应头..."
+echo "7. 验证公网首页、健康检查、新旧 Chunk 与 HTTPS 安全响应头..."
 RESPONSE_HEADERS="$(curl -fsSI --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 20 "https://reader.deline.top/?release=$RELEASE_ID")"
 REQUIRED_HEADERS=(
   "Content-Security-Policy"
@@ -198,7 +214,7 @@ if [[ -n "$OLD_CHUNK_URL" ]]; then
   curl -fsS --retry 3 --connect-timeout 10 --max-time 20 "https://reader.deline.top$OLD_CHUNK_URL?release=$RELEASE_ID" >/dev/null
 fi
 
-echo "7. 保留最近 $RELEASES_TO_KEEP 个可回滚版本..."
+echo "8. 保留最近 $RELEASES_TO_KEEP 个可回滚版本..."
 mapfile -t releases < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | cut -d' ' -f2-)
 for old_release in "${releases[@]:$RELEASES_TO_KEEP}"; do
   [[ "$old_release" == "$RELEASE_DIR" ]] || rm -rf -- "$old_release"

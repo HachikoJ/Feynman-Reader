@@ -12,6 +12,7 @@ import { MAX_BOOK_TAGS, MAX_TAG_LENGTH } from '@/lib/dataLimits'
 import { detectMaliciousContent, sanitizeTextInput, validateAuthorName, validateBookName, validateContent } from '@/lib/validation'
 import AppIcon from './AppIcon'
 import { useAccountAccess } from './AuthGuard'
+import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 
 interface Props {
   lang: Language
@@ -101,8 +102,8 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
         setBookTags([])
         setAnalysisWarning(!isAuthenticated
           ? (lang === 'zh'
-            ? '文档已在当前页面完成解析。请先使用观猹登录，再保存到云端书架；配置 TokenDance 后还可自动提取书籍信息。'
-            : 'The document was parsed on this page. Sign in with Watcha before saving it to your cloud bookshelf; configure TokenDance to extract book details automatically.')
+            ? `文档已在当前页面完成解析。请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再保存到云端书架；配置 TokenDance 后还可自动提取书籍信息。`
+            : `The document was parsed on this page. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before saving it to your cloud bookshelf; configure TokenDance to extract book details automatically.`)
           : (lang === 'zh'
             ? '尚未配置 TokenDance API Key，文档已解析。请手工确认书籍信息后添加。'
             : 'No TokenDance API key is configured. The document was parsed; confirm the book details manually.'))
@@ -331,7 +332,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
             {!getSettings().apiKey && onOpenSettings && (
               <button type="button" onClick={() => {
                 if (!isAuthenticated) {
-                  requestLogin(lang === 'zh' ? '请先使用观猹登录，再保存文档或配置 TokenDance AI。' : 'Sign in with Watcha before saving the document or configuring TokenDance AI.')
+                  requestLogin(lang === 'zh' ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再保存文档或配置 TokenDance AI。` : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before saving the document or configuring TokenDance AI.`)
                   return
                 }
                 onClose()

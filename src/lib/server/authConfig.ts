@@ -29,10 +29,14 @@ export function getAuthConfig(): AuthConfig {
   const watchaEnabled = isWatchaOAuthEnabled()
   return {
     tokendanceAuthorizationUrl,
-    enabledProviders: watchaEnabled ? ['tokendance', 'password'] : ['password'],
+    enabledProviders: watchaEnabled ? ['tokendance'] : ['password'],
   }
 }
 
 export function isWatchaOAuthEnabled(): boolean {
-  return process.env.FEYNMAN_WATCHA_OAUTH_ENABLED?.trim().toLowerCase() !== 'false'
+  return process.env.FEYNMAN_WATCHA_OAUTH_ENABLED?.trim().toLowerCase() === 'true'
+}
+
+export function isPasswordAuthEnabled(): boolean {
+  return !isWatchaOAuthEnabled()
 }

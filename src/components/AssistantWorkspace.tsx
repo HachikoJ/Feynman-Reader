@@ -32,7 +32,7 @@ import { ASSISTANT_OPEN_EVENT } from '@/lib/assistantEvents'
 import AssistantMarkdownEditor, { type AssistantMarkdownEditorHandle } from './AssistantMarkdownEditor'
 import MarkdownRenderer from './MarkdownRenderer'
 import { useAccountAccess } from './AuthGuard'
-import { isLocalAuthBypassEnabled } from '@/lib/accountClient'
+import { isLocalAuthBypassEnabled, isWatchaOAuthEnabled } from '@/lib/accountClient'
 
 interface Props {
   lang: Language
@@ -444,8 +444,8 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
     setError(null)
     if (!hasSignedInAccount) {
       requestAssistantLogin(isZh
-        ? '请先使用观猹登录。登录成功后，再配置 TokenDance API Key，费曼小助手才能使用你的书籍、笔记和学习历史来回答问题。'
-        : 'Sign in with Watcha first. After sign-in, configure a TokenDance API key before Feynman Assistant can use your books, notes, and learning history.')
+        ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。登录成功后，再配置 TokenDance API Key，费曼小助手才能使用你的书籍、笔记和学习历史来回答问题。`
+        : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first. After sign-in, configure a TokenDance API key before Feynman Assistant can use your books, notes, and learning history.`)
       return
     }
     if (!canUseAssistant) {

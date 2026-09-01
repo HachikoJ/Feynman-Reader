@@ -77,28 +77,32 @@ export default function LoginPage() {
           ) : user ? (
             <div className="mt-6 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4" role="status">
               <p className="font-medium">你已经登录</p>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">当前使用观猹账号。</p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">当前使用{user.tokendanceSubject ? '观猹账号' : '费曼读书助手账号'}。</p>
               <Link href="/account" className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2">
                 <ShieldCheck size={16} aria-hidden="true" />打开账号中心
               </Link>
             </div>
-          ) : (
-            <>
+          ) : watchaEnabled ? (
+              <>
+                <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-primary mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用观猹登录</a>
+                <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">观猹是费曼读书助手当前唯一登录方式。备案期间创建过账号的用户，可在登录后的账号中心合并原有数据。</p>
+              </>
+            ) : (
+              <>
               <div className="mt-6 grid grid-cols-2 gap-2" role="tablist" aria-label="登录方式">
                 <button type="button" className={`min-h-10 rounded-md border px-3 text-sm ${mode === 'password' ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-[var(--border)]'}`} onClick={() => setMode('password')}>账号登录</button>
                 <button type="button" className={`min-h-10 rounded-md border px-3 text-sm ${mode === 'register' ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-[var(--border)]'}`} onClick={() => setMode('register')}>注册账号</button>
               </div>
               <form className="mt-4 space-y-3" onSubmit={submitPassword}>
-                <label className="block text-sm"><span className="mb-1 block text-[var(--text-secondary)]">用户名</span><input required minLength={3} maxLength={32} value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" className="input w-full" /></label>
-                {mode === 'register' && <label className="block text-sm"><span className="mb-1 block text-[var(--text-secondary)]">邮箱</span><input required type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" className="input w-full" /></label>}
-                <label className="block text-sm"><span className="mb-1 block text-[var(--text-secondary)]">密码</span><input required minLength={8} maxLength={128} type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} className="input w-full" /></label>
+                <label className="block text-sm font-medium"><span className="mb-1.5 block text-[var(--text-primary)]">用户名</span><input required minLength={3} maxLength={32} value={username} onChange={event => setUsername(event.target.value)} autoComplete="username" placeholder="输入用户名" className="input-field min-h-11 w-full text-base" /></label>
+                {mode === 'register' && <label className="block text-sm font-medium"><span className="mb-1.5 block text-[var(--text-primary)]">邮箱</span><input required type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" placeholder="name@example.com" className="input-field min-h-11 w-full text-base" /></label>}
+                <label className="block text-sm font-medium"><span className="mb-1.5 block text-[var(--text-primary)]">密码</span><input required minLength={8} maxLength={128} type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} placeholder="至少 8 个字符" className="input-field min-h-11 w-full text-base" /></label>
                 <button type="submit" disabled={busy} className="btn-primary inline-flex min-h-11 w-full items-center justify-center gap-2"><LogIn size={17} aria-hidden="true" />{busy ? '处理中…' : mode === 'register' ? '注册并登录' : '登录'}</button>
               </form>
-              {watchaEnabled && <><div className="my-5 flex items-center gap-3 text-xs text-[var(--text-secondary)]"><span className="h-px flex-1 bg-[var(--border)]" />或<span className="h-px flex-1 bg-[var(--border)]" /></div>
-              <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-secondary inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用观猹登录</a></>}
               <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">邮箱仅用于账号识别，不需要验证；密码会以加密哈希保存。</p>
-            </>
-          )}
+              </>
+            )
+          }
         </div>
       </section>
     </main>

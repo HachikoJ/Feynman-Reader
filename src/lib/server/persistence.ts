@@ -12,6 +12,8 @@ export interface ApiKeyRecord {
 
 export interface PersistenceAdapter extends AuthStore {
   findPasswordHashByUsername?(username: string): Promise<string | null>
+  updatePasswordHash?(userId: string, passwordHash: string): Promise<void>
+  mergePasswordAccountIntoWatchaAccount?(sourceUserId: string, targetUserId: string): Promise<AccountMergeResult>
   saveApiKey(record: ApiKeyRecord): Promise<void>
   getApiKey(userId: string, provider: 'tokendance'): Promise<ApiKeyRecord | null>
   deleteApiKey(userId: string, provider: 'tokendance'): Promise<void>
@@ -40,6 +42,18 @@ export interface PersistenceAdapter extends AuthStore {
   clearAssistantMemories?(userId: string): Promise<void>
   recordBehaviorEvent?(userId: string, eventType: string, payload: unknown, occurredAt?: string): Promise<void>
   getActivityCalendar?(userId: string, from: string, to: string): Promise<ActivityDay[]>
+}
+
+export interface AccountMergeResult {
+  books: number
+  aiUsageRecords: number
+  lists: number
+  relations: number
+  assistantSessions: number
+  assistantMemories: number
+  behaviorEvents: number
+  auxiliaryRecords: number
+  apiKeys: number
 }
 
 export interface MigrationState {

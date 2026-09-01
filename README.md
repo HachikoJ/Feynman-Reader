@@ -154,7 +154,7 @@ flowchart TD
 - 六阶段学习：按顺序完成背景、框架、拆解、批判、评价和连接。
 - 教学模拟：至少 200 字的个人解释、四维度评分、历史记录。
 - 角色问答：固定 3 题、逐题评分、原回答和改进建议、单题重答。
-- 账号云端：未登录可浏览系统示例；个人书籍、学习记录、金句和助手数据在观猹登录或用户名密码登录后保存到 PostgreSQL。IndexedDB 只用于老用户历史迁移，API Key 只在服务端加密保存并始终掩码展示。
+- 账号云端：未登录可浏览系统示例；个人书籍、学习记录、金句和助手数据在当前登录账号下保存到 PostgreSQL。备案期间临时开放用户名密码账号；域名审核通过后仅保留观猹登录，用户可在账号中心一次性合并原账号，合并后原账号永久停用。IndexedDB 只用于老用户历史迁移，API Key 只在服务端加密保存并始终掩码展示。
 - 隐私同意：保存 Key 和调用 AI 前都需要确认数据传输同意，并强制阅读隐私政策到底部。
 
 ## 如何运行
@@ -187,9 +187,10 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
 ```env
 TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.deline.top/api/auth/tokendance/callback
 FEYNMAN_COOKIE_SECURE=true
+FEYNMAN_WATCHA_OAUTH_ENABLED=false
 ```
 
-如果使用 Supabase 或其他远程 PostgreSQL，按顺序执行 `supabase/migrations/001_auth.sql` 至 `007_recycle_bin_cron.sql`；如果迁移到同一台服务器的本机 PostgreSQL，执行仓库提供的 `scripts/migrate-to-local-postgres.sh`，它会自动完成备份、停写导出、恢复、表计数校验、环境切换、健康检查和回收站定时清理（本机不需要 `pg_cron`）。密钥和连接串不放入 GitHub。之后龙虾在项目目录执行 `bash ./deploy.sh` 即可完成依赖安装、构建、PM2 重载和公网健康检查；若账号接口返回 503，表示服务器环境变量、PostgreSQL 连接或迁移权限仍需检查，不需要修改前端代码。
+如果使用远程 PostgreSQL，按编号执行适用的 schema 迁移；如果迁移到同一台服务器的本机 PostgreSQL，执行仓库提供的 `scripts/migrate-to-local-postgres.sh`，它会自动完成备份、停写导出、恢复、表计数校验、环境切换、健康检查和回收站定时清理。常规部署会幂等执行 `010_account_merge.sql`。备案期间保持 `FEYNMAN_WATCHA_OAUTH_ENABLED=false`；审核通过后改为 `true` 并完整运行 `deploy.sh`，即可切换为仅观猹登录并开放一次性原账号迁移。密钥和连接串不放入 GitHub。
 
 DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存相关配置，届时旧官方 Key 不再支持。根据 TokenDance 官方确认，`v4flash0731` 峰时火山方舟端口提供限时优惠，最高约可省 20%，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用线路、时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准。
 

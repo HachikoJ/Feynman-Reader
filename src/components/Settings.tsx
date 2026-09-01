@@ -58,7 +58,7 @@ import {
   replaceAIUsageRecords,
   subscribeToAIUsage
 } from '@/lib/store'
-import { deleteApiKey as deleteAccountApiKey, saveApiKey as saveAccountApiKey } from '@/lib/accountClient'
+import { deleteApiKey as deleteAccountApiKey, isLocalAuthBypassEnabled, saveApiKey as saveAccountApiKey } from '@/lib/accountClient'
 import { logger } from '@/lib/logger'
 import { Language, t } from '@/lib/i18n'
 import { privacyPolicyContent } from '@/lib/privacyPolicy'
@@ -105,8 +105,8 @@ export default function Settings({
   onOpenMigrationNotice
 }: Props) {
   const { checking: checkingAccount, hasSignedInAccount, requestLogin } = useAccountAccess()
-  const watchaOAuthEnabled = process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED !== 'false'
-  const localOnlyMode = !hasSignedInAccount && process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS === 'true'
+  const watchaOAuthEnabled = process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED === 'true'
+  const localOnlyMode = !hasSignedInAccount && isLocalAuthBypassEnabled()
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
     aiProvider: 'tokendance',
@@ -269,8 +269,8 @@ export default function Settings({
     if (checkingAccount) return
     if (!hasSignedInAccount) {
       requestLogin(settings.language === 'zh'
-        ? 'TokenDance AI 授权必须绑定到已登录账号。请先使用观猹登录，再重新发起授权。'
-        : 'TokenDance AI authorization must be linked to a signed-in account. Sign in with Watcha, then start authorization again.', '/?view=settings')
+        ? `TokenDance AI 授权必须绑定到已登录账号。请先${watchaOAuthEnabled ? '使用观猹' : ''}登录，再重新发起授权。`
+        : `TokenDance AI authorization must be linked to a signed-in account. Sign in${watchaOAuthEnabled ? ' with Watcha' : ''}, then start authorization again.`, '/?view=settings')
       return
     }
     setShowAiConfiguration(true)
@@ -1153,7 +1153,7 @@ export default function Settings({
           <span className="min-w-0">
             <span className="block font-semibold">{lang === 'zh' ? '查看账号与 AI 更新说明' : 'View account and AI update'}</span>
             <span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">
-              {lang === 'zh' ? '了解观猹登录、账号云端、TokenDance AI 配置和本机历史数据迁移规则。' : 'Review Watcha sign-in, account cloud storage, TokenDance AI setup, and legacy local data migration.'}
+              {lang === 'zh' ? `${watchaOAuthEnabled ? '了解观猹登录、' : ''}账号云端、TokenDance AI 配置和本机历史数据迁移规则。` : `Review ${watchaOAuthEnabled ? 'Watcha sign-in, ' : ''}account cloud storage, TokenDance AI setup, and legacy local data migration.`}
             </span>
           </span>
           <ExternalLink size={16} className="ml-auto mt-0.5 shrink-0 text-[var(--text-secondary)]" aria-hidden="true" />
@@ -1318,7 +1318,7 @@ export default function Settings({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="font-medium">{lang === 'zh' ? 'TokenDance 快速授权（AI Key）' : 'TokenDance fast authorization (AI key)'}</p>
-                  <p className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '当前观猹账号已登录；在 TokenDance 确认后会自动返回，并将 AI Key 加密保存到当前账号，无需复制 Key。' : 'The current Watcha account is signed in. Confirm in TokenDance to return automatically and save the AI key encrypted to this account without copying it.'}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{lang === 'zh' ? `当前${watchaOAuthEnabled ? '观猹' : ''}账号已登录；在 TokenDance 确认后会自动返回，并将 AI Key 加密保存到当前账号，无需复制 Key。` : `The current${watchaOAuthEnabled ? ' Watcha' : ''} account is signed in. Confirm in TokenDance to return automatically and save the AI key encrypted to this account without copying it.`}</p>
                 </div>
                 <button type="button" onClick={() => void handleTokendanceAuthorize()} disabled={tokendanceOAuthLoading || updatingAiPrivacy || saving} className="btn-primary inline-flex items-center gap-1.5">
                   {tokendanceOAuthLoading ? <RefreshCw size={15} className="animate-spin" aria-hidden="true" /> : <ExternalLink size={15} aria-hidden="true" />}

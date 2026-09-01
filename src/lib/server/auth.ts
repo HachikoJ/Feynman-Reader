@@ -5,7 +5,9 @@ export type AuthProvider = 'tokendance' | 'phone' | 'email' | 'password'
 export interface AuthUser {
   id: string
   username?: string
+  hasPassword?: boolean
   tokendanceSubject?: string
+  passwordAccountMergedAt?: string
   displayName?: string
   avatarUrl?: string
   phone?: string

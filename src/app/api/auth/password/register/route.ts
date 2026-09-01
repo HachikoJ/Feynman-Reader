@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { COOKIE_TTL_SECONDS, hashPassword, normalizeEmail, normalizeUsername, sessionCookieHeader } from '@/lib/server/auth'
 import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
+import { isPasswordAuthEnabled } from '@/lib/server/authConfig'
 
 export const runtime = 'nodejs'
 
@@ -9,6 +10,7 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isPasswordAuthEnabled()) return NextResponse.json({ error: '用户名密码注册已停用，请使用观猹登录。' }, { status: 403 })
   try {
     const body = await request.json() as { username?: unknown; password?: unknown; email?: unknown }
     const username = normalizeUsername(typeof body.username === 'string' ? body.username : '')

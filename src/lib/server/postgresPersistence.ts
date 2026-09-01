@@ -6,6 +6,7 @@ import type {
   AssistantMemoryRecord,
   AssistantSessionRecord,
   ActivityDay,
+  AccountMergeResult,
   ImportResult,
   MigrationResult,
   MigrationState,
@@ -17,6 +18,7 @@ import type {
 import { normalizeImportData } from '@/lib/backupValidation'
 import { SAMPLE_BOOK_ID } from '@/lib/sampleBook'
 import { mergeDefaultQuotes } from '@/lib/defaultQuotes'
+import { isWatchaOAuthEnabled } from './authConfig'
 
 type UserRow = {
   id: string
@@ -31,6 +33,10 @@ type UserRow = {
   email_verified_at: Date | string | null
   created_at: Date | string
   updated_at: Date | string
+  merged_into_user_id: string | null
+  merged_at: Date | string | null
+  login_disabled_at: Date | string | null
+  password_account_merged_at: Date | string | null
 }
 
 type ProfileSettings = {
@@ -67,9 +73,11 @@ function mapUser(row: UserRow): AuthUser {
   return {
     id: row.id,
     ...(row.username ? { username: row.username } : {}),
+    ...(row.password_hash ? { hasPassword: true } : {}),
     ...(row.display_name ? { displayName: row.display_name } : {}),
     ...(row.avatar_url ? { avatarUrl: row.avatar_url } : {}),
     ...(row.tokendance_subject ? { tokendanceSubject: row.tokendance_subject } : {}),
+    ...(row.password_account_merged_at ? { passwordAccountMergedAt: iso(row.password_account_merged_at) } : {}),
     ...(row.phone ? { phone: row.phone } : {}),
     ...(row.email ? { email: row.email } : {}),
     ...(row.phone_verified_at ? { phoneVerifiedAt: iso(row.phone_verified_at) } : {}),
@@ -111,6 +119,37 @@ function sessionHash(id: string): string {
 
 function queryRows<T extends QueryResultRow>(result: { rows: T[] }): T[] {
   return result.rows
+}
+
+type SettingsRow = {
+  data: unknown
+  version: number | string
+  updated_at: Date | string
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+export function mergeAccountSettings(source: SettingsRow | null, target: SettingsRow | null): Record<string, unknown> {
+  const sourceData = objectValue(source?.data)
+  const targetData = objectValue(target?.data)
+  const sourceIsNewer = Boolean(source && (!target || new Date(source.updated_at).getTime() > new Date(target.updated_at).getTime()))
+  const older = sourceIsNewer ? targetData : sourceData
+  const newer = sourceIsNewer ? sourceData : targetData
+  const targetProfile = objectValue(targetData.profile)
+  return {
+    ...older,
+    ...newer,
+    profile: targetProfile,
+    quotes: mergeDefaultQuotes([
+      ...(Array.isArray(sourceData.quotes) ? sourceData.quotes : []),
+      ...(Array.isArray(targetData.quotes) ? targetData.quotes : []),
+    ]),
+    apiKey: '',
+  }
 }
 
 export class PostgresPersistenceAdapter implements PersistenceAdapter {
@@ -155,43 +194,50 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   }
 
   async findUserById(userId: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where id = $1', [userId])
+    const row = await this.one<UserRow>('select * from public.app_users where id = $1 and login_disabled_at is null', [userId])
     if (!row) return null
     const profile = await this.getUserProfile(userId)
     return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByTokendanceSubject(subject: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where tokendance_subject = $1', [subject])
+    const row = await this.one<UserRow>('select * from public.app_users where tokendance_subject = $1 and login_disabled_at is null', [subject])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
     return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByPhone(phone: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where phone = $1', [phone])
+    const row = await this.one<UserRow>('select * from public.app_users where phone = $1 and login_disabled_at is null', [phone])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
     return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByEmail(email: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where email = $1', [email])
+    const row = await this.one<UserRow>('select * from public.app_users where email = $1 and login_disabled_at is null', [email])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
     return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findByUsername(username: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where username = $1', [username])
+    const row = await this.one<UserRow>('select * from public.app_users where username = $1 and login_disabled_at is null', [username])
     if (!row) return null
     const profile = await this.getUserProfile(row.id)
     return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
   }
 
   async findPasswordHashByUsername(username: string): Promise<string | null> {
-    const row = await this.one<{ password_hash: string | null }>('select password_hash from public.app_users where username = $1', [username])
+    const row = await this.one<{ password_hash: string | null }>('select password_hash from public.app_users where username = $1 and login_disabled_at is null', [username])
     return row?.password_hash || null
+  }
+
+  async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
+    await this.pool.query(
+      'update public.app_users set password_hash = $2, updated_at = now() where id = $1',
+      [userId, passwordHash],
+    )
   }
 
   async createUser(input: { tokendanceSubject?: string; username?: string; passwordHash?: string; displayName?: string; avatarUrl?: string; phone?: string; email?: string }): Promise<AuthUser> {
@@ -237,7 +283,8 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const rawId = randomBytes(32).toString('base64url')
     const row = await this.one<SessionRow>(
       `insert into public.auth_sessions (id_hash, user_id, expires_at)
-       values ($1, $2, now() + ($3 * interval '1 second'))
+       select $1, id, now() + ($3 * interval '1 second')
+       from public.app_users where id = $2 and login_disabled_at is null
        returning id_hash, user_id, expires_at, created_at`,
       [sessionHash(rawId), userId, ttlSeconds],
     )
@@ -247,14 +294,238 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
 
   async findSession(id: string): Promise<AuthSession | null> {
     const row = await this.one<SessionRow>(
-      `update public.auth_sessions
+      `update public.auth_sessions s
        set last_used_at = now()
-       where id_hash = $1 and revoked_at is null and expires_at > now()
-       returning id_hash, user_id, expires_at, created_at
-      `,
-      [sessionHash(id)],
+       from public.app_users u
+       where s.id_hash = $1 and s.revoked_at is null and s.expires_at > now()
+         and u.id = s.user_id and u.login_disabled_at is null
+         and ($2::boolean = false or u.tokendance_subject is not null)
+       returning s.id_hash, s.user_id, s.expires_at, s.created_at`,
+      [sessionHash(id), isWatchaOAuthEnabled()],
     )
     return row ? mapSession(row, id) : null
+  }
+
+  async mergePasswordAccountIntoWatchaAccount(sourceUserId: string, targetUserId: string): Promise<AccountMergeResult> {
+    if (sourceUserId === targetUserId) throw new Error('不能迁移当前观猹账号。')
+    const client = await this.pool.connect()
+    try {
+      await client.query('begin')
+      const users = await client.query<UserRow>(
+        `select * from public.app_users
+         where id = any($1::uuid[])
+         order by id for update`,
+        [[sourceUserId, targetUserId]],
+      )
+      const source = users.rows.find(row => row.id === sourceUserId)
+      const target = users.rows.find(row => row.id === targetUserId)
+      if (!source || !target) throw new Error('迁移账号不存在。')
+      if (source.login_disabled_at || source.merged_into_user_id) throw new Error('该原账号已经迁移或停用。')
+      if (!source.username || !source.password_hash || source.tokendance_subject) throw new Error('只能迁移备案期间创建的用户名密码账号。')
+      if (target.login_disabled_at || !target.tokendance_subject) throw new Error('请先使用观猹账号登录后再迁移。')
+      if (target.password_account_merged_at) throw new Error('当前观猹账号已经完成过原账号迁移。')
+
+      const handledTables = new Set([
+        'api_key_records', 'auth_sessions', 'user_ai_usage', 'user_assistant_memories',
+        'user_assistant_sessions', 'user_aux_data', 'user_behavior_events',
+        'user_book_lists', 'user_book_relations', 'user_books', 'user_data_state',
+        'user_settings',
+      ])
+      const references = await client.query<{ table_name: string }>(
+        `select distinct child.relname as table_name
+         from pg_constraint constraint_row
+         join pg_class child on child.oid = constraint_row.conrelid
+         join pg_namespace child_namespace on child_namespace.oid = child.relnamespace
+         join unnest(constraint_row.conkey) child_key(attnum) on true
+         join pg_attribute child_column on child_column.attrelid = child.oid and child_column.attnum = child_key.attnum
+         where constraint_row.contype = 'f'
+           and constraint_row.confrelid = 'public.app_users'::regclass
+           and child_namespace.nspname = 'public'
+           and child.relname <> 'app_users'`,
+      )
+      const unhandled = references.rows.map(row => row.table_name).filter(table => !handledTables.has(table))
+      if (unhandled.length) throw new Error(`账号迁移尚未覆盖数据表：${unhandled.join('、')}`)
+
+      const count = async (text: string, values: unknown[]): Promise<number> => {
+        const result = await client.query(text, values)
+        return result.rowCount || 0
+      }
+
+      const books = await count(
+        `insert into public.user_books
+         select $2, book_id, name, author, status, current_phase, best_score, data,
+           created_at, updated_at, deleted_at, purge_at, imported_at, last_opened_at
+         from public.user_books where user_id = $1
+         on conflict (user_id, book_id) do update set
+           name=excluded.name, author=excluded.author, status=excluded.status,
+           current_phase=excluded.current_phase, best_score=excluded.best_score,
+           data=excluded.data, created_at=least(public.user_books.created_at, excluded.created_at),
+           updated_at=excluded.updated_at, deleted_at=excluded.deleted_at,
+           purge_at=excluded.purge_at, imported_at=excluded.imported_at,
+           last_opened_at=excluded.last_opened_at
+         where excluded.updated_at > public.user_books.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+      const aiUsageRecords = await count(
+        `insert into public.user_ai_usage
+         select $2, record_id, book_id, session_id, task, model, prompt_tokens,
+           completion_tokens, total_tokens, data, created_at, updated_at
+         from public.user_ai_usage where user_id = $1
+         on conflict (user_id, record_id) do update set
+           book_id=excluded.book_id, session_id=excluded.session_id, task=excluded.task,
+           model=excluded.model, prompt_tokens=excluded.prompt_tokens,
+           completion_tokens=excluded.completion_tokens, total_tokens=excluded.total_tokens,
+           data=excluded.data, created_at=least(public.user_ai_usage.created_at, excluded.created_at),
+           updated_at=excluded.updated_at
+         where excluded.updated_at > public.user_ai_usage.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+      const lists = await count(
+        `insert into public.user_book_lists
+         select $2, list_id, name, description, book_ids, created_at, updated_at
+         from public.user_book_lists where user_id = $1
+         on conflict (user_id, list_id) do update set
+           name=excluded.name, description=excluded.description, book_ids=excluded.book_ids,
+           created_at=least(public.user_book_lists.created_at, excluded.created_at),
+           updated_at=excluded.updated_at
+         where excluded.updated_at > public.user_book_lists.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+      const relations = await count(
+        `insert into public.user_book_relations
+         select $2, relation_id, from_book_id, to_book_id, relation_type, note, created_at, updated_at
+         from public.user_book_relations where user_id = $1
+         on conflict (user_id, relation_id) do update set
+           from_book_id=excluded.from_book_id, to_book_id=excluded.to_book_id,
+           relation_type=excluded.relation_type, note=excluded.note,
+           created_at=least(public.user_book_relations.created_at, excluded.created_at),
+           updated_at=excluded.updated_at
+         where excluded.updated_at > public.user_book_relations.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+      const assistantSessions = await count(
+        `insert into public.user_assistant_sessions
+         select $2, session_id, title, book_id, data, created_at, updated_at
+         from public.user_assistant_sessions where user_id = $1
+         on conflict (user_id, session_id) do update set
+           title=excluded.title, book_id=excluded.book_id, data=excluded.data,
+           created_at=least(public.user_assistant_sessions.created_at, excluded.created_at),
+           updated_at=excluded.updated_at
+         where excluded.updated_at > public.user_assistant_sessions.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+      const assistantMemories = await count(
+        `insert into public.user_assistant_memories
+         select $2, memory_id, content, category, source_session_id, created_at, updated_at
+         from public.user_assistant_memories where user_id = $1
+         on conflict (user_id, memory_id) do update set
+           content=excluded.content, category=excluded.category,
+           source_session_id=excluded.source_session_id,
+           created_at=least(public.user_assistant_memories.created_at, excluded.created_at),
+           updated_at=excluded.updated_at
+         where excluded.updated_at > public.user_assistant_memories.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+      const auxiliaryRecords = await count(
+        `insert into public.user_aux_data
+         select $2, namespace, data, version, updated_at
+         from public.user_aux_data where user_id = $1
+         on conflict (user_id, namespace) do update set
+           data=excluded.data, version=excluded.version, updated_at=excluded.updated_at
+         where excluded.updated_at > public.user_aux_data.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+
+      const settingsByUser = await client.query<SettingsRow & { user_id: string }>(
+        `select user_id, data, version, updated_at from public.user_settings
+         where user_id = any($1::uuid[]) for update`,
+        [[sourceUserId, targetUserId]],
+      )
+      const mergedSettings = mergeAccountSettings(
+        settingsByUser.rows.find(row => row.user_id === sourceUserId) || null,
+        settingsByUser.rows.find(row => row.user_id === targetUserId) || null,
+      )
+      const maxSettingsVersion = Math.max(0, ...settingsByUser.rows.map(row => Number(row.version) || 0)) + 1
+      await client.query(
+        `insert into public.user_settings (user_id, data, version, updated_at)
+         values ($1, $2::jsonb, $3, now())
+         on conflict (user_id) do update set data=excluded.data, version=excluded.version, updated_at=now()`,
+        [targetUserId, JSON.stringify(mergedSettings), maxSettingsVersion],
+      )
+
+      const apiKeys = await count(
+        `insert into public.api_key_records
+         select $2, provider, secret, created_at, updated_at
+         from public.api_key_records where user_id = $1
+         on conflict (user_id, provider) do update set
+           secret=excluded.secret,
+           created_at=least(public.api_key_records.created_at, excluded.created_at),
+           updated_at=excluded.updated_at
+         where excluded.updated_at > public.api_key_records.updated_at`,
+        [sourceUserId, targetUserId],
+      )
+
+      await client.query(
+        `insert into public.user_data_state
+         select $2, schema_version, sync_version, last_import_at, last_sync_at, now(),
+           migration_status, migration_version, migration_started_at, migration_deadline_at,
+           migration_completed_at, last_migration_error
+         from public.user_data_state where user_id = $1
+         on conflict (user_id) do update set
+           schema_version=greatest(public.user_data_state.schema_version, excluded.schema_version),
+           sync_version=greatest(public.user_data_state.sync_version, excluded.sync_version) + 1,
+           last_import_at=greatest(public.user_data_state.last_import_at, excluded.last_import_at),
+           last_sync_at=now(), updated_at=now(),
+           migration_version=greatest(public.user_data_state.migration_version, excluded.migration_version),
+           migration_completed_at=greatest(public.user_data_state.migration_completed_at, excluded.migration_completed_at)`,
+        [sourceUserId, targetUserId],
+      )
+      await client.query(
+        `insert into public.user_data_state (user_id, sync_version, last_sync_at, updated_at)
+         values ($1, 1, now(), now())
+         on conflict (user_id) do update set sync_version=public.user_data_state.sync_version + 1,
+           last_sync_at=now(), updated_at=now()`,
+        [targetUserId],
+      )
+
+      const behaviorEvents = await count(
+        'update public.user_behavior_events set user_id = $2 where user_id = $1',
+        [sourceUserId, targetUserId],
+      )
+
+      const sourceEmail = source.email
+      await client.query('delete from public.auth_sessions where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_books where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_ai_usage where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_book_lists where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_book_relations where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_settings where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_data_state where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_aux_data where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_assistant_sessions where user_id = $1', [sourceUserId])
+      await client.query('delete from public.user_assistant_memories where user_id = $1', [sourceUserId])
+      await client.query('delete from public.api_key_records where user_id = $1', [sourceUserId])
+      await client.query(
+        `update public.app_users set username=null, password_hash=null, email=null,
+           login_disabled_at=now(), merged_into_user_id=$2, merged_at=now(), updated_at=now()
+         where id=$1`,
+        [sourceUserId, targetUserId],
+      )
+      if (!target.email && sourceEmail) {
+        await client.query('update public.app_users set email=$2, updated_at=now() where id=$1', [targetUserId, sourceEmail])
+      }
+      await client.query(
+        'update public.app_users set password_account_merged_at=now(), updated_at=now() where id=$1',
+        [targetUserId],
+      )
+      await client.query('commit')
+      return { books, aiUsageRecords, lists, relations, assistantSessions, assistantMemories, behaviorEvents, auxiliaryRecords, apiKeys }
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    } finally {
+      client.release()
+    }
   }
 
   async deleteSession(id: string): Promise<void> {

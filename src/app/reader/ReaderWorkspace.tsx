@@ -45,7 +45,7 @@ import { LoadingState, Skeleton } from '@/components/Skeleton'
 import AppDialogHost from '@/components/AppDialogHost'
 import AssistantWorkspace from '@/components/AssistantWorkspace'
 import { APP_ROUTES } from '@/lib/appRoutes'
-import { accountLoginHref, isLocalAuthBypassEnabled } from '@/lib/accountClient'
+import { accountLoginHref, isLocalAuthBypassEnabled, isWatchaOAuthEnabled } from '@/lib/accountClient'
 
 type View = 'bookshelf' | 'reading' | 'settings'
 
@@ -57,6 +57,7 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
   const { user, checking, isAuthenticated } = useAccountAccess()
   const localOnlyMode = isLocalAuthBypassEnabled()
   const signedIn = Boolean(user) || isAuthenticated
+  const watchaEnabled = isWatchaOAuthEnabled()
 
   if (localOnlyMode && !user) {
     return (
@@ -75,8 +76,8 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
     <a
       href={signedIn ? '/account' : accountLoginHref(returnTo)}
       className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-2.5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15 sm:px-3"
-      aria-label={signedIn ? (lang === 'zh' ? '打开账号中心' : 'Open Account Center') : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
-      title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? '使用观猹登录' : 'Sign in with Watcha')}
+      aria-label={signedIn ? (lang === 'zh' ? '打开账号中心' : 'Open Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用观猹登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
+      title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用观猹登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
       aria-disabled={checking}
     >
       {user?.avatarUrl ? (
@@ -89,7 +90,7 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
         <UserRound size={16} aria-hidden="true" />
       )}
       <span className="hidden sm:inline">
-        {checking ? (lang === 'zh' ? '读取账号' : 'Checking') : signedIn ? (lang === 'zh' ? '账号中心' : 'Account') : (lang === 'zh' ? '观猹登录' : 'Watcha sign-in')}
+        {checking ? (lang === 'zh' ? '读取账号' : 'Checking') : signedIn ? (lang === 'zh' ? '账号中心' : 'Account') : (lang === 'zh' ? (watchaEnabled ? '观猹登录' : '登录账号') : (watchaEnabled ? 'Watcha sign-in' : 'Sign in'))}
       </span>
     </a>
   )
@@ -117,8 +118,8 @@ function AccountCloudNotice({ lang, hidden, returnTo }: { lang: AppSettings['lan
         <Cloud size={17} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
         <p className="min-w-0 flex-1 leading-5 text-[var(--text-secondary)]">
           {lang === 'zh'
-            ? '当前可浏览系统示例。添加书籍、保存学习记录或使用 AI 前，请先使用观猹登录；登录后数据会保存到你的账号云端。'
-            : 'You can browse the system sample now. Sign in with Watcha before adding books, saving learning records, or using AI; signed-in data is saved to your account cloud.'}
+            ? `当前可浏览系统示例。添加书籍、保存学习记录或使用 AI 前，请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录；登录后数据会保存到你的账号云端。`
+            : `You can browse the system sample now. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before adding books, saving learning records, or using AI; signed-in data is saved to your account cloud.`}
         </p>
         <a href={accountLoginHref(returnTo)} className="shrink-0 font-medium text-[var(--accent)] hover:underline">
           {lang === 'zh' ? '登录' : 'Sign in'}
