@@ -14,6 +14,7 @@ import {
 import { Language } from '@/lib/i18n'
 import { useAccountAccess } from './AuthGuard'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
+import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 
 interface Props {
   lang: Language
@@ -179,6 +180,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
   const [showTour, setShowTour] = useState(true)
   const accountAiConfigured = hasSignedInAccount && aiConfigured
   const watchaOAuthEnabled = isWatchaOAuthEnabled()
+  const tokenDanceEnabled = isTokenDanceEnabled()
 
   // 检查是否已经完成过新手引导
   useEffect(() => {
@@ -189,8 +191,14 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
     }
   }, [onComplete])
 
-  const steps = [...(onboardingSteps[lang] || onboardingSteps.zh)]
-  if (accountAiConfigured) {
+  const steps = [...(onboardingSteps[lang] || onboardingSteps.zh)].filter((_, index) => tokenDanceEnabled || index !== 3)
+  if (!tokenDanceEnabled && steps[0]) {
+    steps[0] = {
+      ...steps[0],
+      description: lang === 'zh' ? '无需登录或配置 AI，即可浏览《追风筝的人》系统示例，先了解完整学习流程。' : 'Browse The Kite Runner system sample without signing in or configuring AI, and learn the complete workflow first.'
+    }
+  }
+  if (accountAiConfigured && tokenDanceEnabled) {
     steps[steps.length - 1] = lang === 'zh'
       ? {
           title: 'TokenDance 已连接',
@@ -224,7 +232,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
       localStorage.setItem(ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION)
       setShowTour(false)
       onComplete()
-      if (!accountAiConfigured) {
+      if (!accountAiConfigured && tokenDanceEnabled) {
         if (!hasSignedInAccount) {
           requestLogin(lang === 'zh'
             ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。登录成功后，再为当前账号配置 TokenDance API Key。`

@@ -87,6 +87,15 @@ export interface BookTag {
   category: string
 }
 
+export interface BookAnalysisTask {
+  status: 'running' | 'completed' | 'failed'
+  completedPhaseIds: string[]
+  currentPhaseId?: string
+  startedAt: number
+  updatedAt: number
+  error?: string
+}
+
 export interface ReadingProgress {
   currentPage: number
   totalPages: number
@@ -113,6 +122,7 @@ export interface Book {
   createdAt: number
   updatedAt: number
   isSample?: boolean
+  analysisTask?: BookAnalysisTask
 }
 
 export interface CustomQuote {

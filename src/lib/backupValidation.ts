@@ -1,5 +1,6 @@
 import type {
   AppSettings,
+  BookAnalysisTask,
   Book,
   BookStatus,
   BookTag,
@@ -119,6 +120,24 @@ function finiteNumber(value: unknown, path: string, min: number, max: number, in
 
 function timestamp(value: unknown, path: string): number {
   return finiteNumber(value, path, 0, Number.MAX_SAFE_INTEGER, true)
+}
+
+function normalizeAnalysisTask(value: unknown, path: string): BookAnalysisTask {
+  const item = record(value, path)
+  const status = item.status
+  if (status !== 'running' && status !== 'completed' && status !== 'failed') fail(`${path}.status`, '取值无效')
+  if (!Array.isArray(item.completedPhaseIds) || item.completedPhaseIds.length > 6) fail(`${path}.completedPhaseIds`, '必须是最多 6 项的数组')
+  const completedPhaseIds = item.completedPhaseIds.map((phaseId, index) => identifier(phaseId, `${path}.completedPhaseIds[${index}]`))
+  const currentPhaseId = item.currentPhaseId === undefined ? undefined : identifier(item.currentPhaseId, `${path}.currentPhaseId`)
+  const error = item.error === undefined ? undefined : stringValue(item.error, `${path}.error`, 1000)
+  return {
+    status,
+    completedPhaseIds,
+    ...(currentPhaseId ? { currentPhaseId } : {}),
+    startedAt: timestamp(item.startedAt, `${path}.startedAt`),
+    updatedAt: timestamp(item.updatedAt, `${path}.updatedAt`),
+    ...(error ? { error } : {}),
+  }
 }
 
 function optionalBoolean(value: unknown, fallback: boolean): boolean {
@@ -305,6 +324,7 @@ function normalizeBook(value: unknown, path: string): Book {
   const item = record(value, path)
   const id = identifier(item.id, `${path}.id`)
   if (!BOOK_STATUSES.has(item.status as BookStatus)) fail(`${path}.status`, '取值无效')
+  const summaryOnly = item._summaryOnly === true
 
   const notes = item.noteRecords === undefined ? [] : item.noteRecords
   const practices = item.practiceRecords === undefined ? [] : item.practiceRecords
@@ -320,7 +340,7 @@ function normalizeBook(value: unknown, path: string): Book {
   const normalizedPractices = practices.map((practice, index) => normalizePractice(practice, `${path}.practiceRecords[${index}]`, id))
   const normalizedQARecords = qaRecords.map((qa, index) => normalizeQARecord(qa, `${path}.qaPracticeRecords[${index}]`, id))
   const normalizedResponses = normalizeResponses(item.responses, `${path}.responses`)
-  normalizeScore(item.bestScore, `${path}.bestScore`)
+  const storedBestScore = normalizeScore(item.bestScore, `${path}.bestScore`)
 
   const teachingScores = new Map<string, number>()
   normalizedPractices.forEach(practice => {
@@ -328,12 +348,13 @@ function normalizeBook(value: unknown, path: string): Book {
     const sessionId = practice.sessionId || `legacy:${id}`
     teachingScores.set(sessionId, Math.max(teachingScores.get(sessionId) || 0, practice.scores.overall))
   })
-  const bestScore = normalizedQARecords.filter(qa => qa.allPassed).reduce((best, qa) => {
+  const calculatedBestScore = normalizedQARecords.filter(qa => qa.allPassed).reduce((best, qa) => {
     const teachingScore = teachingScores.get(qa.sessionId || `legacy:${id}`) || 0
     if (teachingScore < 60) return best
     const qaScore = qa.questions.reduce((sum, question) => sum + (question.score || 0), 0) / qa.questions.length
     return Math.max(best, Math.round((teachingScore + qaScore) / 2))
   }, 0)
+  const bestScore = summaryOnly ? storedBestScore : calculatedBestScore
   const practiceCompleted = bestScore >= 60
   const completed = currentPhase === 6 && practiceCompleted
   const hasLearningActivity = currentPhase > 0
@@ -341,7 +362,9 @@ function normalizeBook(value: unknown, path: string): Book {
     || Object.keys(normalizedResponses).length > 0
     || normalizedPractices.length > 0
     || normalizedQARecords.length > 0
-  const status: BookStatus = completed ? 'finished' : hasLearningActivity ? 'reading' : 'unread'
+  const status: BookStatus = summaryOnly
+    ? item.status as BookStatus
+    : completed ? 'finished' : hasLearningActivity ? 'reading' : 'unread'
 
   const book: Book = {
     id,
@@ -363,6 +386,8 @@ function normalizeBook(value: unknown, path: string): Book {
     updatedAt: timestamp(item.updatedAt, `${path}.updatedAt`)
   }
   if (item.isSample === true) book.isSample = true
+  if (summaryOnly) book._summaryOnly = true
+  if (item.analysisTask !== undefined) book.analysisTask = normalizeAnalysisTask(item.analysisTask, `${path}.analysisTask`)
 
   if (item.readingProgress !== undefined) {
     const progress = record(item.readingProgress, `${path}.readingProgress`)

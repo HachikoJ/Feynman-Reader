@@ -172,7 +172,7 @@ describe('Settings AI privacy controls', () => {
     fireEvent.change(await screen.findByPlaceholderText('TokenDance API Key'), { target: { value: savedApiKey } })
     fireEvent.click(screen.getByRole('button', { name: '验证并启用 AI' }))
 
-    await waitFor(() => expect(saveAccountApiKeyMock).toHaveBeenCalledWith(savedApiKey))
+    await waitFor(() => expect(saveAccountApiKeyMock).toHaveBeenCalledWith(savedApiKey, 'tokendance'))
     expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({ apiKey: '', aiDataConsent: true }))
     expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'server-managed', aiDataConsent: true }))
   })
@@ -216,7 +216,7 @@ describe('Settings AI privacy controls', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存设置' }))
     await waitFor(() => {
       expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({
-        apiKey: savedApiKey,
+        apiKey: 'server-managed',
         aiDataConsent: true
       }))
     })

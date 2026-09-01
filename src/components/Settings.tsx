@@ -70,7 +70,7 @@ import { DEEPSEEK_API_KEY_INVALID, validateDeepSeekApiKey } from '@/lib/deepseek
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { showAppConfirm } from '@/lib/appDialog'
 import { createTokendanceAuthorizationUrl, exchangeTokendanceCode, fetchTokendanceBalance, createTokendancePaymentSession, getTokendancePaymentSession, type TokendanceBalance, type TokendancePaymentSession } from '@/lib/tokendance'
-import { deepSeekSunsetMessage, isTokenDanceOnly } from '@/lib/aiProviderPolicy'
+import { deepSeekSunsetMessage, isDeepSeekOfficialEnabled, isTokenDanceEnabled, tokenDanceUnavailableMessage } from '@/lib/aiProviderPolicy'
 import { DEEPSEEK_OFFICIAL_CHANNEL_SUNSET } from '@/lib/deepseek'
 import { isAIConfigurationComplete } from '@/lib/startupPrompt'
 import { useAccountAccess } from './AuthGuard'
@@ -106,6 +106,8 @@ export default function Settings({
 }: Props) {
   const { checking: checkingAccount, hasSignedInAccount, requestLogin } = useAccountAccess()
   const watchaOAuthEnabled = process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED === 'true'
+  const tokendanceEnabled = isTokenDanceEnabled()
+  const deepSeekOfficialEnabled = isDeepSeekOfficialEnabled()
   const localOnlyMode = !hasSignedInAccount && isLocalAuthBypassEnabled()
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
@@ -205,9 +207,10 @@ export default function Settings({
   const requireAccountForApi = () => {
     if (checkingAccount) return false
     if (hasSignedInAccount) return true
+    const providerLabel = tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'DeepSeek 官方' : 'AI'
     requestLogin(settings.language === 'zh'
-      ? watchaOAuthEnabled ? '请先使用观猹登录。登录成功后，才能配置 TokenDance API Key，并将密钥加密保存到当前账号。' : '请先登录账号。登录成功后，才能配置 TokenDance API Key，并将密钥加密保存到当前账号。'
-      : watchaOAuthEnabled ? 'Sign in with Watcha first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.' : 'Sign in first. After sign-in, you can configure a TokenDance API key and save it encrypted to the current account.', '/?view=settings')
+      ? watchaOAuthEnabled ? `请先使用观猹登录。登录成功后，才能配置 ${providerLabel} API Key，并将密钥加密保存到当前账号。` : `请先登录账号。登录成功后，才能配置 ${providerLabel} API Key，并将密钥加密保存到当前账号。`
+      : watchaOAuthEnabled ? `Sign in with Watcha first. After sign-in, you can configure a ${providerLabel} API key and save it encrypted to the current account.` : `Sign in first. After sign-in, you can configure a ${providerLabel} API key and save it encrypted to the current account.`, '/?view=settings')
     return false
   }
 
@@ -241,20 +244,35 @@ export default function Settings({
     setShowAiConfiguration(!isAIConfigurationComplete(loaded))
     setSettingsLoaded(true)
 
-    // 获取数据统计
+    // Data size calculation serializes the current store. Keep it outside the
+    // settings screen's first paint so opening Settings remains immediate.
     if (typeof window !== 'undefined') {
-      try {
-        setDataStats(getDataStats())
-        setDataStatsError(false)
-      } catch (e) {
-        logger.error('Failed to get data stats:', e)
-        setDataStatsError(true)
+      const loadStats = () => {
+        if (cancelled) return
+        try {
+          setDataStats(getDataStats())
+          setDataStatsError(false)
+        } catch (e) {
+          logger.error('Failed to get data stats:', e)
+          setDataStatsError(true)
+        }
       }
+      const idleWindow = window as Window & {
+        requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+        cancelIdleCallback?: (handle: number) => void
+      }
+      const idleHandle = idleWindow.requestIdleCallback?.(loadStats, { timeout: 1000 })
+      const timerHandle = idleHandle === undefined ? window.setTimeout(loadStats, 0) : null
 
       // P0 新增：获取 IndexedDB 信息
       loadDbInfo()
       const savedBackupAt = Number(localStorage.getItem(LAST_BACKUP_AT_KEY))
       setLastBackupAt(Number.isFinite(savedBackupAt) && savedBackupAt > 0 ? savedBackupAt : null)
+      return () => {
+        cancelled = true
+        if (idleHandle !== undefined) idleWindow.cancelIdleCallback?.(idleHandle)
+        if (timerHandle !== null) window.clearTimeout(timerHandle)
+      }
     }
     return () => {
       cancelled = true
@@ -339,7 +357,7 @@ export default function Settings({
     }
 
     const apiKeyMissing = settings.apiKey.trim().length === 0
-    const configuredProvider = isTokenDanceOnly() ? 'tokendance' : (settings.aiProvider ?? 'deepseek')
+    const configuredProvider = tokenDanceOnly ? 'tokendance' : activeProvider
     const apiKeyValidation = validateApiKey(settings.apiKey)
     const missingConsent = settings.apiKey.trim().length > 0 && !settings.aiDataConsent
     const configurationError = apiKeyMissing
@@ -437,7 +455,7 @@ export default function Settings({
     if (!requireAccountForApi()) return
     setApiActionStatus(null)
     const trimmedApiKey = settings.apiKey.trim()
-    const usesServerManagedKey = activeProvider === 'tokendance' && trimmedApiKey === SERVER_MANAGED_API_KEY
+    const usesServerManagedKey = trimmedApiKey === SERVER_MANAGED_API_KEY
     if (!trimmedApiKey) {
       const message = settings.language === 'zh'
         ? `保存失败：请先填写 ${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek'} API Key。`
@@ -527,10 +545,10 @@ export default function Settings({
 
       // TokenDance keys are kept server-side. Save the encrypted key first, then
       // persist the lightweight settings snapshot once with the runtime marker.
-      if (activeProvider === 'tokendance' && !usesServerManagedKey) {
-        await saveAccountApiKey(trimmedApiKey)
+      if (!usesServerManagedKey) {
+        await saveAccountApiKey(trimmedApiKey, activeProvider)
       }
-      const runtimeSettings = activeProvider === 'tokendance'
+      const runtimeSettings = hasSignedInAccount
         ? { ...settingsToPersist, apiKey: SERVER_MANAGED_API_KEY }
         : settingsToPersist
       saveSettings(runtimeSettings)
@@ -558,6 +576,10 @@ export default function Settings({
   }
 
   const handleTokendanceAuthorize = async () => {
+    if (!tokendanceEnabled) {
+      setApiKeyConsentError(tokenDanceUnavailableMessage(settings.language))
+      return
+    }
     if (!requireAccountForApi()) return
     try {
       setTokendanceOAuthLoading(true)
@@ -569,6 +591,10 @@ export default function Settings({
   }
 
   const handleTokendanceBalance = async () => {
+    if (!tokendanceEnabled) {
+      setApiKeyConsentError(tokenDanceUnavailableMessage(settings.language))
+      return
+    }
     if (!requireAccountForApi()) return
     if (!settings.apiKey) return
     setLoadingTokendanceBalance(true)
@@ -582,6 +608,10 @@ export default function Settings({
   }
 
   const handleTokendanceTopUp = async () => {
+    if (!tokendanceEnabled) {
+      setApiKeyConsentError(tokenDanceUnavailableMessage(settings.language))
+      return
+    }
     if (!requireAccountForApi()) return
     const amount = Number.parseInt(tokendanceAmount, 10)
     if (!settings.apiKey || !Number.isInteger(amount) || amount < 1 || amount > 100000) {
@@ -1083,7 +1113,7 @@ export default function Settings({
       if (!confirmed) return
 
       setShowKey(false)
-      if (activeProvider === 'tokendance') await deleteAccountApiKey()
+      await deleteAccountApiKey(activeProvider)
       await persistAiPrivacySettings(
         { apiKey: '', aiDataConsent: false, hideApiKeyAlert: false },
         settings.language === 'zh'
@@ -1100,8 +1130,16 @@ export default function Settings({
   }
 
   const lang = settings.language
-  const tokenDanceOnly = isTokenDanceOnly()
-  const activeProvider = tokenDanceOnly ? 'tokendance' : (settings.aiProvider ?? 'deepseek')
+  const tokenDanceOnly = tokendanceEnabled && !deepSeekOfficialEnabled
+  const availableProviders = [
+    ...(tokendanceEnabled ? ['tokendance' as const] : []),
+    ...(deepSeekOfficialEnabled ? ['deepseek' as const] : [])
+  ]
+  const activeProvider = tokenDanceOnly
+    ? 'tokendance'
+    : (availableProviders.includes(settings.aiProvider as 'tokendance' | 'deepseek')
+      ? settings.aiProvider as 'tokendance' | 'deepseek'
+      : deepSeekOfficialEnabled ? 'deepseek' : 'tokendance')
   const persistedSettings = getSettings()
   const hasSavedApiKey = hasSignedInAccount && persistedSettings.apiKey.trim().length > 0
   const aiConfigurationComplete = hasSignedInAccount && isAIConfigurationComplete(persistedSettings)
@@ -1201,7 +1239,7 @@ export default function Settings({
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '备案期间使用本地数据模式' : 'Local data mode during domain filing') : (lang === 'zh' ? watchaOAuthEnabled ? '先使用观猹登录，再配置 TokenDance' : '先登录账号，再配置 TokenDance' : watchaOAuthEnabled ? 'Sign in with Watcha before configuring TokenDance' : 'Sign in before configuring TokenDance')}</h2>
+                  <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '备案期间使用本地数据模式' : 'Local data mode during domain filing') : (lang === 'zh' ? watchaOAuthEnabled ? `先使用观猹登录，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : `先登录账号，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : watchaOAuthEnabled ? `Sign in with Watcha before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}` : `Sign in before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}`)}</h2>
                   <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
                     {localOnlyMode
                       ? (lang === 'zh' ? '当前使用本地模式，书籍和学习数据会保存在此浏览器。备案完成后重新开启登录，即可在账号中心迁移到云端。' : 'Local-only mode is active, so books and learning data stay in this browser. Sign-in will return after filing and the data can then be migrated to your account cloud.')
@@ -1225,7 +1263,7 @@ export default function Settings({
                   <span className="font-semibold">{lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API'}</span>
                 )}
                 <p className="text-sm text-[var(--text-secondary)]">
-                  {lang === 'zh' ? 'TokenDance AI 已就绪，可返回书籍继续分析或使用费曼小助手。' : 'TokenDance AI is ready. Return to a book or use Feynman Assistant.'}
+                  {lang === 'zh' ? `${activeProvider === 'tokendance' ? 'TokenDance' : 'DeepSeek 官方'} AI 已就绪，可返回书籍继续分析或使用费曼小助手。` : `${activeProvider === 'tokendance' ? 'TokenDance' : 'Official DeepSeek'} AI is ready. Return to a book or use Feynman Assistant.`}
                 </p>
               </div>
               {activeProvider === 'tokendance' && (
@@ -1237,18 +1275,24 @@ export default function Settings({
           )}
           {(!aiConfigurationComplete || showAiConfiguration) && (
             <>
-          {!tokenDanceOnly && (
-            <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300" role="note">
-              {lang === 'zh' ? '迁移提醒：官方 DeepSeek 配置渠道将在 2026 年 10 月 1 日下线。到期后已配置的旧 Key 也不再支持，请提前保存相关配置并改用 TokenDance API Key。' : 'Migration notice: the official DeepSeek configuration channel ends on October 1, 2026. Existing keys will also stop working; save your configuration and set up a TokenDance API key before then.'}
+          {!tokendanceEnabled && (
+            <div className="mb-4 rounded-lg border border-sky-500/30 bg-sky-500/8 p-3 text-sm text-sky-800 dark:text-sky-200" role="note">
+              {tokenDanceUnavailableMessage(lang)}
             </div>
           )}
-          {tokenDanceOnly && (
+          {tokendanceEnabled && deepSeekOfficialEnabled && (
+            <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300" role="note">
+              {lang === 'zh' ? '备案完成后将恢复 TokenDance 配置，并逐步切换为 TokenDance AI 渠道。现有设置会保留，切换时会提示你完成迁移。' : 'TokenDance configuration will return after filing and become the supported AI channel. Existing settings are preserved and migration guidance will appear during the switch.'}
+            </div>
+          )}
+          {!deepSeekOfficialEnabled && (
             <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300" role="alert">
               {deepSeekSunsetMessage(lang)}
             </div>
           )}
-          <div className={`mb-4 grid gap-2 ${tokenDanceOnly ? '' : 'sm:grid-cols-2'}`} role="radiogroup" aria-label={lang === 'zh' ? 'AI 接入渠道' : 'AI provider'}>
-            {(['tokendance', ...(tokenDanceOnly ? [] : ['deepseek' as const])] as const).map(provider => (
+          {availableProviders.length > 0 ? (
+          <div className={`mb-4 grid gap-2 ${availableProviders.length === 1 ? '' : 'sm:grid-cols-2'}`} role="radiogroup" aria-label={lang === 'zh' ? 'AI 接入渠道' : 'AI provider'}>
+            {availableProviders.map(provider => (
               <button
                 key={provider}
                 type="button"
@@ -1270,6 +1314,11 @@ export default function Settings({
               </button>
             ))}
           </div>
+          ) : (
+            <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300" role="alert">
+              {lang === 'zh' ? '当前部署暂未开放 AI 配置渠道，请稍后再试。' : 'No AI configuration channel is enabled for this deployment.'}
+            </div>
+          )}
           {activeProvider === 'tokendance' && (
             <div className="brand-offer mb-4 rounded-lg p-4" role="note">
               <div className="flex flex-wrap items-start gap-2">

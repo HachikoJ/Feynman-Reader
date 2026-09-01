@@ -25,6 +25,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     const result = await store.importUserData(userId, payload)
     return NextResponse.json({ ok: true, ...result })
   } catch (error) {
+    console.error('[account/import] write failed', {
+      code: error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code || '') : '',
+      message: error instanceof Error ? error.message : String(error),
+    })
     if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     return NextResponse.json({ error: '数据导入失败。' }, { status: 400 })
   }

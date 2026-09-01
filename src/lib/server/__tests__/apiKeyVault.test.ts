@@ -14,7 +14,8 @@ describe('API key vault', () => {
 
   it('rejects tampering and masks display values', () => {
     const encrypted = encryptApiKey('tokendance-secret-key-1234567890')
-    expect(() => decryptApiKey({ ...encrypted, ciphertext: encrypted.ciphertext.slice(0, -1) + 'A' })).toThrow()
+    const replacement = encrypted.ciphertext.endsWith('A') ? 'B' : 'A'
+    expect(() => decryptApiKey({ ...encrypted, ciphertext: encrypted.ciphertext.slice(0, -1) + replacement })).toThrow()
     expect(maskApiKey('tokendance-secret-key-1234567890')).toBe('toke********7890')
   })
 })

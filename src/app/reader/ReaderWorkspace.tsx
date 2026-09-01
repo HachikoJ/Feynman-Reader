@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Image from 'next/image'
+import dynamic from 'next/dynamic'
 import { AlertTriangle, CircleHelp, Cloud, ExternalLink, Menu, RefreshCw, UserRound, X } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import {
@@ -10,13 +11,12 @@ import {
   getBooks,
   getSettings,
   initializeStore,
+  reloadBookFromPersistence,
   subscribeToPersistenceErrors,
   PersistenceErrorInfo
 } from '@/lib/store'
 import { t } from '@/lib/i18n'
-import Settings from '@/components/Settings'
 import Bookshelf from '@/components/Bookshelf'
-import ReadingView from '@/components/ReadingView'
 import BackToTop from '@/components/BackToTop'
 import AuthGuard, { useAccountAccess } from '@/components/AuthGuard'
 import Onboarding, { ONBOARDING_COMPLETED_KEY, ONBOARDING_VERSION } from '@/components/Onboarding'
@@ -43,11 +43,22 @@ import { useServiceWorker } from '@/lib/useServiceWorker'
 import AITaskStatus from '@/components/AITaskStatus'
 import { LoadingState, Skeleton } from '@/components/Skeleton'
 import AppDialogHost from '@/components/AppDialogHost'
-import AssistantWorkspace from '@/components/AssistantWorkspace'
 import { APP_ROUTES } from '@/lib/appRoutes'
 import { accountLoginHref, isLocalAuthBypassEnabled, isWatchaOAuthEnabled } from '@/lib/accountClient'
+import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 
 type View = 'bookshelf' | 'reading' | 'settings'
+
+const loadReadingView = () => import('@/components/ReadingView')
+const ReadingView = dynamic(loadReadingView, {
+  loading: () => <div className="py-8"><LoadingState type="reading" count={4} lang="zh" /></div>
+})
+const Settings = dynamic(() => import('@/components/Settings'), {
+  loading: () => <div className="py-8"><LoadingState type="settings" count={4} lang="zh" /></div>
+})
+const AssistantWorkspace = dynamic(() => import('@/components/AssistantWorkspace'), {
+  loading: () => null
+})
 
 const TOKENDANCE_LOGO_URL = 'https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg'
 const TOKENDANCE_PRICING_URL = 'https://tokendance.space/models/deepseek-v4-flash-0731'
@@ -140,7 +151,7 @@ function GitHubMark() {
   )
 }
 
-export default function Home() {
+function ReaderWorkspaceContent() {
   const { hasSignedInAccount, checking: checkingAccount } = useAccountAccess()
   const localOnlyMode = isLocalAuthBypassEnabled()
   const [view, setView] = useState<View>('bookshelf')
@@ -165,12 +176,32 @@ export default function Home() {
   const [openDataManagement, setOpenDataManagement] = useState(false)
   const [focusApiConfigurationRequest, setFocusApiConfigurationRequest] = useState(0)
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+  const [assistantReady, setAssistantReady] = useState(false)
 
   // P1 新增：启用撤销/重做快捷键
   useUndoRedoShortcuts(settings.language)
   useServiceWorker()
 
   useEffect(() => {
+    if (!mounted) return
+    const readingTimer = window.setTimeout(() => { void loadReadingView() }, 0)
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+    const assistantIdle = idleWindow.requestIdleCallback?.(() => setAssistantReady(true), { timeout: 1500 })
+    const assistantTimer = assistantIdle === undefined
+      ? window.setTimeout(() => setAssistantReady(true), 800)
+      : null
+    return () => {
+      window.clearTimeout(readingTimer)
+      if (assistantIdle !== undefined) idleWindow.cancelIdleCallback?.(assistantIdle)
+      if (assistantTimer !== null) window.clearTimeout(assistantTimer)
+    }
+  }, [mounted])
+
+  useEffect(() => {
+    if (!localOnlyMode && checkingAccount) return
     let cancelled = false
     const initialParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
     const isTokenDanceCallback = initialParams?.get('tokendance_callback') === '1'
@@ -200,7 +231,7 @@ export default function Home() {
 
     const initialize = async () => {
       try {
-        await initializeStore()
+        await initializeStore({ authenticated: hasSignedInAccount })
       } catch (error) {
         logger.error('IndexedDB initialization failed:', error)
         if (!cancelled) {
@@ -221,7 +252,8 @@ export default function Home() {
       if (requestedView === 'reading' && requestedBookId) {
         const requestedBook = books.find(book => book.id === requestedBookId)
         if (requestedBook) {
-          setSelectedBook(requestedBook)
+          const loadedBook = await reloadBookFromPersistence(requestedBook.id).catch(() => requestedBook)
+          setSelectedBook(loadedBook || requestedBook)
           setView('reading')
         }
       }
@@ -240,7 +272,7 @@ export default function Home() {
       )
 
       const completedMigrationNoticeVersion = localStorage.getItem(TOKENDANCE_MIGRATION_NOTICE_KEY)
-      const showTokenDanceMigrationCandidate = shouldShowTokenDanceMigration(
+      const showTokenDanceMigrationCandidate = isTokenDanceEnabled() && shouldShowTokenDanceMigration(
         completedMigrationNoticeVersion,
         TOKENDANCE_MIGRATION_NOTICE_VERSION,
         isTokenDanceCallback,
@@ -251,7 +283,7 @@ export default function Home() {
       // guidance remains available from the header and can appear next visit.
       if (showTokenDanceMigrationCandidate) setShowTokenDanceMigration(true)
       else if (showOnboardingCandidate) setShowOnboarding(true)
-      else if (showTokenDanceWelcomeCandidate) setShowTokenDanceWelcome(true)
+      else if (isTokenDanceEnabled() && showTokenDanceWelcomeCandidate) setShowTokenDanceWelcome(true)
 
       setMounted(true)
     }
@@ -272,9 +304,10 @@ export default function Home() {
     }
   }
 
-  const handleSelectBook = (book: Book) => {
+  const handleSelectBook = async (book: Book) => {
     setShowApiKeyAlert(false)
-    setSelectedBook(book)
+    const loadedBook = await reloadBookFromPersistence(book.id).catch(() => book)
+    setSelectedBook(loadedBook || book)
     setView('reading')
     window.history.replaceState({}, '', `/?view=reading&bookId=${encodeURIComponent(book.id)}`)
   }
@@ -320,6 +353,7 @@ export default function Home() {
   }
 
   const lang = settings.language
+  const assistantBooks = useMemo(() => getBooks(), [bookshelfKey, selectedBook?.updatedAt])
   const currentWorkspaceHref = view === 'settings'
     ? '/?view=settings'
     : view === 'reading' && selectedBook
@@ -383,11 +417,10 @@ export default function Home() {
 
   return (
     <ErrorBoundary lang={lang}>
-      <AuthGuard>
         <div className="min-h-screen">
           <AppDialogHost lang={lang} />
           <AITaskStatus lang={lang} />
-          <AssistantWorkspace lang={lang} settings={settings} books={getBooks()} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} />
+          {assistantReady && <AssistantWorkspace lang={lang} settings={settings} books={assistantBooks} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} />}
           {storageWriteError && (
             <div role="alert" className={`sticky top-0 z-50 border-b px-4 py-3 text-sm ${storageWriteError.code === 'local' ? 'border-amber-500/50 bg-amber-950 text-amber-100' : 'border-red-500/50 bg-red-950 text-red-100'}`}>
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
@@ -630,7 +663,14 @@ export default function Home() {
         {/* P1 新增：撤销/重做控制 */}
         <UndoRedoControls lang={lang} />
       </div>
-    </AuthGuard>
     </ErrorBoundary>
+  )
+}
+
+export default function ReaderWorkspace() {
+  return (
+    <AuthGuard>
+      <ReaderWorkspaceContent />
+    </AuthGuard>
   )
 }

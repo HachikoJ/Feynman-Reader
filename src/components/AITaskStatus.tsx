@@ -22,6 +22,10 @@ function taskLabel(task: string, lang: Language): string {
   return matched ? (lang === 'zh' ? matched[1] : matched[2]) : (lang === 'zh' ? '处理 AI 任务' : 'Processing AI task')
 }
 
+function isResumableBookAnalysis(task: string): boolean {
+  return task.startsWith('phase-') && !task.startsWith('phase-regenerate') && !task.startsWith('phase-question')
+}
+
 export default function AITaskStatus({ lang }: { lang: Language }) {
   const state = useSyncExternalStore(
     aiRequestManager.subscribe,
@@ -30,6 +34,7 @@ export default function AITaskStatus({ lang }: { lang: Language }) {
   )
 
   if (!state.activeTasks.length) return null
+  const hasResumableBookAnalysis = state.activeTasks.some(task => isResumableBookAnalysis(task.task))
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-lg border border-[var(--accent)]/40 bg-[var(--bg-card)] px-4 py-3 shadow-xl">
@@ -41,19 +46,23 @@ export default function AITaskStatus({ lang }: { lang: Language }) {
         <p className="text-xs text-[var(--text-secondary)]">
           {state.cancelling
             ? (lang === 'zh' ? '正在取消...' : 'Cancelling...')
-            : (lang === 'zh' ? '任务可并行运行，受账号并发额度限制' : 'Tasks run in parallel, subject to account limits')}
+            : hasResumableBookAnalysis
+              ? (lang === 'zh' ? '六阶段解读会自动保存进度，可切换页面后继续' : 'Six-phase analysis saves progress automatically and can resume after navigation')
+              : (lang === 'zh' ? '任务可并行运行，受账号并发额度限制' : 'Tasks run in parallel, subject to account limits')}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={() => aiRequestManager.cancelActive()}
-        disabled={state.cancelling}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 disabled:opacity-50"
-        aria-label={lang === 'zh' ? '取消当前 AI 任务' : 'Cancel current AI task'}
-        title={lang === 'zh' ? '取消当前 AI 任务' : 'Cancel current AI task'}
-      >
-        <Square size={15} fill="currentColor" aria-hidden="true" />
-      </button>
+      {!hasResumableBookAnalysis && (
+        <button
+          type="button"
+          onClick={() => aiRequestManager.cancelActive()}
+          disabled={state.cancelling}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 disabled:opacity-50"
+          aria-label={lang === 'zh' ? '取消当前 AI 任务' : 'Cancel current AI task'}
+          title={lang === 'zh' ? '取消当前 AI 任务' : 'Cancel current AI task'}
+        >
+          <Square size={15} fill="currentColor" aria-hidden="true" />
+        </button>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { initDB, indexedDB } from './db'
 import { createLocalId } from './localId'
-import { isLocalAuthBypassEnabled } from './accountClient'
+import { getAccount, isLocalAuthBypassEnabled } from './accountClient'
 
 /** A persisted message in the independent AI assistant workspace. */
 export type AssistantMessageRole = 'user' | 'assistant' | 'system'
@@ -65,6 +65,7 @@ const DEFAULT_SESSION_TITLE = '新会话'
 
 let writeQueue: Promise<void> = Promise.resolve()
 let cloudSessionCache: AssistantSession[] | null = null
+let cloudSessionRequest: Promise<AssistantSession[]> | null = null
 let cloudAccountState: 'unknown' | 'authenticated' | 'anonymous' = 'unknown'
 
 function clone<T>(value: T): T {
@@ -211,15 +212,9 @@ async function resolveCloudAccount(): Promise<'authenticated' | 'anonymous'> {
   if (!canUseCloudSessions()) return 'anonymous'
   if (cloudAccountState !== 'unknown') return cloudAccountState
   try {
-    const response = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })
-    if (response.status === 401) {
-      cloudAccountState = 'anonymous'
-      return cloudAccountState
-    }
-    if (response.status === 503) throw new Error('ACCOUNT_PERSISTENCE_UNAVAILABLE')
-    if (!response.ok) throw new Error(`ACCOUNT_AUTH_FAILED:${response.status}`)
-    const payload = await response.json() as { user?: { id?: unknown } | null }
-    cloudAccountState = payload.user && typeof payload.user.id === 'string' ? 'authenticated' : 'anonymous'
+    const account = await getAccount()
+    if (!account.configured) throw new Error('ACCOUNT_PERSISTENCE_UNAVAILABLE')
+    cloudAccountState = account.user ? 'authenticated' : 'anonymous'
     return cloudAccountState
   } catch (error) {
     if (error instanceof Error && (error.message === 'ACCOUNT_PERSISTENCE_UNAVAILABLE' || error.message.startsWith('ACCOUNT_AUTH_FAILED:'))) {
@@ -254,7 +249,10 @@ async function readSessions(): Promise<AssistantSession[]> {
   const accountState = await resolveCloudAccount()
   if (accountState === 'authenticated') {
     if (cloudSessionCache) return clone(cloudSessionCache)
-    return clone(await fetchCloudSessions())
+    if (!cloudSessionRequest) {
+      cloudSessionRequest = fetchCloudSessions().finally(() => { cloudSessionRequest = null })
+    }
+    return clone(await cloudSessionRequest)
   }
   return readLocalSessions()
 }

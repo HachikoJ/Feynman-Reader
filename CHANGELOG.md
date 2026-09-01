@@ -11,6 +11,7 @@ Notable changes to Feynman Reader are recorded here.
 - PostgreSQL-backed books, settings, quotes, assistant sessions, long-term memories, activity history, and account statistics.
 - Account Center with cloud bookshelf, quote management, recycle bin, data transfer, and activity calendar.
 - Legacy IndexedDB migration with newer-record conflict resolution and sample-book exclusion.
+- Protected system administrator analytics dashboard with TOTP step-up authentication, independent sessions, aggregate-only metrics, and audit logging.
 
 ### Changed
 
@@ -23,3 +24,4 @@ Notable changes to Feynman Reader are recorded here.
 - Browser roles have no direct access to account tables; database operations run through authenticated server routes.
 - Account queries and mutations are scoped by the user ID resolved from the HttpOnly session cookie.
 - Deleted books enter a seven-day user-visible recycle bin and are automatically purged after the thirty-day server retention deadline.
+- Administrator access is denied by default, requires an independently provisioned role plus TOTP, and never trusts client-side role flags or URL parameters.

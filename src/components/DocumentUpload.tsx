@@ -247,7 +247,6 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
     setError(null)
     let bookId: string | undefined
     try {
-      await flushPendingStoreWrites()
       const book = addBook(
         sanitizeTextInput(bookName.trim(), 200),
         bookAuthor.trim() ? sanitizeTextInput(bookAuthor.trim(), 100) : undefined,

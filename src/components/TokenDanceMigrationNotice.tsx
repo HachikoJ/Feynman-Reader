@@ -3,6 +3,7 @@
 import { BadgePercent, CheckCircle2, Database, ExternalLink, X } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
+import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 import { useAccountAccess } from './AuthGuard'
 
 interface Props {
@@ -19,6 +20,7 @@ const pricingUrl = 'https://tokendance.space/models/deepseek-v4-flash-0731'
 export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSettings }: Props) {
   const { hasSignedInAccount, requestLogin } = useAccountAccess()
   const isZh = lang === 'zh'
+  const tokenDanceEnabled = isTokenDanceEnabled()
   const handleClose = () => {
     localStorage.setItem(TOKENDANCE_MIGRATION_NOTICE_KEY, TOKENDANCE_MIGRATION_NOTICE_VERSION)
     onClose()
@@ -73,7 +75,7 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
 
           <div className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/8 p-3">
             <p className="font-semibold">
-              {isZh ? '检测到本机旧数据时，请在 2026 年 10 月 1 日前完成迁移' : 'Migrate detected local history before October 1, 2026'}
+              {isZh ? '检测到本机旧数据时，请在迁移窗口内完成迁移' : 'Migrate detected local history during the migration window'}
             </p>
             <p className="mt-1 text-xs leading-5">
               {isZh
@@ -105,8 +107,12 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
               </p>
               <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                 {isZh
-                ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再为当前账号配置 TokenDance API Key 并同意相关数据传输。API Key 加密保存在服务端，不进入云端备份。`
-                : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first, then configure a TokenDance API key for the current account and consent to the relevant data transfer. The key is encrypted on the server and excluded from cloud backups.`}
+                  ? tokenDanceEnabled
+                    ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再为当前账号配置 TokenDance API Key 并同意相关数据传输。API Key 加密保存在服务端，不进入云端备份。`
+                    : 'TokenDance 配置将在备案完成后恢复，现有能力和配置不会删除。恢复后可在设置中继续使用。'
+                  : tokenDanceEnabled
+                    ? `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first, then configure a TokenDance API key for the current account and consent to the relevant data transfer. The key is encrypted on the server and excluded from cloud backups.`
+                    : 'TokenDance configuration will return after filing. Existing support and configuration are preserved and can be used again from Settings.'}
               </p>
             </div>
           </div>
@@ -116,12 +122,14 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
 
         <div className="shrink-0 border-t border-[var(--border)] px-5 py-4 sm:px-6">
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <a href={pricingUrl} target="_blank" rel="noopener noreferrer" className="tokendance-link inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium hover:underline">
-              {isZh ? '查看 TokenDance 实时价目' : 'View TokenDance live pricing'}
-              <ExternalLink size={16} aria-hidden="true" />
-            </a>
+            {tokenDanceEnabled ? (
+              <a href={pricingUrl} target="_blank" rel="noopener noreferrer" className="tokendance-link inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium hover:underline">
+                {isZh ? '查看 TokenDance 实时价目' : 'View TokenDance live pricing'}
+                <ExternalLink size={16} aria-hidden="true" />
+              </a>
+            ) : <span className="text-xs text-[var(--text-secondary)]">{isZh ? 'TokenDance 将在备案完成后恢复' : 'TokenDance returns after filing'}</span>}
             <div className="flex flex-col gap-2 sm:flex-row">
-              {onOpenSettings && (
+              {onOpenSettings && tokenDanceEnabled && (
                 <button type="button" onClick={handleConfigureTokenDance} className="btn-secondary min-h-11 justify-center">
                   {hasSignedInAccount ? (isZh ? '配置 TokenDance' : 'Configure TokenDance') : (isZh ? '登录后配置' : 'Sign in to configure')}
                 </button>

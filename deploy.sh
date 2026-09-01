@@ -94,8 +94,35 @@ echo "1. 安装锁定依赖..."
 npm ci
 
 server_watcha_enabled="$(tr '[:upper:]' '[:lower:]' <<< "${FEYNMAN_WATCHA_OAUTH_ENABLED:-false}")"
+server_tokendance_enabled="$(tr '[:upper:]' '[:lower:]' <<< "${FEYNMAN_TOKENDANCE_ENABLED:-$server_watcha_enabled}")"
+server_deepseek_enabled="$(tr '[:upper:]' '[:lower:]' <<< "${FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED:-$([[ "$server_watcha_enabled" == "true" ]] && echo false || echo true)}")"
+server_local_bypass_enabled="$(tr '[:upper:]' '[:lower:]' <<< "${NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS:-false}")"
+for provider_flag in server_watcha_enabled server_tokendance_enabled server_deepseek_enabled server_local_bypass_enabled; do
+  if [[ "${!provider_flag}" != "true" && "${!provider_flag}" != "false" ]]; then
+    echo "部署失败：${provider_flag} 必须是 true 或 false。" >&2
+    exit 1
+  fi
+done
 export FEYNMAN_WATCHA_OAUTH_ENABLED="$server_watcha_enabled"
 export NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED="$server_watcha_enabled"
+export FEYNMAN_TOKENDANCE_ENABLED="$server_tokendance_enabled"
+export NEXT_PUBLIC_FEYNMAN_TOKENDANCE_ENABLED="$server_tokendance_enabled"
+export FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED="$server_deepseek_enabled"
+export NEXT_PUBLIC_FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED="$server_deepseek_enabled"
+export NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS="$server_local_bypass_enabled"
+
+if [[ "$server_watcha_enabled" == "true" && "$server_tokendance_enabled" != "true" ]]; then
+  echo "部署失败：观猹登录开启时必须同时开启 TokenDance。" >&2
+  exit 1
+fi
+if [[ "$server_watcha_enabled" == "true" && "$server_deepseek_enabled" == "true" ]]; then
+  echo "部署失败：观猹登录恢复后必须关闭 DeepSeek 官方配置渠道。" >&2
+  exit 1
+fi
+if [[ "$server_watcha_enabled" == "false" && "$server_local_bypass_enabled" == "true" ]]; then
+  echo "部署失败：审核期间需要用户名密码登录，不能同时启用 NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS。请将其设为 false 或移除后重试。" >&2
+  exit 1
+fi
 
 if [[ "$server_watcha_enabled" == "true" ]]; then
   for required_watcha_var in TOKENDANCE_OAUTH_CLIENT_ID TOKENDANCE_OAUTH_CLIENT_SECRET FEYNMAN_AUTH_STATE_SECRET; do
@@ -108,6 +135,12 @@ fi
 
 echo "2. 应用账号合并数据库迁移..."
 npm run migrate:account-merge
+
+echo "2b. 应用管理员安全数据库迁移..."
+npm run migrate:admin
+
+echo "2c. 自动校验管理员唯一身份约束..."
+npm run verify:admin
 
 echo "3. 构建并检查 Next.js 服务端产物..."
 NODE_ENV=production npm run build

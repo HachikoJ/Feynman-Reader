@@ -114,6 +114,49 @@ describe('backup import boundary', () => {
     })
   })
 
+  it('preserves persisted progress in a lightweight cloud bookshelf snapshot', () => {
+    const result = normalizeImportData(createBackup([
+      createBook({
+        status: 'finished',
+        currentPhase: 6,
+        bestScore: 92,
+        noteRecords: [],
+        practiceRecords: [],
+        qaPracticeRecords: [],
+        _summaryOnly: true
+      })
+    ]))
+    expect(result.valid).toBe(true)
+    if (!result.valid) return
+
+    expect(result.data.books[0]).toMatchObject({
+      status: 'finished',
+      currentPhase: 6,
+      bestScore: 92,
+      _summaryOnly: true
+    })
+  })
+
+  it('preserves a resumable six-phase analysis task across cloud validation', () => {
+    const result = normalizeImportData(createBackup([createBook({
+      analysisTask: {
+        status: 'running',
+        completedPhaseIds: ['background', 'overview'],
+        currentPhaseId: 'deepDive',
+        startedAt: 10,
+        updatedAt: 20
+      }
+    })]))
+    expect(result.valid).toBe(true)
+    if (!result.valid) return
+
+    expect(result.data.books[0].analysisTask).toMatchObject({
+      status: 'running',
+      completedPhaseIds: ['background', 'overview'],
+      currentPhaseId: 'deepDive'
+    })
+  })
+
   it('rejects unsafe response keys and strips imported API keys', () => {
     const book = createBook()
     book.responses = JSON.parse('{"__proto__":"polluted"}')

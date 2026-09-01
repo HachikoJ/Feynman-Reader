@@ -35,6 +35,9 @@ import {
   getAccount,
   getActivityCalendar,
   getCloudData,
+  getCloudBookSummaries,
+  getCloudSettings,
+  getRecycleBin,
   getMigrationState,
   getUserDataSummary,
   importLocalData,
@@ -46,6 +49,7 @@ import {
   type AccountUser,
   type ActivityDay,
   type MigrationState,
+  type RecycleBinItem,
   type UserDataSummary,
 } from "@/lib/accountClient";
 import {
@@ -60,14 +64,8 @@ import {
   getAssistantMemories,
   type AssistantMemory,
 } from "@/lib/assistantMemory";
+import { deleteAssistantSession, getAssistantSessions } from "@/lib/assistantSessions";
 
-interface RecycleBinItem {
-  bookId: string;
-  name: string;
-  author: string | null;
-  deletedAt: string;
-  restoreUntil: string;
-}
 interface CloudBook {
   id: string;
   name: string;
@@ -79,6 +77,11 @@ interface CloudBook {
   practiceRecords?: unknown[];
   qaPracticeRecords?: Array<{ questions?: unknown[] }>;
   recommendations?: string;
+  noteCount?: number;
+  practiceCount?: number;
+  questionsDone?: number;
+  questionsTotal?: number;
+  hasRecommendations?: boolean;
 }
 interface CloudQuote {
   text: string;
@@ -303,13 +306,11 @@ function bookProgress(book: CloudBook): {
         Boolean((question as { userAnswer?: unknown }).userAnswer)),
   ).length;
   return {
-    notes: Array.isArray(book.noteRecords) ? book.noteRecords.length : 0,
-    practice: Array.isArray(book.practiceRecords)
-      ? book.practiceRecords.length
-      : 0,
-    questionsDone,
-    questionsTotal: questions.length,
-    recommendations: Boolean(book.recommendations?.trim()),
+    notes: typeof book.noteCount === "number" ? book.noteCount : Array.isArray(book.noteRecords) ? book.noteRecords.length : 0,
+    practice: typeof book.practiceCount === "number" ? book.practiceCount : Array.isArray(book.practiceRecords) ? book.practiceRecords.length : 0,
+    questionsDone: typeof book.questionsDone === "number" ? book.questionsDone : questionsDone,
+    questionsTotal: typeof book.questionsTotal === "number" ? book.questionsTotal : questions.length,
+    recommendations: typeof book.hasRecommendations === "boolean" ? book.hasRecommendations : Boolean(book.recommendations?.trim()),
   };
 }
 
@@ -692,16 +693,7 @@ export default function AccountPage() {
   }, []);
 
   const loadRecycleBin = async (): Promise<void> => {
-    const response = await fetch("/api/account/recycle-bin/", {
-      credentials: "include",
-      cache: "no-store",
-    });
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      items?: RecycleBinItem[];
-    };
-    if (!response.ok) throw new Error(data.error || "无法读取回收站。");
-    setRecycleItems(Array.isArray(data.items) ? data.items : []);
+    setRecycleItems(await getRecycleBin());
   };
 
   useEffect(() => {
@@ -728,15 +720,14 @@ export default function AccountPage() {
         setProfileName(account.user?.displayName || "");
         setProfileAvatar(account.user?.avatarUrl || "");
         if (!account.user) return;
-        const [data, full, assistantResponse, memoryResponse, localSnapshot] =
+        // The account identity is enough to render the shell. Cloud panels fill
+        // in independently so database latency never blocks navigation.
+        setLoading(false);
+        const [data, remoteSettings, remoteBooks, localSnapshot] =
           await Promise.all([
             getUserDataSummary(),
-            getCloudData(),
-            fetch("/api/account/assistant-sessions/", {
-              credentials: "include",
-              cache: "no-store",
-            }).catch(() => null),
-            getAssistantMemories().catch(() => null),
+            getCloudSettings(),
+            getCloudBookSummaries(),
             inspectLocalMigration({ includeDismissed: true }),
           ]);
         setLocalMigration(localSnapshot);
@@ -747,11 +738,7 @@ export default function AccountPage() {
           setMigrationState(remoteMigration);
         }
         setCloudData(data);
-        const settings = (full as { settings?: unknown }).settings;
-        const normalizedSettings =
-          settings && typeof settings === "object"
-            ? (settings as Record<string, unknown>)
-            : null;
+        const normalizedSettings = remoteSettings;
         setCloudSettings(normalizedSettings);
         setPersonalizationEnabled(
           normalizedSettings?.personalizationAnalyticsEnabled !== false,
@@ -759,11 +746,6 @@ export default function AccountPage() {
         setAssistantMemoryEnabled(
           normalizedSettings?.assistantMemoryEnabled !== false,
         );
-        if (memoryResponse) setAssistantMemories(memoryResponse);
-        else
-          setAssistantMemoryError(
-            "长期记忆暂时无法读取，请检查账号服务数据库配置后重试。",
-          );
         const quoteList = normalizedSettings?.quotes;
         setQuotes(
           Array.isArray(quoteList)
@@ -777,32 +759,28 @@ export default function AccountPage() {
               )
             : [],
         );
-        if (assistantResponse?.ok) {
-          const assistantPayload = (await assistantResponse
-            .json()
-            .catch(() => ({}))) as { sessions?: CloudAssistantSession[] };
-          setAssistantSessions(
-            Array.isArray(assistantPayload.sessions)
-              ? assistantPayload.sessions
-              : [],
-          );
-        }
-        const books = (full as { books?: unknown }).books;
         setCloudBooks(
-          Array.isArray(books)
-            ? books
-                .filter((book): book is CloudBook =>
-                  Boolean(
-                    book &&
-                    typeof book === "object" &&
-                    typeof (book as CloudBook).id === "string" &&
-                    typeof (book as CloudBook).name === "string",
-                  ),
-                )
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-            : [],
+          remoteBooks as CloudBook[],
         );
-        await loadRecycleBin();
+        // Non-critical panels load after the account shell is visible. Their
+        // availability must not block the bookshelf, overview, or settings.
+        setLoading(false);
+        void Promise.all([
+          getRecycleBin().then(items => setRecycleItems(items)),
+          getAssistantSessions().then(sessions => setAssistantSessions(sessions.map(session => ({
+            sessionId: session.id,
+            title: session.title,
+            bookId: session.bookId || null,
+            data: session,
+            createdAt: new Date(session.createdAt).toISOString(),
+            updatedAt: new Date(session.updatedAt).toISOString(),
+          })))),
+          getAssistantMemories().then(items => setAssistantMemories(items)).catch(() => {
+            setAssistantMemoryError("长期记忆暂时无法读取，请稍后重试。");
+          }),
+        ]).catch(reason => {
+          setError(reason instanceof Error ? reason.message : "部分云端数据暂时无法读取。");
+        });
       })
       .catch((reason) =>
         setError(
@@ -1114,11 +1092,7 @@ export default function AccountPage() {
     }
     if (busy || !window.confirm(`删除会话“${session.title}”？`)) return;
     await runBusy(async () => {
-      const response = await fetch(
-        `/api/account/assistant-sessions/?sessionId=${encodeURIComponent(session.sessionId)}`,
-        { method: "DELETE", credentials: "include" },
-      );
-      if (!response.ok) throw new Error("会话删除失败。");
+      await deleteAssistantSession(session.sessionId);
       setAssistantSessions((current) =>
         current.filter((item) => item.sessionId !== session.sessionId),
       );
@@ -1285,23 +1259,7 @@ export default function AccountPage() {
           : current,
       );
       setCloudData(await getUserDataSummary());
-      setCloudBooks([]);
-      const full = await getCloudData();
-      const books = (full as { books?: unknown }).books;
-      setCloudBooks(
-        Array.isArray(books)
-          ? books
-              .filter((book): book is CloudBook =>
-                Boolean(
-                  book &&
-                  typeof book === "object" &&
-                  typeof (book as CloudBook).id === "string" &&
-                  typeof (book as CloudBook).name === "string",
-                ),
-              )
-              .sort((a, b) => b.updatedAt - a.updatedAt)
-          : [],
-      );
+      setCloudBooks((await getCloudBookSummaries()) as CloudBook[]);
       setMessage("本机历史数据已迁移到云端，本机用户数据已清理。");
     } catch (reason) {
       setError(
@@ -2281,8 +2239,7 @@ export default function AccountPage() {
                   </button>
                 </div>
                 <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
-                  历史数据迁移入口开放至 2026 年 10 月 1
-                  日；点击“不再提醒”不会删除本机数据。
+                  点击“不再提醒”不会删除本机数据。
                 </p>
               </div>
             )}

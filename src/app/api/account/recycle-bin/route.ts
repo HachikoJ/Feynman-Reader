@@ -14,7 +14,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (!id) return NextResponse.json({ error: '未登录。' }, { status: 401 })
     const store = getPersistence()
     if (!store.listRecycleBin) return NextResponse.json({ error: '数据库尚未启用回收站。' }, { status: 501 })
-    await store.purgeRecycleBin?.(id)
     const items = await store.listRecycleBin(id)
     // Keep server retention timestamps private; the browser only needs the
     // user's content and the time it was moved to the recycle bin.
@@ -28,6 +27,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       restoreUntil: new Date(new Date(item.deletedAt).getTime() + 7 * 86400000).toISOString(),
     })) }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
+    console.error('[account/recycle-bin] read failed', {
+      code: error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code || '') : '',
+      message: error instanceof Error ? error.message : String(error),
+    })
     if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     return NextResponse.json({ error: '读取回收站失败。' }, { status: 500 })
   }

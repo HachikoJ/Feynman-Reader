@@ -5,13 +5,18 @@ import { addAIUsageRecord, getSettings } from './store'
 import { buildDocumentContext, DEFAULT_DOCUMENT_CONTEXT_CHARS } from './documentContext'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY, AIRequestContext, aiRequestManager } from './aiRequestManager'
 import { getTokendanceRecoveryAction, TOKENDANCE_GATEWAY_URL, TOKENDANCE_APP_URL, tokendanceRecoveryError } from './tokendance'
-import { isDeepSeekOfficialSupported, isOfficialDeepSeekProvider } from './aiProviderPolicy'
+import { isDeepSeekOfficialEnabled, isOfficialDeepSeekProvider, isTokenDanceEnabled, type ConfiguredAIProvider } from './aiProviderPolicy'
 
-// TokenDance currently lists the 0731 build as the official DeepSeek V4 Flash endpoint.
-export const DEEPSEEK_MODEL = 'deepseek-v4-flash-0731'
+// TokenDance currently exposes the 0731 build, while the official DeepSeek
+// API accepts the shorter V4 Flash model name.
+export const TOKENDANCE_DEEPSEEK_MODEL = 'deepseek-v4-flash-0731'
+export const OFFICIAL_DEEPSEEK_MODEL = 'deepseek-v4-flash'
+// Backwards-compatible alias for callers and stored usage records.
+export const DEEPSEEK_MODEL = TOKENDANCE_DEEPSEEK_MODEL
 export const AI_DATA_CONSENT_REQUIRED = 'AI_DATA_CONSENT_REQUIRED'
 export const DEEPSEEK_API_KEY_INVALID = 'DEEPSEEK_API_KEY_INVALID'
 export const DEEPSEEK_OFFICIAL_CHANNEL_SUNSET = 'DEEPSEEK_OFFICIAL_CHANNEL_SUNSET'
+export const TOKENDANCE_CHANNEL_DISABLED = 'TOKENDANCE_CHANNEL_DISABLED'
 export const AI_CONTEXT_LIMIT_EXCEEDED = 'AI_CONTEXT_LIMIT_EXCEEDED'
 export const AI_OUTPUT_INCOMPLETE = 'AI_OUTPUT_INCOMPLETE'
 
@@ -148,9 +153,11 @@ function isTokendanceStructuredOutputUnsupported(error: unknown): boolean {
 export async function requestDeepSeekCompletion(
   client: OpenAI,
   params: CompletionParams,
-  requestContext: AIRequestContext
+  requestContext: AIRequestContext,
+  provider?: ConfiguredAIProvider
 ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
   let requestParams = params
+  const resolvedProvider = provider ?? getSettings().aiProvider
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let response: OpenAI.Chat.Completions.ChatCompletion
@@ -162,12 +169,12 @@ export async function requestDeepSeekCompletion(
       // Some TokenDance gateway deployments do not expose OpenAI's optional
       // structured-output parameter. The prompt still requires JSON, so retry
       // once without only that optional field instead of failing the task.
-      if (getSettings().aiProvider === 'tokendance' && requestParams.response_format && isTokendanceStructuredOutputUnsupported(error)) {
+      if (resolvedProvider === 'tokendance' && requestParams.response_format && isTokendanceStructuredOutputUnsupported(error)) {
         const { response_format: _responseFormat, ...fallbackParams } = requestParams
         requestParams = fallbackParams as CompletionParams
         continue
       }
-      const recoveryAction = getSettings().aiProvider === 'tokendance'
+      const recoveryAction = resolvedProvider === 'tokendance'
         ? getTokendanceRecoveryAction(error)
         : null
       if (recoveryAction) throw tokendanceRecoveryError(recoveryAction, error)
@@ -181,7 +188,7 @@ export async function requestDeepSeekCompletion(
       if ([promptTokens, completionTokens, totalTokens].every(value => Number.isInteger(value) && value >= 0)) {
         addAIUsageRecord({
           task: requestContext.task,
-          model: response.model || DEEPSEEK_MODEL,
+          model: response.model || String(requestParams.model || (resolvedProvider === 'deepseek' ? OFFICIAL_DEEPSEEK_MODEL : TOKENDANCE_DEEPSEEK_MODEL)),
           promptTokens,
           completionTokens,
           totalTokens,
@@ -362,13 +369,14 @@ export function parsePracticeEvaluation(response: string): PracticeEvaluation {
 
 export function withDeepSeekDefaults<
   T extends Omit<OpenAI.Chat.Completions.ChatCompletionCreateParams, 'model'>
->(params: T): T & {
-  model: typeof DEEPSEEK_MODEL
+>(params: T, provider?: 'tokendance' | 'deepseek'): T & {
+  model: typeof TOKENDANCE_DEEPSEEK_MODEL | typeof OFFICIAL_DEEPSEEK_MODEL
   thinking: { type: 'disabled' }
 } {
+  const resolvedProvider = provider ?? getSettings().aiProvider ?? 'tokendance'
   return {
     ...params,
-    model: DEEPSEEK_MODEL,
+    model: resolvedProvider === 'deepseek' ? OFFICIAL_DEEPSEEK_MODEL : TOKENDANCE_DEEPSEEK_MODEL,
     thinking: { type: 'disabled' }
   }
 }
@@ -448,17 +456,26 @@ export async function createDeepSeekClient(apiKey: string, provider?: 'tokendanc
   }
 
   const resolvedProvider = provider ?? settings.aiProvider
-  if (!isDeepSeekOfficialSupported() && isOfficialDeepSeekProvider(resolvedProvider)) {
+  if (resolvedProvider === 'tokendance' && !isTokenDanceEnabled()) {
+    throw new Error(TOKENDANCE_CHANNEL_DISABLED)
+  }
+  if (!isDeepSeekOfficialEnabled() && isOfficialDeepSeekProvider(resolvedProvider)) {
     throw new Error(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
   }
 
   const useTokendance = resolvedProvider === 'tokendance'
-  const useServerProxy = useTokendance && typeof window !== 'undefined'
+  const useServerProxy = typeof window !== 'undefined' && (useTokendance || apiKey === 'server-managed')
   const serverProxyBaseUrl = useServerProxy ? browserAiProxyBaseUrl(window.location.origin) : ''
+  const defaultHeaders = useTokendance
+    ? {
+        'X-App-URL': TOKENDANCE_APP_URL,
+        ...(useServerProxy ? { 'X-Feynman-AI-Provider': resolvedProvider } : {}),
+      }
+    : (useServerProxy ? { 'X-Feynman-AI-Provider': resolvedProvider } : undefined)
   return new OpenAI({
     baseURL: useServerProxy ? serverProxyBaseUrl : (useTokendance ? TOKENDANCE_GATEWAY_URL : 'https://api.deepseek.com'),
     apiKey: useServerProxy ? 'server-managed' : apiKey,
-    ...(useTokendance ? { defaultHeaders: { 'X-App-URL': TOKENDANCE_APP_URL } } : {}),
+    ...(defaultHeaders ? { defaultHeaders } : {}),
     ...(!useServerProxy && useTokendance ? { fetch: createTokendanceFetch(), maxRetries: 0 } : {}),
     dangerouslyAllowBrowser: true
   })
@@ -470,7 +487,10 @@ export function browserAiProxyBaseUrl(origin: string): string {
 
 export async function validateDeepSeekApiKey(apiKey: string, client?: OpenAI, provider?: 'tokendance' | 'deepseek'): Promise<void> {
   const resolvedProvider = provider ?? getSettings().aiProvider
-  if (!isDeepSeekOfficialSupported() && isOfficialDeepSeekProvider(resolvedProvider)) {
+  if (resolvedProvider === 'tokendance' && !isTokenDanceEnabled()) {
+    throw new Error(TOKENDANCE_CHANNEL_DISABLED)
+  }
+  if (!isDeepSeekOfficialEnabled() && isOfficialDeepSeekProvider(resolvedProvider)) {
     throw new Error(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
   }
   if (resolvedProvider === 'tokendance') {

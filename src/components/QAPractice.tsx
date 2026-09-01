@@ -301,7 +301,6 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
         throw new Error('AI returned an invalid question set')
       }
 
-      await flushPendingStoreWrites()
       const savedRecord = addQAPracticeRecord(book.id, {
         sessionId: bestTeachingRecord!.sessionId!,
         questions: questions.map(q => ({
@@ -394,7 +393,6 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
       
       const allPassed = isQAPracticeRecordComplete(updatedQuestions)
       
-      await flushPendingStoreWrites()
       updateQAPracticeRecord(book.id, currentRecord.id, {
         questions: updatedQuestions,
         allPassed
@@ -446,7 +444,6 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
     setDeletingRecordIds(new Set(deletingRecordIdsRef.current))
     setErrorMessage(null)
     try {
-      await flushPendingStoreWrites()
       deleteQAPracticeRecord(book.id, recordId)
       await flushPendingStoreWrites()
       const records = getQAPracticeRecords(book.id)

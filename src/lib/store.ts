@@ -120,6 +120,15 @@ export interface BookTag {
   category: string         // 分类，如 "社科"、"文学"、"科技"
 }
 
+export interface BookAnalysisTask {
+  status: 'running' | 'completed' | 'failed'
+  completedPhaseIds: string[]
+  currentPhaseId?: string
+  startedAt: number
+  updatedAt: number
+  error?: string
+}
+
 export interface Book {
   id: string
   name: string
@@ -147,6 +156,10 @@ export interface Book {
   isSample?: boolean
   /** Allows bundled sample content to be refreshed without touching user books. */
   sampleDataVersion?: number
+  /** Internal marker for the lightweight cloud bookshelf snapshot. */
+  _summaryOnly?: boolean
+  /** Persisted state for resumable six-phase AI analysis. */
+  analysisTask?: BookAnalysisTask
 }
 
 export interface CustomQuote {
@@ -259,6 +272,21 @@ function clearPersistenceErrors(scope?: string): void {
   }
 }
 
+function clearTransientCloudErrors(): void {
+  const next = persistenceErrors.filter(entry => {
+    if (!entry.scope.startsWith('cloud-')) return true
+    const error = entry.error as PersistenceErrorInfo
+    return error.code === 'payload-too-large' || error.code === 'auth' || error.retryable === false
+  })
+  if (next.length === persistenceErrors.length) return
+  persistenceErrors = next
+  if (persistenceErrors.length === 0) {
+    persistenceErrorListeners.forEach(listener => {
+      try { listener(null) } catch (listenerError) { logger.error('Persistence status listener failed:', listenerError) }
+    })
+  }
+}
+
 async function fetchWithRetry(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -328,6 +356,7 @@ function enqueueCloudSnapshot(): void {
     })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端保存失败。')
     clearPersistenceErrors('cloud-snapshot')
+    clearTransientCloudErrors()
   }).catch(error => {
     reportPersistenceError('cloud-snapshot', error)
     logger.error('Failed to persist cloud snapshot:', error)
@@ -372,6 +401,7 @@ function queueCloudSettings(settings: AppSettings): void {
     })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端设置保存失败。')
     clearPersistenceErrors('cloud-settings')
+    clearTransientCloudErrors()
   }).catch(error => {
     reportPersistenceError('cloud-settings', error)
     logger.error('Failed to persist cloud settings:', error)
@@ -383,9 +413,28 @@ function queueCloudBookDeletion(id: string): void {
     const response = await fetchWithRetry(`/api/account/books/${encodeURIComponent(id)}/`, { method: 'DELETE', credentials: 'include' })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍删除失败。')
     clearPersistenceErrors('cloud-book')
+    clearTransientCloudErrors()
   }).catch(error => {
     reportPersistenceError('cloud-book', error)
     logger.error('Failed to delete cloud book:', error)
+  })
+}
+
+function queueCloudBookUpsert(book: Book): void {
+  const payload = cloneForStorage(book)
+  cloudWriteQueue = cloudWriteQueue.then(async () => {
+    const response = await fetchWithRetry('/api/account/books/', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ book: payload }),
+    })
+    if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍保存失败。')
+    clearPersistenceErrors('cloud-book')
+    clearTransientCloudErrors()
+  }).catch(error => {
+    reportPersistenceError('cloud-book', error)
+    logger.error('Failed to persist cloud book:', error)
   })
 }
 
@@ -397,6 +446,7 @@ function queueCloudBookRestore(id: string): void {
     })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍恢复失败。')
     clearPersistenceErrors('cloud-book')
+    clearTransientCloudErrors()
   }).catch(error => {
     reportPersistenceError('cloud-book', error)
     logger.error('Failed to restore cloud book:', error)
@@ -425,6 +475,17 @@ function legacyLearningSessionId(bookId: string): string {
 }
 
 function normalizeBookLearningState(book: Book): Book {
+  if (book._summaryOnly) {
+    return {
+      ...book,
+      currentPhase: clampCompletedPhaseCount(book.currentPhase, 6),
+      bestScore: validScore(book.bestScore),
+      noteRecords: [],
+      responses: {},
+      practiceRecords: [],
+      qaPracticeRecords: []
+    }
+  }
   const legacySessionId = legacyLearningSessionId(book.id)
   const practiceRecords = (book.practiceRecords || []).map(record => {
     const overall = validScore(record.scores?.overall)
@@ -488,7 +549,7 @@ function normalizeBookLearningState(book: Book): Book {
   return { ...normalized, bestScore, status }
 }
 
-export async function initializeStore(): Promise<void> {
+export async function initializeStore(options: { authenticated?: boolean } = {}): Promise<void> {
   if (typeof window === 'undefined') return
   if (initializationPromise) return initializationPromise
 
@@ -496,33 +557,44 @@ export async function initializeStore(): Promise<void> {
     // Logged-in production users use the server-backed snapshot. IndexedDB is
     // intentionally skipped here; it is only read by the one-time migration flow.
     if (process.env.NODE_ENV !== 'test' && !isLocalAuthBypassEnabled()) {
-      const accountResponse = await fetchWithRetry('/api/auth/me/', { credentials: 'include', cache: 'no-store' }, 3, {
-        retryStatuses: new Set([401, 408, 425, 429, 500, 502, 503, 504]),
-      })
-      if (accountResponse.status === 401 || accountResponse.status === 403) {
+      let authenticated = options.authenticated
+      if (authenticated === undefined) {
+        const accountResponse = await fetchWithRetry('/api/auth/me/', { credentials: 'include', cache: 'no-store' }, 3, {
+          retryStatuses: new Set([408, 425, 429, 500, 502, 503, 504]),
+        })
+        if (accountResponse.status === 401 || accountResponse.status === 403) {
+          authenticated = false
+        } else {
+          if (accountResponse.status === 503) throw new Error('云端数据库暂不可用，请稍后重试。')
+          if (!accountResponse.ok) throw new Error('登录状态已失效，请重新登录。')
+          const account = await accountResponse.json() as { user?: unknown }
+          authenticated = Boolean(account.user)
+        }
+      }
+      if (!authenticated) {
         cloudMode = false
       } else {
-        if (accountResponse.status === 503) throw new Error('云端数据库暂不可用，请稍后重试。')
-        if (!accountResponse.ok) throw new Error('登录状态已失效，请重新登录。')
-        const account = await accountResponse.json() as { user?: unknown }
-        if (!account.user) {
-          cloudMode = false
-        } else {
-          const cloudResponse = await fetchWithRetry('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' }, 3, {
-            retryStatuses: new Set([401, 408, 425, 429, 500, 502, 503, 504]),
-          })
+          const [cloudResponse, keyStatus] = await Promise.all([
+            fetchWithRetry('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' }, 3, {
+              retryStatuses: new Set([408, 425, 429, 500, 502, 503, 504]),
+            }),
+            fetch('/api/account/api-key/', { credentials: 'include', cache: 'no-store' }).catch(() => null),
+          ])
           if (cloudResponse.status === 401 || cloudResponse.status === 403) throw new Error('登录状态已失效，请重新登录。')
-          if (!cloudResponse.ok) throw new Error('无法读取云端学习数据。')
+          if (cloudResponse.status === 503) throw new Error('云端数据库暂时繁忙，请稍后重试。')
+          if (!cloudResponse.ok) throw new Error(`无法读取云端学习数据（HTTP ${cloudResponse.status}）。`)
           const cloudPayload = await cloudResponse.json()
           const normalized = normalizeImportData(cloudPayload)
           if (!normalized.valid) throw new Error(normalized.error)
           const data = normalized.data
           cloudMode = true
-          let serverKeyConfigured = false
-          try {
-            const keyStatus = await fetch('/api/account/api-key/', { credentials: 'include', cache: 'no-store' })
-            serverKeyConfigured = keyStatus.ok && Boolean((await keyStatus.json() as { configured?: unknown }).configured)
-          } catch { /* account data remains usable when the key status endpoint is unavailable */ }
+          const keyPayload = keyStatus?.ok === true
+            ? await keyStatus.json().catch(() => ({})) as { configured?: unknown; providers?: { tokendance?: unknown; deepseek?: unknown } }
+            : {}
+          const configuredProvider = data.settings.aiProvider === 'deepseek' ? 'deepseek' : 'tokendance'
+          const serverKeyConfigured = Boolean(keyPayload.providers
+            ? keyPayload.providers[configuredProvider]
+            : keyPayload.configured)
           settingsCache = migrateToTokenDanceAfterSunset({ ...DEFAULT_SETTINGS, ...data.settings, apiKey: serverKeyConfigured ? SERVER_MANAGED_API_KEY : '' })
           booksCache = data.books.filter(book => !book.isSample && book.id !== 'sample-the-kite-runner').map(normalizeBookLearningState)
           if (booksCache.length === 0) booksCache = [createSampleBook()]
@@ -535,7 +607,6 @@ export async function initializeStore(): Promise<void> {
           bookListsCache = normalizedLists.data
           bookRelationsCache = normalizedRelations.data
           return
-        }
       }
     }
 
@@ -623,7 +694,7 @@ export function getSettings(): AppSettings {
 
 export async function reloadSettingsFromPersistence(): Promise<AppSettings> {
   if (cloudMode) {
-    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端设置。')
     const payload = await response.json()
     const normalized = normalizeImportData(payload)
@@ -631,7 +702,13 @@ export async function reloadSettingsFromPersistence(): Promise<AppSettings> {
     let serverKeyConfigured = false
     try {
       const keyStatus = await fetch('/api/account/api-key/', { credentials: 'include', cache: 'no-store' })
-      serverKeyConfigured = keyStatus.ok && Boolean((await keyStatus.json() as { configured?: unknown }).configured)
+      if (keyStatus.ok) {
+        const keyPayload = await keyStatus.json() as { configured?: unknown; providers?: { tokendance?: unknown; deepseek?: unknown } }
+        const configuredProvider = normalized.data.settings.aiProvider === 'deepseek' ? 'deepseek' : 'tokendance'
+        serverKeyConfigured = Boolean(keyPayload.providers
+          ? keyPayload.providers[configuredProvider]
+          : keyPayload.configured)
+      }
     } catch { /* preserve settings when key status cannot be read */ }
     settingsCache = migrateToTokenDanceAfterSunset({ ...DEFAULT_SETTINGS, ...normalized.data.settings, apiKey: serverKeyConfigured ? SERVER_MANAGED_API_KEY : '' })
     return settingsCache
@@ -899,7 +976,7 @@ export function saveBooks(books: Book[]): void {
 function persistBook(book: Book): void {
   const snapshot = cloneForStorage(book)
   if (cloudMode) {
-    queueCloudSnapshot()
+    queueCloudBookUpsert(snapshot)
     return
   }
   booksWriteQueue = booksWriteQueue
@@ -916,7 +993,7 @@ function persistBook(book: Book): void {
 function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
   const snapshot = cloneForStorage(book)
   if (cloudMode) {
-    queueCloudSnapshot()
+    queueCloudBookUpsert(snapshot)
     return
   }
   booksWriteQueue = booksWriteQueue
@@ -1099,13 +1176,28 @@ export function getBook(id: string): Book | undefined {
 
 export async function reloadBookFromPersistence(id: string): Promise<Book | undefined> {
   if (cloudMode) {
-    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    const response = await fetch(`/api/account/books/${encodeURIComponent(id)}/`, { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端书籍。')
-    const normalized = normalizeImportData(await response.json())
+    const payload = await response.json() as { book?: unknown }
+    const normalized = normalizeImportData({
+      version: DATA_VERSION,
+      exportDate: Date.now(),
+      settings: {},
+      books: [payload.book],
+      aiUsageRecords: [],
+      bookLists: [],
+      bookRelations: [],
+      assistantSessions: [],
+      assistantMemories: [],
+    })
     if (!normalized.valid) throw new Error(normalized.error)
-    const remote = normalized.data.books.filter(book => !book.isSample && book.id !== SAMPLE_BOOK_ID).map(normalizeBookLearningState)
-    booksCache = remote.length > 0 ? remote : [createSampleBook()]
-    return booksCache.find(book => book.id === id)
+    const [remoteBook] = normalized.data.books
+    if (!remoteBook || remoteBook.id === SAMPLE_BOOK_ID || remoteBook.isSample) return undefined
+    const normalizedBook = normalizeBookLearningState(remoteBook)
+    booksCache = booksCache.some(book => book.id === id)
+      ? booksCache.map(book => book.id === id ? normalizedBook : book)
+      : [normalizedBook, ...booksCache]
+    return normalizedBook
   }
   await booksWriteQueue
   const storedBook = await getIndexedDBBook(id)
@@ -1125,7 +1217,7 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
 
 export async function reloadBooksFromPersistence(): Promise<Book[]> {
   if (cloudMode) {
-    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端书架。')
     const normalized = normalizeImportData(await response.json())
     if (!normalized.valid) throw new Error(normalized.error)
@@ -1141,7 +1233,7 @@ export async function reloadBooksFromPersistence(): Promise<Book[]> {
 
 export async function reloadBookOrganizationFromPersistence(): Promise<BookOrganizationData> {
   if (cloudMode) {
-    const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
+    const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端书单。')
     const normalized = normalizeImportData(await response.json())
     if (!normalized.valid) throw new Error(normalized.error)

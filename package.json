@@ -20,6 +20,9 @@
     "purge:recycle-bin": "node --experimental-strip-types scripts/purge-recycle-bin.mjs",
     "migrate:local-postgres": "bash scripts/migrate-to-local-postgres.sh",
     "migrate:account-merge": "node scripts/apply-account-merge-migration.mjs",
+    "migrate:admin": "node scripts/apply-admin-migration.mjs",
+    "verify:admin": "node scripts/verify-admin-security.mjs",
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
     "test:all": "npm run test && npm run test:e2e"
   },
   "dependencies": {
@@ -42,6 +45,7 @@
     "mermaid": "^11.17.2",
     "next": "^16.3.3",
     "openai": "^4.52.0",
+    "otpauth": "^9.5.1",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",

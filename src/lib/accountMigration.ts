@@ -7,7 +7,6 @@ import { ASSISTANT_MEMORY_METADATA_KEY, type AssistantMemory } from './assistant
 const MIGRATION_MARKER = 'feynman-cloud-migration-completed'
 const MIGRATION_DISMISSED_MARKER = 'feynman-cloud-migration-dismissed'
 const MIGRATION_DETECTED_AT = 'feynman-cloud-migration-detected-at'
-const MIGRATION_CUTOFF_AT = Date.parse('2026-10-01T00:00:00+08:00')
 
 export interface LocalMigrationSnapshot {
   hasData: boolean
@@ -82,7 +81,9 @@ export async function inspectLocalMigration(options: { includeDismissed?: boolea
   return {
     hasData: true,
     detectedAt,
-    deadlineAt: MIGRATION_CUTOFF_AT,
+    // The server supplies the migration window after Watcha is enabled. Do
+    // not embed a calendar cutoff in browser data.
+    deadlineAt: null,
     payload,
     books: userBooks.length,
     aiUsageRecords: userUsage.length,

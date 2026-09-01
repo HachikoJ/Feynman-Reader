@@ -1,6 +1,6 @@
 import { indexedDB, initDB } from './db'
 import { createLocalId } from './localId'
-import { isLocalAuthBypassEnabled } from './accountClient'
+import { getAccount, isLocalAuthBypassEnabled } from './accountClient'
 
 export type AssistantMemoryCategory = 'preference' | 'learning-style' | 'goal' | 'workflow'
 
@@ -18,6 +18,7 @@ const MEMORY_KEY = ASSISTANT_MEMORY_METADATA_KEY
 const MAX_MEMORIES = 100
 const MAX_MEMORY_CHARS = 500
 let memoryWriteQueue: Promise<void> = Promise.resolve()
+let memoryReadRequest: Promise<AssistantMemory[]> | null = null
 type AccountMode = 'authenticated' | 'anonymous'
 
 function enqueueMemoryWrite(task: () => Promise<void>): Promise<void> {
@@ -31,17 +32,14 @@ function enqueueMemoryWrite(task: () => Promise<void>): Promise<void> {
  */
 async function accountMode(): Promise<AccountMode> {
   if (process.env.NODE_ENV === 'test' || typeof window === 'undefined' || isLocalAuthBypassEnabled()) return 'anonymous'
-  let response: Response
   try {
-    response = await fetch('/api/auth/me/', { credentials: 'include', cache: 'no-store' })
-  } catch {
+    const account = await getAccount()
+    if (!account.configured) throw new Error('ASSISTANT_MEMORY_DATABASE_UNAVAILABLE')
+    return account.user ? 'authenticated' : 'anonymous'
+  } catch (error) {
+    if (error instanceof Error && error.message === 'ASSISTANT_MEMORY_DATABASE_UNAVAILABLE') throw error
     throw new Error('ASSISTANT_MEMORY_ACCOUNT_LOOKUP_FAILED')
   }
-  if (response.status === 401) return 'anonymous'
-  if (response.status === 503) throw new Error('ASSISTANT_MEMORY_DATABASE_UNAVAILABLE')
-  if (!response.ok) throw new Error('ASSISTANT_MEMORY_ACCOUNT_LOOKUP_FAILED')
-  const payload = await response.json().catch(() => null) as { user?: { id?: unknown } } | null
-  return typeof payload?.user?.id === 'string' && payload.user.id ? 'authenticated' : 'anonymous'
 }
 
 function apiError(response: Response, fallback: string): Promise<Error> {
@@ -154,9 +152,11 @@ async function readCloudMemories(): Promise<AssistantMemory[]> {
 }
 
 export async function getAssistantMemories(): Promise<AssistantMemory[]> {
-  const mode = await accountMode()
-  if (mode === 'anonymous') return readLocalMemories()
-  return readCloudMemories()
+  if (memoryReadRequest) return clone(await memoryReadRequest)
+  memoryReadRequest = accountMode().then(mode => (
+    mode === 'anonymous' ? readLocalMemories() : readCloudMemories()
+  )).finally(() => { memoryReadRequest = null })
+  return clone(await memoryReadRequest)
 }
 
 export async function addAssistantMemory(input: Omit<AssistantMemory, 'id' | 'createdAt' | 'updatedAt'>): Promise<AssistantMemory> {

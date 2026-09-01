@@ -188,11 +188,15 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
 TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.deline.top/api/auth/tokendance/callback
 FEYNMAN_COOKIE_SECURE=true
 FEYNMAN_WATCHA_OAUTH_ENABLED=false
+FEYNMAN_TOKENDANCE_ENABLED=false
+FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=true
 ```
 
-如果使用远程 PostgreSQL，按编号执行适用的 schema 迁移；如果迁移到同一台服务器的本机 PostgreSQL，执行仓库提供的 `scripts/migrate-to-local-postgres.sh`，它会自动完成备份、停写导出、恢复、表计数校验、环境切换、健康检查和回收站定时清理。常规部署会幂等执行 `010_account_merge.sql`。备案期间保持 `FEYNMAN_WATCHA_OAUTH_ENABLED=false`；审核通过后改为 `true` 并完整运行 `deploy.sh`，即可切换为仅观猹登录并开放一次性原账号迁移。密钥和连接串不放入 GitHub。
+如果使用远程 PostgreSQL，按编号执行适用的 schema 迁移；如果迁移到同一台服务器的本机 PostgreSQL，执行仓库提供的 `scripts/migrate-to-local-postgres.sh`，它会自动完成备份、停写导出、恢复、表计数校验、环境切换、健康检查和回收站定时清理。常规部署会幂等执行 `010_account_merge.sql`。备案期间使用上面三项审核期组合；备案通过并恢复域名后，改为 `FEYNMAN_WATCHA_OAUTH_ENABLED=true`、`FEYNMAN_TOKENDANCE_ENABLED=true`、`FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=false`，再完整运行 `deploy.sh`，即可切换为仅观猹登录、仅 TokenDance AI，并开放原账号迁移。密钥和连接串不放入 GitHub。
 
-DeepSeek 官方配置渠道会在 2026 年 10 月 1 日下线；请提前保存相关配置，届时旧官方 Key 不再支持。根据 TokenDance 官方确认，`v4flash0731` 峰时火山方舟端口提供限时优惠，最高约可省 20%，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用线路、时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准。
+每次部署会自动执行 `011_admin_security.sql` 并校验观猹主体唯一索引、管理员角色绑定和账号状态，不需要手动打开数据库工具执行 SQL。首次为 Wilson 的观猹账号绑定 TOTP 时，仍需在服务器本地执行一次 `npm run bootstrap:admin`；初始化步骤和安全边界见 [管理员看板文档](docs/admin-dashboard.md)。管理员权限不由前端字段、URL 参数或公开环境变量决定。
+
+AI 渠道由部署环境开关控制：备案期间可暂时隐藏 TokenDance 并保留官方 DeepSeek；备案完成后可同时恢复观猹登录和 TokenDance，并关闭官方 DeepSeek。已有 TokenDance 代码、配置和数据不会因临时隐藏而删除。根据 TokenDance 官方确认，`v4flash0731` 峰时火山方舟端口提供限时优惠，最高约可省 20%，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用线路、时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准。
 
 ## 技术栈
 

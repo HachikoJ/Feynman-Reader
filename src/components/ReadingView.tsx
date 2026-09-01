@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
-import { Book, NoteRecord, AppSettings, addQuoteFromSelection, updateBook, addPracticeRecord, deletePracticeRecord, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
+import { Book, BookAnalysisTask, NoteRecord, AppSettings, addQuoteFromSelection, updateBook, addPracticeRecord, deletePracticeRecord, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
 import { createLocalId } from '@/lib/localId'
 import { Language, t } from '@/lib/i18n'
 import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
@@ -43,6 +43,31 @@ interface Props {
 }
 
 type TabType = 'phase' | 'practice' | 'notes' | 'recommendations'
+
+type AnalysisTaskEvent = {
+  task: BookAnalysisTask
+  responses: Record<string, string>
+}
+
+const activeAnalysisTasks = new Map<string, AnalysisTaskEvent>()
+const analysisTaskListeners = new Map<string, Set<(event: AnalysisTaskEvent) => void>>()
+
+function publishAnalysisTask(bookId: string, event: AnalysisTaskEvent): void {
+  activeAnalysisTasks.set(bookId, event)
+  analysisTaskListeners.get(bookId)?.forEach(listener => listener(event))
+}
+
+function subscribeToAnalysisTask(bookId: string, listener: (event: AnalysisTaskEvent) => void): () => void {
+  const listeners = analysisTaskListeners.get(bookId) || new Set<(event: AnalysisTaskEvent) => void>()
+  listeners.add(listener)
+  analysisTaskListeners.set(bookId, listeners)
+  const current = activeAnalysisTasks.get(bookId)
+  if (current) listener(current)
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0) analysisTaskListeners.delete(bookId)
+  }
+}
 
 const phaseIconNames: Record<string, AppIconName> = {
   background: 'scan',
@@ -84,7 +109,7 @@ function aiTaskErrorMessage(error: unknown, lang: Language): string | null {
   }
   if (error.message === 'DEEPSEEK_OFFICIAL_CHANNEL_SUNSET') return deepSeekSunsetMessage(lang)
   if (error.message === AI_REQUEST_CANCELLED) {
-    return lang === 'zh' ? '已取消本次 AI 请求，尚未完成的内容不会保存。' : 'The AI request was cancelled. Incomplete content was not saved.'
+    return lang === 'zh' ? '本次 AI 请求已停止，已完成的阶段均已保存，可继续分析剩余阶段。' : 'The AI request stopped. Completed phases were saved; you can continue the remaining phases.'
   }
   if (error.message === AI_TASK_BUSY) {
     return lang === 'zh' ? '已有 AI 任务正在运行，请等待完成或先取消当前任务。' : 'Another AI task is running. Wait for it to finish or cancel it first.'
@@ -109,6 +134,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     )
   )
   const [responses, setResponses] = useState<Record<string, string>>(initialBook.responses || {})
+  const [analysisTask, setAnalysisTask] = useState<BookAnalysisTask | undefined>(initialBook.analysisTask)
   const [loading, setLoading] = useState(false)
   const [analyzingInBackground, setAnalyzingInBackground] = useState(false)
   const [client, setClient] = useState<OpenAI | null>(null)
@@ -138,6 +164,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const currentBookIdRef = useRef(book.id)
   const missingApiKey = apiKey.trim().length === 0
   const needsAiConfiguration = missingApiKey || aiConsentRequired || apiKeyInvalid
+  const analysisRunning = loading || analyzingInBackground || analysisTask?.status === 'running'
 
   const handleQuoteSelected = async (text: string) => {
     if (!isAuthenticated) {
@@ -187,7 +214,17 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   }, [book.id])
 
   useEffect(() => {
-    if (!isAuthenticated || !client || analyzingInBackground || !needsBookMetadataEnrichment(book) || metadataEnrichmentAttemptsRef.current.has(book.id)) return
+    setAnalysisTask(book.analysisTask)
+    return subscribeToAnalysisTask(book.id, event => {
+      setAnalysisTask(event.task)
+      setResponses(event.responses)
+      setBook(current => current.id === book.id ? { ...current, responses: event.responses, analysisTask: event.task } : current)
+      setAnalyzingInBackground(event.task.status === 'running')
+    })
+  }, [book.id, book.analysisTask])
+
+  useEffect(() => {
+    if (!isAuthenticated || !client || analyzingInBackground || analysisTask?.status === 'running' || !needsBookMetadataEnrichment(book) || metadataEnrichmentAttemptsRef.current.has(book.id)) return
 
     const targetBookId = book.id
     metadataEnrichmentAttemptsRef.current.add(targetBookId)
@@ -207,7 +244,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         const updates = buildMissingBookMetadataUpdates(latestBook, candidate)
 
         if (Object.keys(updates).length > 0) {
-          await flushPendingStoreWrites()
           updateBook(targetBookId, updates)
           await flushPendingStoreWrites()
           const persistedBook = getBook(targetBookId)
@@ -221,7 +257,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         if (currentBookIdRef.current === targetBookId) setMetadataEnrichmentStatus('error')
       }
     })()
-  }, [client, analyzingInBackground, book, isAuthenticated])
+  }, [client, analyzingInBackground, analysisTask?.status, book, isAuthenticated])
 
   // 确保打开书籍时页面滚动到顶部
   useEffect(() => {
@@ -230,6 +266,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   const handleAnalyzeAll = async () => {
     if (analysisInFlightRef.current) return
+    const activeTask = activeAnalysisTasks.get(book.id)
+    if (activeTask?.task.status === 'running') {
+      setAnalysisTask(activeTask.task)
+      setResponses(activeTask.responses)
+      setAnalyzingInBackground(true)
+      return
+    }
     if (!isAuthenticated) {
       requestLogin(lang === 'zh' ? '登录后才能使用 AI 分析，并保存你的学习记录。' : 'Sign in to use AI analysis and save your learning history.')
       return
@@ -253,6 +296,16 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     
     const systemPrompt = generateSystemPrompt(book.name, lang)
     const newResponses: Record<string, string> = { ...responses }
+    const now = Date.now()
+    const runningTask: BookAnalysisTask = {
+      status: 'running',
+      completedPhaseIds: LEARNING_PHASES.filter(phase => newResponses[phase.id]).map(phase => phase.id),
+      startedAt: analysisTask?.startedAt || now,
+      updatedAt: now,
+    }
+    publishAnalysisTask(book.id, { task: runningTask, responses: newResponses })
+    setAnalysisTask(runningTask)
+    updateBook(book.id, { analysisTask: runningTask })
     let hasMarkedAsReading = book.status !== 'unread'
 
     const failedPhases: string[] = []
@@ -261,11 +314,20 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     let interruptedMessage: string | null = null
 
     try {
+      await flushPendingStoreWrites()
       for (let i = 0; i < LEARNING_PHASES.length; i++) {
         const phase = LEARNING_PHASES[i]
         
         // 如果已经有结果了，跳过
         if (newResponses[phase.id]) continue
+
+        const phaseTask: BookAnalysisTask = {
+          ...runningTask,
+          currentPhaseId: phase.id,
+          updatedAt: Date.now(),
+        }
+        publishAnalysisTask(book.id, { task: phaseTask, responses: newResponses })
+        setAnalysisTask(phaseTask)
         
         try {
           const prompt = generatePhasePrompt(book.name, phase.id, lang)
@@ -277,15 +339,25 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           })
           newResponses[phase.id] = response
 
-          await flushPendingStoreWrites()
+          const completedTask: BookAnalysisTask = {
+            status: 'running',
+            completedPhaseIds: LEARNING_PHASES.filter(item => newResponses[item.id]).map(item => item.id),
+            startedAt: runningTask.startedAt,
+            updatedAt: Date.now(),
+            ...(i + 1 < LEARNING_PHASES.length ? { currentPhaseId: LEARNING_PHASES[i + 1].id } : {}),
+          }
+
           updateBook(book.id, {
             responses: { ...newResponses },
+            analysisTask: completedTask,
             ...(!hasMarkedAsReading ? { status: 'reading' as const } : {})
           })
           await flushPendingStoreWrites()
           const persistedBook = getBook(book.id)
           if (persistedBook) setBook(persistedBook)
           setResponses({ ...newResponses })
+          setAnalysisTask(completedTask)
+          publishAnalysisTask(book.id, { task: completedTask, responses: { ...newResponses } })
           hasMarkedAsReading = true
         } catch (error) {
           const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
@@ -334,12 +406,43 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           ? `${failedPhases.join('、')}分析失败，已成功的阶段已保存，可点击重试继续补齐。`
           : `${failedPhases.join(', ')} failed. Successful phases were saved; retry to complete the missing phases.`)
       }
+      const finalError = interruptedMessage || (authenticationFailed
+        ? (lang === 'zh' ? '当前 TokenDance API Key 无效或已失效，请前往设置重新授权。' : 'The current TokenDance API key is invalid or expired. Reauthorize it in Settings.')
+        : contextLimitExceeded
+          ? (lang === 'zh' ? '文档上下文仍然过长，系统已自动缩减后重试但未成功。' : 'The document context is still too long after automatic reduction.')
+          : failedPhases.length > 0
+            ? (lang === 'zh' ? `${failedPhases.join('、')}分析失败，请点击继续分析。` : `${failedPhases.join(', ')} failed. Click continue to retry.`)
+            : null)
+      const finalTask: BookAnalysisTask = {
+        status: finalError ? 'failed' : 'completed',
+        completedPhaseIds: LEARNING_PHASES.filter(item => newResponses[item.id]).map(item => item.id),
+        startedAt: runningTask.startedAt,
+        updatedAt: Date.now(),
+        ...(finalError ? { error: finalError } : {}),
+      }
+      updateBook(book.id, { responses: { ...newResponses }, analysisTask: finalTask })
+      await flushPendingStoreWrites()
+      setAnalysisTask(finalTask)
+      publishAnalysisTask(book.id, { task: finalTask, responses: { ...newResponses } })
     } finally {
       analysisInFlightRef.current = false
       setLoading(false)
       setAnalyzingInBackground(false)
+      if (activeAnalysisTasks.get(book.id)?.task.status !== 'running') activeAnalysisTasks.delete(book.id)
     }
   }
+
+  useEffect(() => {
+    if (!client || !isAuthenticated || analysisTask?.status !== 'running' || analysisInFlightRef.current) return
+    if (activeAnalysisTasks.get(book.id)?.task.status === 'running') {
+      setAnalyzingInBackground(true)
+      return
+    }
+    void handleAnalyzeAll()
+    // The callback intentionally uses the latest client, book, and settings;
+    // the persisted task status is the only resume trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, isAuthenticated, analysisTask?.status, book.id])
 
   const scrollToReadingAnchor = (target: React.RefObject<HTMLDivElement | null>) => {
     const scroll = () => target.current?.scrollIntoView({
@@ -360,6 +463,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     setCurrentPhase(idx)
     scrollToReadingAnchor(phaseContentRef)
   }
+
+  const visibleAnalysisError = analysisError || analysisTask?.error || null
 
   const handleNextPhase = () => {
     if (currentPhase < LEARNING_PHASES.length - 1) {
@@ -383,7 +488,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     setSavingProgress(true)
     setAnalysisError(null)
     try {
-      await flushPendingStoreWrites()
       if (newProgress !== completedCount) updateBook(book.id, { currentPhase: newProgress })
       await flushPendingStoreWrites()
       const persistedBook = getBook(book.id)
@@ -472,7 +576,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       }
 
       try {
-        await flushPendingStoreWrites()
         // addPracticeRecord 会自动检查并更新状态
         addPracticeRecord(book.id, {
           sessionId,
@@ -518,7 +621,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     practiceDeletionIdsRef.current.add(recordId)
     setPracticeError(null)
     try {
-      await flushPendingStoreWrites()
       deletePracticeRecord(book.id, recordId)
       await flushPendingStoreWrites()
       const updatedBook = getBook(book.id)
@@ -560,7 +662,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     setNoteSaving(true)
     setNoteError(null)
     try {
-      await flushPendingStoreWrites()
       updateBook(book.id, { noteRecords: updatedRecords })
       await flushPendingStoreWrites()
       const persistedBook = getBook(book.id)
@@ -594,7 +695,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     setNoteSaving(true)
     setNoteError(null)
     try {
-      await flushPendingStoreWrites()
       updateBook(book.id, { noteRecords: updatedRecords })
       await flushPendingStoreWrites()
       const persistedBook = getBook(book.id)
@@ -730,7 +830,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       {activeTab === 'phase' && (
         <div className="animate-fade-in">
           {/* 如果还没开始分析，显示开始按钮 */}
-          {Object.keys(responses).length === 0 && !loading && (
+          {Object.keys(responses).length === 0 && !analysisRunning && (
             <div className="card text-center py-16">
               <AppIcon name="library" tone="blue" size={56} className="mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">
@@ -743,7 +843,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               </p>
               <button
                 onClick={needsAiConfiguration ? onOpenSettings : handleAnalyzeAll}
-                disabled={loading || (!needsAiConfiguration && !client)}
+                disabled={analysisRunning || (!needsAiConfiguration && !client)}
                 className="btn-primary inline-flex items-center justify-center gap-2 text-lg px-8 py-4"
               >
                 <AppIcon name={needsAiConfiguration ? 'key' : 'sparkles'} size={20} />
@@ -761,11 +861,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             </div>
           )}
 
-          {analysisError && (
+          {visibleAnalysisError && (
             <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
-              <span>{analysisError}</span>
+              <span>{visibleAnalysisError}</span>
               <div className="flex gap-2">
-                {(missingApiKey || aiConsentRequired || apiKeyInvalid || analysisError.includes('TokenDance')) && (
+                {(missingApiKey || aiConsentRequired || apiKeyInvalid || visibleAnalysisError.includes('TokenDance')) && (
                   <button onClick={onOpenSettings} className="btn-secondary text-sm py-2">
                     {lang === 'zh' ? '前往设置' : 'Open Settings'}
                   </button>
@@ -780,13 +880,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           )}
 
           {/* 分析中显示金句 */}
-          {loading && Object.keys(responses).length < LEARNING_PHASES.length && (
+          {analysisRunning && Object.keys(responses).length < LEARNING_PHASES.length && (
             <div className="card">
               <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <p className="flex items-center justify-center gap-2 text-amber-700 dark:text-amber-400 text-sm font-medium text-center">
                   <AppIcon name="alert" size={17} />{lang === 'zh'
-                    ? '正在分析中，请不要关闭或离开此页面，否则分析会中断' 
-                    : 'Analyzing, please do not close or leave this page'}
+                    ? '正在后台分析，可切换页面；返回后会自动恢复进度'
+                    : 'Analysis is running in the background. You can switch pages and return to resume.'}
                 </p>
               </div>
               
@@ -1375,7 +1475,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               quotes={quotes}
               recommendations={recommendations}
               onRecommendationsChange={async (newRecs) => {
-                await flushPendingStoreWrites()
                 updateBook(book.id, { recommendations: newRecs })
                 try {
                   await flushPendingStoreWrites()

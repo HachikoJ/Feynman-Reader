@@ -148,6 +148,11 @@ sudo -u postgres pg_restore --data-only --no-owner --no-privileges --exit-on-err
 log '在最终数据恢复后执行用户资料字段和账号合并迁移。'
 sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" --file="$PROJECT_DIR/supabase/migrations/009_profile_columns.sql" >/dev/null
 sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" --file="$PROJECT_DIR/supabase/migrations/010_account_merge.sql" >/dev/null
+sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" --file="$PROJECT_DIR/supabase/migrations/011_admin_security.sql" >/dev/null
+sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" --file="$PROJECT_DIR/supabase/migrations/012_api_key_providers.sql" >/dev/null
+
+log '自动校验管理员唯一身份约束。'
+DATABASE_URL="$NEW_DATABASE_URL" node "$PROJECT_DIR/scripts/verify-admin-security.mjs" >/dev/null
 
 sudo -u postgres psql -v ON_ERROR_STOP=1 --dbname="$TARGET_DB" <<SQL
 GRANT CONNECT ON DATABASE $TARGET_DB TO $TARGET_ROLE;

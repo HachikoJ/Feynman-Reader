@@ -65,6 +65,8 @@ describe('persistence failure classification', () => {
   it('treats missing migrations and database connection failures as unavailable', () => {
     expect(isPersistenceUnavailable({ code: '42P01' })).toBe(true)
     expect(isPersistenceUnavailable({ code: 'ECONNREFUSED' })).toBe(true)
+    expect(isPersistenceUnavailable({ code: '57014' })).toBe(true)
+    expect(isPersistenceUnavailable({ code: 'ECONNRESET' })).toBe(true)
     expect(isPersistenceUnavailable({ code: '23505' })).toBe(false)
   })
 })

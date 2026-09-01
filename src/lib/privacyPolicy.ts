@@ -33,7 +33,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
 
 • 登录后，书籍、封面、导入时间、阅读进度、笔记、金句、练习记录、书单、助手会话等保存到账号对应的云端空间
 • 未登录时可以浏览系统示例，但不能新增、修改或保存个人学习数据
-• 检测到旧版本 IndexedDB 数据时，登录后可在 2026 年 10 月 1 日前迁移；服务端确认成功后才清理本机用户数据，系统示例书不会上传
+• 检测到旧版本 IndexedDB 数据时，登录后可在迁移窗口内导入；服务端确认成功后才清理本机用户数据，系统示例书不会上传
 • 个性化分析数据只有在“个性化分析授权”开启时才新增记录，关闭后停止新增行为分析
 • 使用 AI 功能时，相关请求由服务端代理转发，仅发送当前任务所需内容
 • 您可以通过“账号中心 > 数据管理”导出或导入云端备份
@@ -146,7 +146,7 @@ The platform does not collect phone numbers, email addresses, precise location, 
 
 • After sign-in, books, covers, import time, progress, notes, quotes, practice, lists, and assistant sessions are saved to account-scoped cloud storage
 • Signed-out users may browse the system sample but cannot create, modify, or save personal learning data
-• When legacy IndexedDB data is detected, it can be migrated before October 1, 2026 after sign-in; local user data is cleared only after server confirmation, and the system sample is excluded
+• When legacy IndexedDB data is detected, it can be migrated during the migration window after sign-in; local user data is cleared only after server confirmation, and the system sample is excluded
 • When signed in, AI requests are proxied by the application server; only task-relevant input is forwarded
 • You can import or export cloud backups in Account Center > Data Management
 • Large backups are automatically split into multiple parts; select every part from the same set together when importing
@@ -159,7 +159,7 @@ Unmigrated or unexported data cannot be recovered for you. Cloud data is scoped 
         title: '3. API Key Usage',
         content: `If you choose to use AI features:
 
-• Before October 1, 2026, API Key is used for the selected direct DeepSeek V4 Flash service or TokenDance gateway; after that date, only the TokenDance gateway is supported and official DeepSeek keys no longer work
+• The available AI configuration channel follows the current deployment notice. During filing, TokenDance may be temporarily unavailable; after filing, the supported channel can be restored without deleting existing TokenDance configuration
 • You must sign in before configuring or replacing an API key for the current account
 • After sign-in, API Key is encrypted in the server-side vault and is not included in user data or backups
 • AI requests use the server proxy, so the browser never receives the plaintext stored key
@@ -203,7 +203,7 @@ We recommend exporting a backup before deletion.`
         content: `This app uses the following third-party services:
 
 • **DeepSeek V4 Flash**: For book analysis, learning assessment, persona Q&A, recommendations, and other AI features
-  - It is called through the TokenDance gateway after October 1, 2026
+  - The supported gateway follows the current deployment channel notice
   - You need to create and configure your own TokenDance API Key
   - Using AI features sends the related content described above to the selected large-language model service
   - Your use is subject to the selected model service terms and privacy policy

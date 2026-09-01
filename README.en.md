@@ -54,6 +54,12 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
 
 Preview mode uses mock account data and disables cloud writes. Production builds ignore this switch. Validate real OAuth, session cookies, and PostgreSQL reads and writes only after deployment through the production domain. Keep the Client Secret, database password, and generated secrets in the server environment file; never expose them to browser code or GitHub.
 
+AI and sign-in channels follow deployment flags. During filing use `FEYNMAN_WATCHA_OAUTH_ENABLED=false`, `FEYNMAN_TOKENDANCE_ENABLED=false`, and `FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=true`. After the domain is restored, set Watcha and TokenDance to `true` and the official DeepSeek channel to `false`, then run the full deployment to enable the Watcha-only sign-in flow and legacy account migration.
+
+### Administrator dashboard
+
+Every deployment automatically applies `011_admin_security.sql` and verifies the Watcha subject uniqueness index, administrator bindings, and account state; no manual SQL session is required. The first TOTP enrollment for Wilson's Watcha account still requires one server-local `npm run bootstrap:admin` invocation. The `/admin` page requires the normal account session plus a six-digit TOTP code. Administrator sessions are separate, short-lived, revocable, and audited. The dashboard returns aggregate metrics only; it does not expose emails, phone numbers, passwords, API keys, book text, attachments, or raw conversations. See [administrator dashboard security notes](docs/admin-dashboard.md).
+
 ## Privacy, Cost, and Model Limits
 
 Signed-out visitors can inspect only the system sample. Legacy browser data from earlier releases can be imported after Watcha sign-in, after which personal records are stored in the account-scoped PostgreSQL database. API keys are encrypted server-side, excluded from exports, and never displayed in full.

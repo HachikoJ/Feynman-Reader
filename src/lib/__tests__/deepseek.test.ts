@@ -16,6 +16,7 @@ import {
   DEEPSEEK_API_KEY_INVALID,
   DEEPSEEK_OFFICIAL_CHANNEL_SUNSET,
   DEEPSEEK_MODEL,
+  OFFICIAL_DEEPSEEK_MODEL,
   evaluatePersonaAnswers,
   requestDeepSeekCompletion,
   generateBookMetadata,
@@ -32,6 +33,13 @@ import { getTokendanceRecoveryAction } from '../tokendance'
 import { getSettings } from '../store'
 import { addAIUsageRecord } from '../store'
 
+const previousTokenDanceFlag = process.env.FEYNMAN_TOKENDANCE_ENABLED
+beforeAll(() => { process.env.FEYNMAN_TOKENDANCE_ENABLED = 'true' })
+afterAll(() => {
+  if (previousTokenDanceFlag === undefined) delete process.env.FEYNMAN_TOKENDANCE_ENABLED
+  else process.env.FEYNMAN_TOKENDANCE_ENABLED = previousTokenDanceFlag
+})
+
 describe('DeepSeek V4 Flash request defaults', () => {
   it('uses the V4 Flash model with thinking disabled', () => {
     const request = withDeepSeekDefaults({
@@ -42,6 +50,20 @@ describe('DeepSeek V4 Flash request defaults', () => {
     expect(request.model).toBe('deepseek-v4-flash-0731')
     expect(request.model).toBe(DEEPSEEK_MODEL)
     expect(request.thinking).toEqual({ type: 'disabled' })
+  })
+
+  it('uses the official model name for the direct DeepSeek channel', () => {
+    ;(getSettings as jest.MockedFunction<typeof getSettings>).mockReturnValue({
+      aiDataConsent: true,
+      aiProvider: 'deepseek'
+    } as ReturnType<typeof getSettings>)
+
+    const request = withDeepSeekDefaults({
+      messages: [{ role: 'user' as const, content: 'test' }],
+      temperature: 0.5
+    })
+
+    expect(request.model).toBe(OFFICIAL_DEEPSEEK_MODEL)
   })
 })
 
@@ -101,6 +123,30 @@ describe('TokenDance recovery headers', () => {
     expect(create).toHaveBeenCalledTimes(2)
     expect(create.mock.calls[0][0].response_format).toEqual({ type: 'json_object' })
     expect(create.mock.calls[1][0]).not.toHaveProperty('response_format')
+  })
+
+  it('uses the explicitly selected official provider when persisted settings are stale', async () => {
+    const previousOfficialFlag = process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED
+    process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED = 'true'
+    ;(getSettings as jest.MockedFunction<typeof getSettings>).mockReturnValue({
+      aiDataConsent: true,
+      aiProvider: 'tokendance'
+    } as ReturnType<typeof getSettings>)
+    const create = jest.fn().mockResolvedValue({
+      model: OFFICIAL_DEEPSEEK_MODEL,
+      choices: [{ finish_reason: 'stop', message: { content: 'ok' } }]
+    })
+    const client = { chat: { completions: { create } } } as unknown as OpenAI
+
+    try {
+      await expect(requestDeepSeekCompletion(client, withDeepSeekDefaults({
+        messages: [{ role: 'user', content: '备案期间测试' }]
+      }, 'deepseek'), { task: 'assistant-chat' }, 'deepseek')).resolves.toEqual(expect.objectContaining({ model: OFFICIAL_DEEPSEEK_MODEL }))
+      expect(create.mock.calls[0][0].model).toBe(OFFICIAL_DEEPSEEK_MODEL)
+    } finally {
+      if (previousOfficialFlag === undefined) delete process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED
+      else process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED = previousOfficialFlag
+    }
   })
 })
 
@@ -271,31 +317,25 @@ describe('AI data consent', () => {
 })
 
 describe('official DeepSeek channel sunset', () => {
-  const realDate = Date
+  const previous = process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED
 
   beforeEach(() => {
-    global.Date = class extends realDate {
-      constructor(value?: string | number | Date) {
-        super(value ?? '2026-10-01T00:00:00+08:00')
-      }
-      static now() {
-        return new realDate('2026-10-01T00:00:00+08:00').getTime()
-      }
-    } as DateConstructor
+    process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED = 'false'
   })
 
   afterEach(() => {
-    global.Date = realDate
+    if (previous === undefined) delete process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED
+    else process.env.FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED = previous
   })
 
-  it('rejects an official DeepSeek key after the cutoff before creating a client', async () => {
+  it('rejects an official DeepSeek key when the channel is disabled before creating a client', async () => {
     const mockedSettings = getSettings as jest.MockedFunction<typeof getSettings>
     mockedSettings.mockReturnValue({ aiDataConsent: true, aiProvider: 'deepseek' } as ReturnType<typeof getSettings>)
     const { createDeepSeekClient } = await import('../deepseek')
     await expect(createDeepSeekClient('sk-test')).rejects.toThrow(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
   })
 
-  it('rejects official DeepSeek validation after the cutoff', async () => {
+  it('rejects official DeepSeek validation when the channel is disabled', async () => {
     await expect(validateDeepSeekApiKey('sk-test', undefined, 'deepseek')).rejects.toThrow(DEEPSEEK_OFFICIAL_CHANNEL_SUNSET)
   })
 })

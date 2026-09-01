@@ -52,7 +52,8 @@ const scriptSources = process.env.NODE_ENV === 'development'
   ? "'self' 'unsafe-inline' 'unsafe-eval'"
   : "'self' 'unsafe-inline'"
 
-const contentSecurityPolicy = `default-src 'self'; base-uri 'self'; object-src 'none'; script-src ${scriptSources}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.deepseek.com https://tokendance.space; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'; upgrade-insecure-requests`
+const upgradeInsecureRequests = process.env.NODE_ENV === 'production' ? '; upgrade-insecure-requests' : ''
+const contentSecurityPolicy = `default-src 'self'; base-uri 'self'; object-src 'none'; script-src ${scriptSources}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.deepseek.com https://tokendance.space; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'${upgradeInsecureRequests}`
 
 const localCacheRecoveryScript = `
 (() => {

@@ -4,6 +4,7 @@ import { decryptApiKey } from '@/lib/server/apiKeyVault'
 import { getPersistence } from '@/lib/server/persistence'
 import { sessionUserId } from '@/lib/server/sessionUser'
 import { TOKENDANCE_APP_URL, TOKENDANCE_GATEWAY_URL } from '@/lib/tokendance'
+import { isDeepSeekOfficialEnabled, isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 
 export const runtime = 'nodejs'
 
@@ -52,12 +53,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     const userId = await sessionUserId(request)
     if (!userId) return NextResponse.json({ error: { message: '未登录。' } }, { status: 401 })
     const store = getPersistence()
-    const record = await store.getApiKey(userId, 'tokendance')
-    if (!record) return NextResponse.json({ error: { message: '请先在设置中配置 TokenDance API Key，并确认 AI 数据传输同意。' } }, { status: 403 })
+    const requestedProvider = request.headers.get('x-feynman-ai-provider') === 'deepseek' ? 'deepseek' : 'tokendance'
+    if (requestedProvider === 'tokendance' && !isTokenDanceEnabled()) {
+      return NextResponse.json({ error: { message: '当前部署暂未开放 TokenDance AI 配置渠道。' } }, { status: 503 })
+    }
+    if (requestedProvider === 'deepseek' && !isDeepSeekOfficialEnabled()) {
+      return NextResponse.json({ error: { message: '当前部署暂未开放 DeepSeek 官方配置渠道。' } }, { status: 503 })
+    }
+    const record = await store.getApiKey(userId, requestedProvider)
+    if (!record) return NextResponse.json({ error: { message: `请先在设置中配置${requestedProvider === 'deepseek' ? ' DeepSeek 官方' : ' TokenDance'} API Key，并确认 AI 数据传输同意。` } }, { status: 403 })
     const payload = await request.json() as Record<string, unknown>
     if (payload.stream === true) return NextResponse.json({ error: { message: '暂不支持流式请求。' } }, { status: 400 })
     const secret = decryptApiKey(record.secret)
-    const client = new OpenAI({ baseURL: TOKENDANCE_GATEWAY_URL, apiKey: secret, defaultHeaders: { 'X-App-URL': TOKENDANCE_APP_URL }, maxRetries: 0 })
+    const client = new OpenAI({
+      baseURL: requestedProvider === 'deepseek' ? 'https://api.deepseek.com' : TOKENDANCE_GATEWAY_URL,
+      apiKey: secret,
+      ...(requestedProvider === 'tokendance' ? { defaultHeaders: { 'X-App-URL': TOKENDANCE_APP_URL } } : {}),
+      maxRetries: 0,
+    })
     let completion: OpenAI.Chat.Completions.ChatCompletion
     try {
       completion = await client.chat.completions.create(payload as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming)

@@ -3,6 +3,7 @@ import { decryptApiKey } from '@/lib/server/apiKeyVault'
 import { getPersistence } from '@/lib/server/persistence'
 import { sessionUserId } from '@/lib/server/sessionUser'
 import { createTokendancePaymentSession, fetchTokendanceBalance, getTokendancePaymentSession } from '@/lib/tokendance'
+import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 
 export const runtime = 'nodejs'
 
@@ -25,6 +26,7 @@ function failure(error: unknown): NextResponse {
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
+  if (!isTokenDanceEnabled()) return NextResponse.json({ error: 'TokenDance 配置将在备案完成后恢复。' }, { status: 503 })
   try {
     const secret = await accountApiKey(request)
     if (secret === null) return NextResponse.json({ error: '未登录。' }, { status: 401 })
@@ -36,6 +38,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  if (!isTokenDanceEnabled()) return NextResponse.json({ error: 'TokenDance 配置将在备案完成后恢复。' }, { status: 503 })
   try {
     const secret = await accountApiKey(request)
     if (secret === null) return NextResponse.json({ error: '未登录。' }, { status: 401 })
@@ -52,6 +55,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 }
 
 export async function PATCH(request: Request): Promise<NextResponse> {
+  if (!isTokenDanceEnabled()) return NextResponse.json({ error: 'TokenDance 配置将在备案完成后恢复。' }, { status: 503 })
   try {
     const secret = await accountApiKey(request)
     if (secret === null) return NextResponse.json({ error: '未登录。' }, { status: 401 })

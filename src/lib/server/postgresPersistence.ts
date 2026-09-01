@@ -7,12 +7,18 @@ import type {
   AssistantSessionRecord,
   ActivityDay,
   AccountMergeResult,
+  AdminAuditEntry,
+  AdminDashboard,
+  AdminRole,
+  AdminSessionRecord,
+  AdminTotpCredential,
   ImportResult,
   MigrationResult,
   MigrationState,
   PersistenceAdapter,
   RecycleBinItem,
   UserProfile,
+  UserBookSummary,
   UserDataSummary,
 } from './persistence'
 import { normalizeImportData } from '@/lib/backupValidation'
@@ -38,6 +44,8 @@ type UserRow = {
   login_disabled_at: Date | string | null
   password_account_merged_at: Date | string | null
 }
+
+type UserWithProfileRow = UserRow & { profile_data: unknown }
 
 type ProfileSettings = {
   profile?: {
@@ -158,12 +166,14 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   constructor(connectionString = process.env.DATABASE_URL) {
     if (!connectionString?.trim()) throw new Error('DATABASE_URL is not configured.')
     const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, '\n').trim()
+    const databaseHost = new URL(connectionString).hostname.toLowerCase()
+    const localDatabase = databaseHost === '127.0.0.1' || databaseHost === 'localhost' || databaseHost === '::1'
     this.pool = new Pool({
       connectionString,
       max: Number(process.env.DATABASE_POOL_MAX || 10),
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
-      ssl: ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false },
+      ssl: localDatabase ? false : ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false },
     })
   }
 
@@ -180,7 +190,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const quotes = mergeDefaultQuotes(current.quotes)
     const next = { ...current, quotes, apiKey: '' }
     const currentQuotes = Array.isArray(current.quotes) ? JSON.stringify(current.quotes) : ''
-    if (!row || currentQuotes !== JSON.stringify(quotes) || current.apiKey !== '') {
+    if (!row || currentQuotes !== JSON.stringify(quotes) || Object.prototype.hasOwnProperty.call(current, 'apiKey')) {
       await this.pool.query(
         `insert into public.user_settings (user_id, data, version, updated_at)
          values ($1, jsonb_build_object('quotes', $2::jsonb), 1, now())
@@ -193,39 +203,55 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     return next
   }
 
-  async findUserById(userId: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where id = $1 and login_disabled_at is null', [userId])
+  /** Read settings without turning a GET request into a write transaction. */
+  private async readUserSettings(userId: string): Promise<Record<string, unknown>> {
+    const row = await this.one<{ data: unknown }>('select data from public.user_settings where user_id = $1', [userId])
+    const current = objectValue(row?.data)
+    return {
+      ...current,
+      quotes: mergeDefaultQuotes(current.quotes),
+      apiKey: '',
+    }
+  }
+
+  private async findActiveUserBy(
+    field: 'id' | 'tokendance_subject' | 'phone' | 'email' | 'username',
+    value: string,
+  ): Promise<AuthUser | null> {
+    const row = await this.one<UserWithProfileRow>(
+      `select u.*, s.data->'profile' as profile_data
+       from public.app_users u
+       left join public.user_settings s on s.user_id = u.id
+       where u.${field} = $1 and u.login_disabled_at is null`,
+      [value],
+    )
     if (!row) return null
-    const profile = await this.getUserProfile(userId)
-    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
+    const profile = profileFromSettings({ profile: row.profile_data }, { displayName: row.display_name, avatarUrl: row.avatar_url })
+    return {
+      ...mapUser(row),
+      displayName: row.display_name || profile.displayName,
+      ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}),
+    }
+  }
+
+  async findUserById(userId: string): Promise<AuthUser | null> {
+    return this.findActiveUserBy('id', userId)
   }
 
   async findByTokendanceSubject(subject: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where tokendance_subject = $1 and login_disabled_at is null', [subject])
-    if (!row) return null
-    const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
+    return this.findActiveUserBy('tokendance_subject', subject)
   }
 
   async findByPhone(phone: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where phone = $1 and login_disabled_at is null', [phone])
-    if (!row) return null
-    const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
+    return this.findActiveUserBy('phone', phone)
   }
 
   async findByEmail(email: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where email = $1 and login_disabled_at is null', [email])
-    if (!row) return null
-    const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
+    return this.findActiveUserBy('email', email)
   }
 
   async findByUsername(username: string): Promise<AuthUser | null> {
-    const row = await this.one<UserRow>('select * from public.app_users where username = $1 and login_disabled_at is null', [username])
-    if (!row) return null
-    const profile = await this.getUserProfile(row.id)
-    return { ...mapUser(row), displayName: row.display_name || profile.displayName, ...(row.avatar_url || profile.avatarUrl ? { avatarUrl: row.avatar_url || profile.avatarUrl || undefined } : {}) }
+    return this.findActiveUserBy('username', username)
   }
 
   async findPasswordHashByUsername(username: string): Promise<string | null> {
@@ -294,13 +320,12 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
 
   async findSession(id: string): Promise<AuthSession | null> {
     const row = await this.one<SessionRow>(
-      `update public.auth_sessions s
-       set last_used_at = now()
-       from public.app_users u
+      `select s.id_hash, s.user_id, s.expires_at, s.created_at
+       from public.auth_sessions s
+       join public.app_users u on u.id = s.user_id
        where s.id_hash = $1 and s.revoked_at is null and s.expires_at > now()
          and u.id = s.user_id and u.login_disabled_at is null
-         and ($2::boolean = false or u.tokendance_subject is not null)
-       returning s.id_hash, s.user_id, s.expires_at, s.created_at`,
+         and ($2::boolean = false or u.tokendance_subject is not null)`,
       [sessionHash(id), isWatchaOAuthEnabled()],
     )
     return row ? mapSession(row, id) : null
@@ -542,29 +567,28 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     )
   }
 
-  async getApiKey(userId: string, provider: 'tokendance'): Promise<ApiKeyRecord | null> {
-    const row = await this.one<{ user_id: string; provider: 'tokendance'; secret: ApiKeyRecord['secret']; created_at: Date | string; updated_at: Date | string }>(
+  async getApiKey(userId: string, provider: ApiKeyRecord['provider']): Promise<ApiKeyRecord | null> {
+    const row = await this.one<{ user_id: string; provider: ApiKeyRecord['provider']; secret: ApiKeyRecord['secret']; created_at: Date | string; updated_at: Date | string }>(
       'select user_id, provider, secret, created_at, updated_at from public.api_key_records where user_id = $1 and provider = $2',
       [userId, provider],
     )
     return row ? { userId: row.user_id, provider: row.provider, secret: row.secret, createdAt: iso(row.created_at), updatedAt: iso(row.updated_at) } : null
   }
 
-  async deleteApiKey(userId: string, provider: 'tokendance'): Promise<void> {
+  async deleteApiKey(userId: string, provider: ApiKeyRecord['provider']): Promise<void> {
     await this.pool.query('delete from public.api_key_records where user_id = $1 and provider = $2', [userId, provider])
   }
 
   async getUserDataSummary(userId: string): Promise<UserDataSummary> {
-    await this.ensureDefaultQuotes(userId)
     const row = await this.one<{
       books: string; notes: string; practices: string; qa_records: string; ai_usage_records: string;
       lists: string; relations: string; quotes: string; assistant_sessions: string; assistant_memories: string;
       storage_bytes: string; last_import_at: Date | string | null; last_sync_at: Date | string | null
     }>(`select
       (select count(*) from public.user_books where user_id = $1 and deleted_at is null) as books,
-      (select coalesce(sum(jsonb_array_length(coalesce(data->'noteRecords', '[]'::jsonb))), 0) from public.user_books where user_id = $1 and deleted_at is null) as notes,
-      (select coalesce(sum(jsonb_array_length(coalesce(data->'practiceRecords', '[]'::jsonb))), 0) from public.user_books where user_id = $1 and deleted_at is null) as practices,
-      (select coalesce(sum(jsonb_array_length(coalesce(data->'qaPracticeRecords', '[]'::jsonb))), 0) from public.user_books where user_id = $1 and deleted_at is null) as qa_records,
+      (select coalesce(sum(case when jsonb_typeof(data->'noteRecords') = 'array' then jsonb_array_length(data->'noteRecords') else 0 end), 0) from public.user_books where user_id = $1 and deleted_at is null) as notes,
+      (select coalesce(sum(case when jsonb_typeof(data->'practiceRecords') = 'array' then jsonb_array_length(data->'practiceRecords') else 0 end), 0) from public.user_books where user_id = $1 and deleted_at is null) as practices,
+      (select coalesce(sum(case when jsonb_typeof(data->'qaPracticeRecords') = 'array' then jsonb_array_length(data->'qaPracticeRecords') else 0 end), 0) from public.user_books where user_id = $1 and deleted_at is null) as qa_records,
       (select count(*) from public.user_ai_usage where user_id = $1) as ai_usage_records,
       (select count(*) from public.user_book_lists where user_id = $1) as lists,
       (select count(*) from public.user_book_relations where user_id = $1) as relations,
@@ -593,22 +617,194 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     }
   }
 
-  async exportUserData(userId: string): Promise<unknown> {
-    const ensuredSettings = await this.ensureDefaultQuotes(userId)
-    const [books, usage, lists, relations, assistantSessions, assistantMemories] = await Promise.all([
-      this.pool.query<{ data: Record<string, unknown> }>('select data from public.user_books where user_id = $1 and deleted_at is null order by updated_at asc', [userId]),
-      this.pool.query<{ data: Record<string, unknown> }>('select data from public.user_ai_usage where user_id = $1 order by created_at asc', [userId]),
+  async listUserBooks(userId: string): Promise<UserBookSummary[]> {
+    // The account center only needs metadata and progress counters. Avoid
+    // transferring each book's parsed document and learning records just to
+    // render the bookshelf list.
+    const result = await this.pool.query<{
+      book_id: string
+      name: string
+      author: string | null
+      status: string
+      current_phase: number
+      best_score: number
+      created_at: Date | string
+      updated_at: Date | string
+      note_count: string
+      practice_count: string
+      questions_done: string
+      questions_total: string
+      has_recommendations: boolean
+    }>(`select book_id, name, author, status, current_phase, best_score, created_at, updated_at,
+        case when jsonb_typeof(data->'noteRecords') = 'array' then jsonb_array_length(data->'noteRecords') else 0 end as note_count,
+        case when jsonb_typeof(data->'practiceRecords') = 'array' then jsonb_array_length(data->'practiceRecords') else 0 end as practice_count,
+        (select count(*) from jsonb_array_elements(
+          case when jsonb_typeof(data->'qaPracticeRecords') = 'array' then data->'qaPracticeRecords' else '[]'::jsonb end
+        ) record cross join lateral jsonb_array_elements(
+          case when jsonb_typeof(record->'questions') = 'array' then record->'questions' else '[]'::jsonb end
+        ) question where jsonb_typeof(question->'score') = 'number' or nullif(question->>'userAnswer', '') is not null) as questions_done,
+        (select count(*) from jsonb_array_elements(
+          case when jsonb_typeof(data->'qaPracticeRecords') = 'array' then data->'qaPracticeRecords' else '[]'::jsonb end
+        ) record cross join lateral jsonb_array_elements(
+          case when jsonb_typeof(record->'questions') = 'array' then record->'questions' else '[]'::jsonb end
+        ) question) as questions_total,
+        length(nullif(data->>'recommendations', '')) > 0 as has_recommendations
+      from public.user_books
+      where user_id = $1 and deleted_at is null
+      order by updated_at desc`, [userId])
+
+    return result.rows.map(row => ({
+      id: row.book_id,
+      name: row.name,
+      ...(row.author ? { author: row.author } : {}),
+      status: row.status,
+      currentPhase: Number(row.current_phase || 0),
+      bestScore: Number(row.best_score || 0),
+      createdAt: new Date(row.created_at).getTime(),
+      updatedAt: new Date(row.updated_at).getTime(),
+      noteCount: Number(row.note_count || 0),
+      practiceCount: Number(row.practice_count || 0),
+      questionsDone: Number(row.questions_done || 0),
+      questionsTotal: Number(row.questions_total || 0),
+      hasRecommendations: Boolean(row.has_recommendations),
+    }))
+  }
+
+  async getUserSettings(userId: string): Promise<Record<string, unknown>> {
+    return this.readUserSettings(userId)
+  }
+
+  async saveBook(userId: string, input: unknown): Promise<void> {
+    const book = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
+    const id = typeof book.id === 'string' ? book.id : ''
+    const name = typeof book.name === 'string' ? book.name.trim() : ''
+    if (!id || !name) throw new Error('书籍数据格式无效。')
+    const createdAt = Number(book.createdAt)
+    const updatedAt = Number(book.updatedAt)
+    if (!Number.isFinite(createdAt) || !Number.isFinite(updatedAt)) throw new Error('书籍时间格式无效。')
+    await this.pool.query(
+      `insert into public.user_books
+         (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at, purge_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), now(), null, null)
+       on conflict (user_id, book_id) do update set
+         name = excluded.name, author = excluded.author, status = excluded.status,
+         current_phase = excluded.current_phase, best_score = excluded.best_score,
+         data = public.user_books.data || '{}'::jsonb || excluded.data,
+         updated_at = excluded.updated_at, deleted_at = null, purge_at = null
+       where excluded.updated_at >= public.user_books.updated_at`,
+      [
+        userId,
+        id,
+        name,
+        typeof book.author === 'string' && book.author.trim() ? book.author.trim() : null,
+        typeof book.status === 'string' ? book.status : 'unread',
+        Number.isFinite(Number(book.currentPhase)) ? Number(book.currentPhase) : 0,
+        Number.isFinite(Number(book.bestScore)) ? Number(book.bestScore) : 0,
+        JSON.stringify(book),
+        createdAt,
+        updatedAt,
+      ],
+    )
+  }
+
+  async getBook(userId: string, bookId: string): Promise<unknown | null> {
+    const row = await this.one<{ data: unknown }>(
+      'select data from public.user_books where user_id = $1 and book_id = $2 and deleted_at is null',
+      [userId, bookId],
+    )
+    return row?.data || null
+  }
+
+  async exportUserData(userId: string, format: 'full' | 'core' = 'full'): Promise<unknown> {
+    const includeAssistantData = format === 'full'
+    const booksPromise = includeAssistantData
+      ? this.pool.query<{ data: Record<string, unknown> }>(
+          'select data from public.user_books where user_id = $1 and deleted_at is null order by updated_at asc',
+          [userId],
+        )
+      : this.pool.query<{
+          book_id: string
+          name: string
+          author: string | null
+          status: string
+          current_phase: number
+          best_score: number
+          cover: string | null
+          description: string | null
+          tags: unknown
+          reading_progress: unknown
+          created_at: Date | string
+          updated_at: Date | string
+        }>(`select book_id, name, author, status, current_phase, best_score,
+              data->>'cover' as cover, data->>'description' as description,
+              case when jsonb_typeof(data->'tags') = 'array' then data->'tags' else '[]'::jsonb end as tags,
+              data->'readingProgress' as reading_progress,
+              created_at, updated_at
+            from public.user_books
+            where user_id = $1 and deleted_at is null
+            order by updated_at asc`, [userId])
+    const usagePromise = includeAssistantData
+      ? this.pool.query<{ data: Record<string, unknown> }>('select data from public.user_ai_usage where user_id = $1 order by created_at asc', [userId])
+      : this.pool.query<{ data: Record<string, unknown> }>(
+          `select data from (
+             select data, created_at from public.user_ai_usage
+             where user_id = $1 order by created_at desc limit 500
+           ) recent_usage order by created_at asc`,
+          [userId],
+        )
+    const [settings, books, usage, lists, relations, assistantSessions, assistantMemories] = await Promise.all([
+      this.readUserSettings(userId),
+      booksPromise,
+      usagePromise,
       this.pool.query<{ list_id: string; name: string; description: string | null; book_ids: unknown; created_at: Date | string; updated_at: Date | string }>('select list_id, name, description, book_ids, created_at, updated_at from public.user_book_lists where user_id = $1 order by updated_at asc', [userId]),
       this.pool.query<{ relation_id: string; from_book_id: string; to_book_id: string; relation_type: string; note: string | null; created_at: Date | string; updated_at: Date | string }>('select relation_id, from_book_id, to_book_id, relation_type, note, created_at, updated_at from public.user_book_relations where user_id = $1 order by updated_at asc', [userId]),
-      this.pool.query<{ session_id: string; title: string; book_id: string | null; data: unknown; created_at: Date | string; updated_at: Date | string }>('select session_id, title, book_id, data, created_at, updated_at from public.user_assistant_sessions where user_id = $1 order by updated_at asc', [userId]),
-      this.pool.query<{ memory_id: string; content: string; category: AssistantMemoryRecord['category']; source_session_id: string | null; created_at: Date | string; updated_at: Date | string }>('select memory_id, content, category, source_session_id, created_at, updated_at from public.user_assistant_memories where user_id = $1 order by updated_at asc', [userId]),
+      includeAssistantData
+        ? this.pool.query<{ session_id: string; title: string; book_id: string | null; data: unknown; created_at: Date | string; updated_at: Date | string }>('select session_id, title, book_id, data, created_at, updated_at from public.user_assistant_sessions where user_id = $1 order by updated_at asc', [userId])
+        : Promise.resolve({ rows: [] as Array<{ session_id: string; title: string; book_id: string | null; data: unknown; created_at: Date | string; updated_at: Date | string }> }),
+      includeAssistantData
+        ? this.pool.query<{ memory_id: string; content: string; category: AssistantMemoryRecord['category']; source_session_id: string | null; created_at: Date | string; updated_at: Date | string }>('select memory_id, content, category, source_session_id, created_at, updated_at from public.user_assistant_memories where user_id = $1 order by updated_at asc', [userId])
+        : Promise.resolve({ rows: [] as Array<{ memory_id: string; content: string; category: AssistantMemoryRecord['category']; source_session_id: string | null; created_at: Date | string; updated_at: Date | string }> }),
     ])
-    const safeSettings = { ...ensuredSettings, apiKey: '' }
+    const safeSettings = { ...settings, apiKey: '' }
+    const exportedBooks = includeAssistantData
+      ? (books.rows as Array<{ data: Record<string, unknown> }>).map(row => row.data)
+      : (books.rows as Array<{
+          book_id: string
+          name: string
+          author: string | null
+          status: string
+          current_phase: number
+          best_score: number
+          cover: string | null
+          description: string | null
+          tags: unknown
+          reading_progress: unknown
+          created_at: Date | string
+          updated_at: Date | string
+        }>).map(row => ({
+          id: row.book_id,
+          name: row.name,
+          ...(row.author ? { author: row.author } : {}),
+          ...(row.cover ? { cover: row.cover } : {}),
+          ...(row.description ? { description: row.description } : {}),
+          tags: Array.isArray(row.tags) ? row.tags : [],
+          ...(row.reading_progress && typeof row.reading_progress === 'object' ? { readingProgress: row.reading_progress } : {}),
+          status: row.status,
+          currentPhase: Number(row.current_phase || 0),
+          bestScore: Number(row.best_score || 0),
+          noteRecords: [],
+          responses: {},
+          practiceRecords: [],
+          qaPracticeRecords: [],
+          createdAt: new Date(row.created_at).getTime(),
+          updatedAt: new Date(row.updated_at).getTime(),
+          _summaryOnly: true,
+        }))
     return {
       version: 5,
       exportDate: Date.now(),
       settings: safeSettings,
-      books: books.rows.map(row => row.data),
+      books: exportedBooks,
       aiUsageRecords: usage.rows.map(row => row.data),
       bookLists: lists.rows.map(row => ({
         id: row.list_id,
@@ -751,8 +947,8 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     if (activateWindow) {
       await this.pool.query(
         `insert into public.user_data_state (user_id, migration_deadline_at)
-         values ($1, timestamptz '2026-10-01 00:00:00+08')
-         on conflict (user_id) do update set migration_deadline_at = excluded.migration_deadline_at
+         values ($1, null)
+         on conflict (user_id) do update set migration_deadline_at = null
          where public.user_data_state.migration_status <> 'completed'`,
         [userId],
       )
@@ -804,17 +1000,13 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       if (current?.migration_status === 'completed') {
         throw new Error('历史数据已经迁移完成。')
       }
-      const migrationCutoff = Date.parse('2026-10-01T00:00:00+08:00')
-      if (migrationCutoff <= Date.now()) {
-        throw new Error('历史数据迁移入口已过期。')
-      }
       await client.query(
         `insert into public.user_data_state
            (user_id, migration_status, migration_version, migration_started_at, migration_deadline_at, last_migration_error, updated_at)
-         values ($1, 'running', $2, now(), timestamptz '2026-10-01 00:00:00+08', null, now())
+         values ($1, 'running', $2, now(), null, null, now())
          on conflict (user_id) do update set migration_status = 'running', migration_version = $2,
            migration_started_at = coalesce(public.user_data_state.migration_started_at, now()),
-           migration_deadline_at = timestamptz '2026-10-01 00:00:00+08',
+           migration_deadline_at = null,
            last_migration_error = null, updated_at = now()`,
         [userId, migrationVersion],
       )
@@ -921,22 +1113,45 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   }
 
   async listRecycleBin(userId: string): Promise<RecycleBinItem[]> {
-    const result = await this.pool.query<{ book_id: string; name: string; author: string | null; deleted_at: Date | string; purge_at: Date | string | null }>(
-      `select book_id, name, author, deleted_at, purge_at from public.user_books
-       where user_id = $1 and deleted_at is not null and deleted_at > now() - interval '7 days'
-       order by deleted_at desc`, [userId],
-    )
-    return result.rows.map(row => ({ bookId: row.book_id, name: row.name, author: row.author, deletedAt: iso(row.deleted_at), purgeAt: row.purge_at ? iso(row.purge_at) : null }))
+    try {
+      const result = await this.pool.query<{ book_id: string; name: string; author: string | null; deleted_at: Date | string; purge_at: Date | string | null }>(
+        `select book_id, name, author, deleted_at, purge_at from public.user_books
+         where user_id = $1 and deleted_at is not null and deleted_at > now() - interval '7 days'
+         order by deleted_at desc`, [userId],
+      )
+      return result.rows.map(row => ({ bookId: row.book_id, name: row.name, author: row.author, deletedAt: iso(row.deleted_at), purgeAt: row.purge_at ? iso(row.purge_at) : null }))
+    } catch (error) {
+      // Keep the recycle bin readable during a rolling deployment where the
+      // optional purge_at column has not been added yet.
+      if (error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '42703') {
+        const result = await this.pool.query<{ book_id: string; name: string; author: string | null; deleted_at: Date | string }>(
+          `select book_id, name, author, deleted_at from public.user_books
+           where user_id = $1 and deleted_at is not null and deleted_at > now() - interval '7 days'
+           order by deleted_at desc`, [userId],
+        )
+        return result.rows.map(row => ({ bookId: row.book_id, name: row.name, author: row.author, deletedAt: iso(row.deleted_at), purgeAt: null }))
+      }
+      throw error
+    }
   }
 
   async softDeleteBook(userId: string, bookId: string): Promise<void> {
     const client = await this.pool.connect()
     try {
       await client.query('begin')
-      const result = await client.query(
-        `update public.user_books set deleted_at = now(), purge_at = now() + interval '30 days', updated_at = now()
-         where user_id = $1 and book_id = $2 and deleted_at is null`, [userId, bookId],
-      )
+      let result
+      try {
+        result = await client.query(
+          `update public.user_books set deleted_at = now(), purge_at = now() + interval '30 days', updated_at = now()
+           where user_id = $1 and book_id = $2 and deleted_at is null`, [userId, bookId],
+        )
+      } catch (error) {
+        if (!(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '42703')) throw error
+        result = await client.query(
+          `update public.user_books set deleted_at = now(), updated_at = now()
+           where user_id = $1 and book_id = $2 and deleted_at is null`, [userId, bookId],
+        )
+      }
       if (result.rowCount !== 1) throw new Error('书籍不存在。')
       await client.query(`delete from public.user_book_relations where user_id = $1 and (from_book_id = $2 or to_book_id = $2)`, [userId, bookId])
       await client.query(`update public.user_book_lists set book_ids = coalesce((select jsonb_agg(value) from jsonb_array_elements(book_ids) value where value #>> '{}' <> $2), '[]'::jsonb), updated_at = now() where user_id = $1`, [userId, bookId])
@@ -948,11 +1163,21 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   }
 
   async restoreBook(userId: string, bookId: string): Promise<void> {
-    const result = await this.pool.query(
-      `update public.user_books set deleted_at = null, purge_at = null, updated_at = now()
-       where user_id = $1 and book_id = $2 and deleted_at is not null
-         and deleted_at > now() - interval '7 days'`, [userId, bookId],
-    )
+    let result
+    try {
+      result = await this.pool.query(
+        `update public.user_books set deleted_at = null, purge_at = null, updated_at = now()
+         where user_id = $1 and book_id = $2 and deleted_at is not null
+           and deleted_at > now() - interval '7 days'`, [userId, bookId],
+      )
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '42703')) throw error
+      result = await this.pool.query(
+        `update public.user_books set deleted_at = null, updated_at = now()
+         where user_id = $1 and book_id = $2 and deleted_at is not null
+           and deleted_at > now() - interval '7 days'`, [userId, bookId],
+      )
+    }
     if (result.rowCount !== 1) throw new Error('书籍不存在或当前无法恢复。')
   }
 
@@ -972,19 +1197,37 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
   }
 
   async purgeRecycleBin(userId: string): Promise<number> {
-    const result = await this.pool.query(
-      `delete from public.user_books where user_id = $1 and deleted_at is not null
-       and coalesce(purge_at, deleted_at + interval '30 days') <= now()`, [userId],
-    )
+    let result
+    try {
+      result = await this.pool.query(
+        `delete from public.user_books where user_id = $1 and deleted_at is not null
+         and coalesce(purge_at, deleted_at + interval '30 days') <= now()`, [userId],
+      )
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '42703')) throw error
+      result = await this.pool.query(
+        `delete from public.user_books where user_id = $1 and deleted_at is not null
+         and deleted_at + interval '30 days' <= now()`, [userId],
+      )
+    }
     return result.rowCount || 0
   }
 
   /** Purge expired recycle-bin rows for all accounts; call from a server timer. */
   async purgeExpiredRecycleBin(): Promise<number> {
-    const result = await this.pool.query(
-      `delete from public.user_books where deleted_at is not null
-       and coalesce(purge_at, deleted_at + interval '30 days') <= now()`,
-    )
+    let result
+    try {
+      result = await this.pool.query(
+        `delete from public.user_books where deleted_at is not null
+         and coalesce(purge_at, deleted_at + interval '30 days') <= now()`,
+      )
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '42703')) throw error
+      result = await this.pool.query(
+        `delete from public.user_books where deleted_at is not null
+         and deleted_at + interval '30 days' <= now()`,
+      )
+    }
     return result.rowCount || 0
   }
 
@@ -1234,6 +1477,152 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       byDate.set(row.day, day)
     }
     return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
+  }
+
+  async findAdminRole(userId: string): Promise<AdminRole | null> {
+    const row = await this.one<{ user_id: string; tokendance_subject: string; role: string; revoked_at: Date | string | null }>(
+      `select r.user_id, r.tokendance_subject, r.role, r.revoked_at
+       from public.admin_roles r
+       join public.app_users u on u.id = r.user_id
+         and u.tokendance_subject = r.tokendance_subject
+         and u.login_disabled_at is null
+       where r.user_id = $1`, [userId],
+    )
+    if (!row || !row.tokendance_subject || !['super_admin', 'admin', 'analyst'].includes(row.role)) return null
+    return { userId: row.user_id, tokendanceSubject: row.tokendance_subject, role: row.role as AdminRole['role'], revokedAt: row.revoked_at ? iso(row.revoked_at) : null }
+  }
+
+  async getAdminTotpCredential(userId: string): Promise<AdminTotpCredential | null> {
+    const row = await this.one<{
+      user_id: string
+      secret_ciphertext: unknown
+      enabled: boolean
+      failed_attempts: number | string
+      locked_until: Date | string | null
+    }>(
+      `select user_id, secret_ciphertext, enabled, failed_attempts, locked_until
+       from public.admin_totp_credentials where user_id = $1`, [userId],
+    )
+    if (!row || !row.secret_ciphertext || typeof row.secret_ciphertext !== 'object' || Array.isArray(row.secret_ciphertext)) return null
+    return {
+      userId: row.user_id,
+      secret: row.secret_ciphertext as AdminTotpCredential['secret'],
+      enabled: Boolean(row.enabled),
+      failedAttempts: Number(row.failed_attempts || 0),
+      lockedUntil: row.locked_until ? iso(row.locked_until) : null,
+    }
+  }
+
+  async recordAdminTotpFailure(userId: string, lockedUntil: string | null): Promise<void> {
+    await this.pool.query(
+      `update public.admin_totp_credentials
+       set failed_attempts = failed_attempts + 1, locked_until = $2::timestamptz, updated_at = now()
+       where user_id = $1`, [userId, lockedUntil],
+    )
+  }
+
+  async resetAdminTotpFailures(userId: string): Promise<void> {
+    await this.pool.query(
+      `update public.admin_totp_credentials
+       set failed_attempts = 0, locked_until = null, updated_at = now()
+       where user_id = $1`, [userId],
+    )
+  }
+
+  async markAdminTotpUsed(userId: string): Promise<void> {
+    await this.pool.query(
+      `update public.admin_totp_credentials
+       set last_used_at = now(), updated_at = now() where user_id = $1`, [userId],
+    )
+  }
+
+  async createAdminSession(session: AdminSessionRecord): Promise<void> {
+    await this.pool.query(
+      `insert into public.admin_sessions
+       (id_hash, user_id, expires_at, mfa_verified_at, created_at, last_used_at, revoked_at)
+       values ($1, $2, $3::timestamptz, $4::timestamptz, $5::timestamptz, $6::timestamptz, null)
+       on conflict (id_hash) do nothing`,
+      [session.idHash, session.userId, session.expiresAt, session.mfaVerifiedAt, session.createdAt, session.lastUsedAt],
+    )
+  }
+
+  async findAdminSession(idHash: string): Promise<AdminSessionRecord | null> {
+    const row = await this.one<{
+      id_hash: string; user_id: string; expires_at: Date | string; mfa_verified_at: Date | string
+      created_at: Date | string; last_used_at: Date | string | null; revoked_at: Date | string | null
+    }>(
+      `select id_hash, user_id, expires_at, mfa_verified_at, created_at, last_used_at, revoked_at
+       from public.admin_sessions where id_hash = $1`, [idHash],
+    )
+    if (!row) return null
+    return {
+      idHash: row.id_hash,
+      userId: row.user_id,
+      expiresAt: iso(row.expires_at),
+      mfaVerifiedAt: iso(row.mfa_verified_at),
+      createdAt: iso(row.created_at),
+      lastUsedAt: row.last_used_at ? iso(row.last_used_at) : null,
+      revokedAt: row.revoked_at ? iso(row.revoked_at) : null,
+    }
+  }
+
+  async revokeAdminSession(idHash: string): Promise<void> {
+    await this.pool.query(
+      `update public.admin_sessions set revoked_at = now(), last_used_at = now() where id_hash = $1`, [idHash],
+    )
+  }
+
+  async writeAdminAuditLog(entry: AdminAuditEntry): Promise<void> {
+    await this.pool.query(
+      `insert into public.admin_audit_logs (admin_user_id, action, target_user_id, metadata)
+       values ($1, $2, $3, $4::jsonb)`,
+      [entry.adminUserId, entry.action.slice(0, 100), entry.targetUserId || null, JSON.stringify(entry.metadata || {})],
+    )
+  }
+
+  async getAdminDashboard(): Promise<AdminDashboard> {
+    const [users, books, statuses, phases, ai, events, storage] = await Promise.all([
+      this.one<{ total: string; new_last_30: string; active_last_7: string }>(
+        `select count(*)::text as total,
+          count(*) filter (where created_at >= now() - interval '30 days')::text as new_last_30,
+          count(*) filter (where updated_at >= now() - interval '7 days')::text as active_last_7
+         from public.app_users where login_disabled_at is null`, []),
+      this.one<{ total: string; active: string; recycle: string }>(
+        `select count(*) filter (where deleted_at is null)::text as total,
+          count(*) filter (where deleted_at is null and status = 'reading')::text as active,
+          count(*) filter (where deleted_at is not null)::text as recycle
+         from public.user_books`, []),
+      this.pool.query<{ status: string; count: string }>(
+        `select status, count(*)::text as count from public.user_books where deleted_at is null group by status order by status`, []),
+      this.pool.query<{ phase: string; count: string }>(
+        `select current_phase::text as phase, count(*)::text as count from public.user_books where deleted_at is null group by current_phase order by current_phase`, []),
+      this.one<{ requests: string; prompt: string; completion: string; total: string }>(
+        `select count(*)::text as requests, coalesce(sum(prompt_tokens), 0)::text as prompt,
+          coalesce(sum(completion_tokens), 0)::text as completion, coalesce(sum(total_tokens), 0)::text as total
+         from public.user_ai_usage where created_at >= now() - interval '30 days'`, []),
+      this.one<{ count: string }>(
+        `select count(*)::text as count from public.user_behavior_events where occurred_at >= now() - interval '30 days'`, []),
+      this.one<{ storage: string; recycle: string }>(
+        `select
+          coalesce((select sum(pg_column_size(data)) from public.user_books), 0)
+            + coalesce((select sum(pg_column_size(data)) from public.user_settings), 0)
+            + coalesce((select sum(pg_column_size(data)) from public.user_ai_usage), 0)
+            + coalesce((select sum(pg_column_size(data)) from public.user_assistant_sessions), 0)
+            + coalesce((select sum(pg_column_size(content)) from public.user_assistant_memories), 0)::bigint as storage,
+          coalesce((select sum(pg_column_size(data)) from public.user_books where deleted_at is not null), 0)::bigint as recycle`, []),
+    ])
+    const number = (value: string | undefined): number => Math.max(0, Number(value || 0) || 0)
+    return {
+      generatedAt: new Date().toISOString(),
+      users: { total: number(users?.total), newLast30Days: number(users?.new_last_30), activeLast7Days: number(users?.active_last_7) },
+      books: {
+        total: number(books?.total), active: number(books?.active), recycleBin: number(books?.recycle),
+        byStatus: Object.fromEntries(statuses.rows.map(row => [row.status, number(row.count)])),
+        byPhase: Object.fromEntries(phases.rows.map(row => [row.phase, number(row.count)])),
+      },
+      ai: { requestsLast30Days: number(ai?.requests), promptTokensLast30Days: number(ai?.prompt), completionTokensLast30Days: number(ai?.completion), totalTokensLast30Days: number(ai?.total) },
+      activity: { eventsLast30Days: number(events?.count), storageBytes: number(storage?.storage), recycleBinBytes: number(storage?.recycle) },
+    }
   }
 }
 

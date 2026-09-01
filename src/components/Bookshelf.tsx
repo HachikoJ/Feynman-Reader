@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Book,
   BookStatus,
@@ -175,7 +175,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     }
   }, [])
 
-  const filteredBooks = books
+  const filteredBooks = useMemo(() => books
     .filter(b => {
       // 状态筛选
       if (activeTab !== 'all' && b.status !== activeTab) return false
@@ -201,7 +201,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
       }
 
       return true
-    })
+    }), [activeTab, books, searchQuery, selectedCategory, selectedTag])
     .sort((a, b) => {
       // 按更新时间降序排列（最近更新的在最前面）
       return (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
@@ -222,7 +222,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   }
 
   // 获取所有标签和分类
-  const allTags = getAllTags()
+  const allTags = useMemo(() => getAllTags(), [books])
   const allCategories = getAllCategories()
 
   // AI 生成标签
@@ -251,7 +251,6 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
       )
       tagsGenerated = true
       if (tags.length > 0) {
-        await flushPendingStoreWrites()
         updateBook(bookId, { tags })
         await flushPendingStoreWrites()
         setBooks(getBooks())
@@ -327,7 +326,6 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     bookSaveInFlightRef.current = true
     setSavingBook(true)
     try {
-      await flushPendingStoreWrites()
       book = addBook(cleanName, cleanAuthor, newBookCover || undefined, cleanDesc)
       await flushPendingStoreWrites()
       setBooks(getBooks())
@@ -393,7 +391,6 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     bookSaveInFlightRef.current = true
     setSavingBook(true)
     try {
-      await flushPendingStoreWrites()
       updateBook(editingBook.id, updates)
       await flushPendingStoreWrites()
       setBooks(getBooks())
@@ -475,7 +472,6 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
   const persistBookMutation = async (mutation: () => void) => {
     try {
-      await flushPendingStoreWrites()
       mutation()
       await flushPendingStoreWrites()
       setBooks(getBooks())

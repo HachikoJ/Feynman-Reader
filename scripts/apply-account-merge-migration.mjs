@@ -9,6 +9,7 @@ if (!connectionString) throw new Error('DATABASE_URL is not configured.')
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sql = await readFile(resolve(projectRoot, 'supabase/migrations/010_account_merge.sql'), 'utf8')
+const apiKeyProviderSql = await readFile(resolve(projectRoot, 'supabase/migrations/012_api_key_providers.sql'), 'utf8')
 const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, '\n').trim()
 const client = new pg.Client({
   connectionString,
@@ -38,6 +39,8 @@ try {
     }
     process.stdout.write('账号合并数据库迁移已就绪。\n')
   }
+  await client.query(apiKeyProviderSql)
+  process.stdout.write('API Key 渠道数据库迁移已就绪。\n')
 } finally {
   await client.end()
 }
