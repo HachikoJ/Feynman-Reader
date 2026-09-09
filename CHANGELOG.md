@@ -2,6 +2,14 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.2.5] - 2026-09-09
+
+### Added
+
+- Add the supplied Watcha product badge between the footer support section and copyright information. Preserve the product link and attribution parameters, use the white artwork for light mode and black artwork for dark themes, and scale the 360px badge proportionally on mobile.
+
+No database, authentication or account permission changes. See [release notes](docs/releases/v0.2.5.md).
+
 ## [0.2.4] - 2026-09-09
 
 ### Fixed

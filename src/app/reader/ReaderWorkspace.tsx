@@ -30,6 +30,7 @@ import TokenDanceMigrationNotice, {
 } from '@/components/TokenDanceMigrationNotice'
 import TokenDanceLogo from '@/components/TokenDanceLogo'
 import WatchaLogo from '@/components/WatchaLogo'
+import WatchaProductBadge from '@/components/WatchaProductBadge'
 import AccountAvatar from '@/components/AccountAvatar'
 import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -659,6 +660,8 @@ function ReaderWorkspaceContent() {
                 </a>
               </div>
             </section>
+
+            <WatchaProductBadge lang={lang} />
 
             <div className="grid gap-3 py-4 text-center sm:grid-cols-2 sm:items-center sm:gap-6 sm:text-left">
               <div className="min-w-0">
