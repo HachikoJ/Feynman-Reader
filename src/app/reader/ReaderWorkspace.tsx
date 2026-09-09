@@ -29,6 +29,8 @@ import TokenDanceMigrationNotice, {
   TOKENDANCE_MIGRATION_NOTICE_VERSION
 } from '@/components/TokenDanceMigrationNotice'
 import TokenDanceLogo from '@/components/TokenDanceLogo'
+import WatchaLogo from '@/components/WatchaLogo'
+import AccountAvatar from '@/components/AccountAvatar'
 import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import UndoRedoControls, { useUndoRedoShortcuts } from '@/components/UndoRedoControls'
@@ -101,15 +103,7 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
       title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用【观猹】登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
       aria-disabled={checking}
     >
-      {user?.avatarUrl ? (
-        <img src={user.avatarUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
-      ) : user?.displayName ? (
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white" aria-hidden="true">
-          {user.displayName.slice(0, 1)}
-        </span>
-      ) : (
-        <UserRound size={16} aria-hidden="true" />
-      )}
+      <AccountAvatar avatarUrl={user?.avatarUrl} name={user?.displayName} watcha={user ? Boolean(user.tokendanceSubject) : watchaEnabled} />
       <span className="hidden sm:inline">
         {checking ? (lang === 'zh' ? '读取账号' : 'Checking') : signedIn ? (lang === 'zh' ? '账号中心' : 'Account') : (lang === 'zh' ? (watchaEnabled ? '【观猹】登录' : '登录账号') : (watchaEnabled ? 'Watcha sign-in' : 'Sign in'))}
       </span>
@@ -136,7 +130,7 @@ function AccountCloudNotice({ lang, hidden, returnTo }: { lang: AppSettings['lan
   return (
     <div role="status" className="border-b border-[var(--accent)]/20 bg-[var(--accent)]/8 px-3 py-2.5 sm:px-4">
       <div className="mx-auto flex max-w-6xl items-start gap-2.5 text-sm">
-        <UserRound size={17} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+        {isWatchaOAuthEnabled() ? <WatchaLogo size={20} className="mt-0.5" /> : <UserRound size={17} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />}
         <p className="min-w-0 flex-1 leading-5 text-[var(--text-secondary)]">
           {lang === 'zh'
             ? `先浏览系统示例，体验完整学习流程；${isWatchaOAuthEnabled() ? '通过【观猹】' : ''}登录后，开始自己的阅读与练习。`

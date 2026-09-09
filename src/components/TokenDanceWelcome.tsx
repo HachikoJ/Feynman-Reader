@@ -4,6 +4,7 @@ import { ArrowRight, BookOpen, CreditCard, ExternalLink, KeyRound, UserRound } f
 import { Language } from '@/lib/i18n'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 import TokenDanceLogo from './TokenDanceLogo'
+import WatchaLogo from './WatchaLogo'
 
 interface Props {
   lang: Language
@@ -79,7 +80,7 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
               return (
                 <div key={feature.title} className="flex min-w-0 items-start gap-3">
                   <div className="tokendance-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
-                    <FeatureIcon size={18} aria-hidden="true" />
+                    {FeatureIcon === UserRound && isWatchaOAuthEnabled() ? <WatchaLogo size={32} /> : <FeatureIcon size={18} aria-hidden="true" />}
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-sm font-semibold">{feature.title}</h2>

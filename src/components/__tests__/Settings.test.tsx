@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 jest.mock('qrcode', () => ({
   __esModule: true,
@@ -112,6 +112,10 @@ const savedSettings: AppSettings = {
 }
 
 describe('Settings AI privacy controls', () => {
+  afterEach(() => {
+    window.history.replaceState({}, '', '/')
+  })
+
   beforeEach(() => {
     jest.clearAllMocks()
     mockAccountAccess.user = { id: 'user-1' }
@@ -134,6 +138,81 @@ describe('Settings AI privacy controls', () => {
       <AppDialogHost lang="zh" />
     </>
   )
+
+  it('waits for OAuth key exchange before allowing AI activation', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+    jest.mocked(tokendance.exchangeTokendanceCode).mockReturnValue(new Promise(() => {}))
+    window.history.replaceState({}, '', '/?view=settings&tokendance_callback=1&code=fixture-code&state=fixture-state')
+    renderSettings()
+
+    await waitFor(() => expect(tokendance.exchangeTokendanceCode).toHaveBeenCalledTimes(1))
+    expect(screen.getByRole('button', { name: '验证并启用 AI' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '保存设置' })).toBeDisabled()
+    expect(saveAccountApiKeyMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps consent selected while OAuth is pending and exchanges each callback once', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+    let resolveKey!: (key: string) => void
+    jest.mocked(tokendance.exchangeTokendanceCode).mockReturnValue(new Promise(resolve => { resolveKey = resolve }))
+    window.history.replaceState({}, '', '/?view=settings&tokendance_callback=1&code=fixture-code&state=fixture-state')
+    const onSettingsChange = jest.fn()
+    const { rerender } = renderSettings(onSettingsChange)
+    await waitFor(() => expect(tokendance.exchangeTokendanceCode).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByRole('checkbox'))
+    const policy = screen.getByRole('dialog', { name: '隐私政策' })
+    const scrollContainer = policy.querySelector('[class*="overflow-y-auto"]') as HTMLElement
+    Object.defineProperty(scrollContainer, 'scrollHeight', { configurable: true, value: 100 })
+    Object.defineProperty(scrollContainer, 'clientHeight', { configurable: true, value: 100 })
+    fireEvent.scroll(scrollContainer)
+    fireEvent.click(screen.getByRole('button', { name: '已阅读并同意' }))
+
+    mockAccountAccess.requestLogin = jest.fn()
+    rerender(<><Settings onSettingsChange={onSettingsChange} /><AppDialogHost lang="zh" /></>)
+    await act(async () => { resolveKey(savedApiKey) })
+
+    expect(tokendance.exchangeTokendanceCode).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('checkbox')).toBeChecked()
+    expect(screen.getByPlaceholderText('TokenDance API Key')).toHaveValue('server-managed')
+    expect(saveAccountApiKeyMock).toHaveBeenCalledTimes(1)
+    expect(saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'server-managed', aiDataConsent: false }))
+    expect(saveSettingsMock).not.toHaveBeenCalledWith(expect.objectContaining({ apiKey: savedApiKey }))
+    expect(window.location.search).toBe('?view=settings')
+    fireEvent.click(screen.getByRole('button', { name: '验证并启用 AI' }))
+    await waitFor(() => expect(saveAccountApiKeyMock).toHaveBeenCalledWith(savedApiKey, 'tokendance'))
+    await waitFor(() => expect(onSettingsChange).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'server-managed', aiDataConsent: true })))
+    expect(saveAccountApiKeyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains the authorized key after reopening settings without implicitly granting consent', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+    jest.mocked(tokendance.exchangeTokendanceCode).mockResolvedValue(savedApiKey)
+    window.history.replaceState({}, '', '/?view=settings&tokendance_callback=1&code=fixture-code&state=fixture-state')
+    const first = renderSettings()
+    await waitFor(() => expect(getSettingsMock()).toEqual(expect.objectContaining({ apiKey: 'server-managed', aiDataConsent: false })))
+    await waitFor(() => expect(window.location.search).toBe('?view=settings'))
+    first.unmount()
+
+    renderSettings()
+    expect(await screen.findByPlaceholderText('TokenDance API Key')).toHaveValue('server-managed')
+    expect(screen.getByRole('checkbox')).not.toBeChecked()
+    expect(tokendance.exchangeTokendanceCode).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not report a saved authorization when the account vault rejects the key', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+    jest.mocked(tokendance.exchangeTokendanceCode).mockResolvedValue(savedApiKey)
+    saveAccountApiKeyMock.mockRejectedValueOnce(new Error('Vault unavailable'))
+    window.history.replaceState({}, '', '/?view=settings&tokendance_callback=1&code=fixture-code&state=fixture-state')
+    renderSettings()
+
+    expect(await screen.findByText('TokenDance 授权未能完成接收或保存，请重试“授权 TokenDance”。')).toBeInTheDocument()
+    expect(getSettingsMock().apiKey).toBe('')
+    expect(saveSettingsMock).not.toHaveBeenCalledWith(expect.objectContaining({ apiKey: savedApiKey }))
+    expect(screen.getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByRole('button', { name: '授权 TokenDance' })).toBeEnabled()
+  })
 
   it('requires Watcha sign-in before showing API configuration controls', async () => {
     mockAccountAccess.user = null

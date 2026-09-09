@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ExternalLink, LogIn, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
 import { getAccount, isLocalAuthBypassEnabled, isWatchaOAuthEnabled, tokendanceLoginHref, type AccountUser } from '@/lib/accountClient'
+import WatchaLogo from '@/components/WatchaLogo'
 
 export default function LoginPage() {
   const localOnlyMode = isLocalAuthBypassEnabled()
@@ -53,7 +54,7 @@ export default function LoginPage() {
         </Link>
         <div className="card p-6 sm:p-8">
           <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
-            <UserRound size={26} aria-hidden="true" />
+            {(user ? Boolean(user.tokendanceSubject) : watchaEnabled && !localOnlyMode) ? <WatchaLogo size={48} variant="rounded" /> : <UserRound size={26} aria-hidden="true" />}
           </div>
           <h1 className="text-2xl font-bold">登录费曼读书助手</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{localOnlyMode ? '当前使用本地数据模式。' : watchaEnabled ? '使用【观猹】登录，开始自己的阅读与练习，继续整理书架、笔记和学习记录。' : '使用用户名和密码注册或登录，开始自己的阅读与练习。'}</p>
@@ -84,7 +85,7 @@ export default function LoginPage() {
             </div>
           ) : watchaEnabled ? (
               <>
-                <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-primary mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用【观猹】登录</a>
+                <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-primary mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2"><WatchaLogo size={24} />使用【观猹】登录<ExternalLink size={16} aria-hidden="true" /></a>
                 <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">【观猹】是当前唯一登录方式。曾使用用户名和密码的用户，可在账号中心合并原有学习记录。</p>
               </>
             ) : (

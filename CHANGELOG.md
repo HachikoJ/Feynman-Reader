@@ -2,6 +2,20 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.2.3] - 2026-09-09
+
+### Fixed
+
+- Save the TokenDance key to the current account's encrypted vault when authorization returns, so reopening settings does not lose a single-use authorization result. AI data transfer consent remains a separate explicit action.
+- Exchange each callback once, retain consent selected while the request is pending, and prevent early verification. Validate stored TokenDance keys through the account endpoint before enabling AI.
+- Keep the settings view after callback cleanup and report failed authorization or storage without claiming success.
+
+### Changed
+
+- Apply supplied Watcha icons to sign-in entries, onboarding, and Watcha account avatar fallbacks. Preserve custom avatars and generic password-account identities in light and dark themes.
+
+No database schema or account permission changes. See [release notes](docs/releases/v0.2.3.md).
+
 ## [0.2.2] - 2026-09-09
 
 ### Changed

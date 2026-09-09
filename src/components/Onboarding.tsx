@@ -15,6 +15,7 @@ import { Language } from '@/lib/i18n'
 import { useAccountAccess } from './AuthGuard'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
+import WatchaLogo from './WatchaLogo'
 
 interface Props {
   lang: Language
@@ -274,7 +275,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-5 sm:px-6 md:px-8">
           <div className="text-center pb-6">
           <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg ${currentStep === steps.length - 1 ? 'tokendance-icon' : iconBackgroundClasses[step.iconTone]}`}>
-            <StepIcon size={32} strokeWidth={1.8} aria-hidden="true" />
+            {StepIcon === UserRound && watchaOAuthEnabled ? <WatchaLogo size={48} variant="rounded" /> : <StepIcon size={32} strokeWidth={1.8} aria-hidden="true" />}
           </div>
           <h2 id="onboarding-title" className="text-2xl font-bold mb-3">{step.title}</h2>
           <p className="text-[var(--text-secondary)] mb-6">{step.description}</p>

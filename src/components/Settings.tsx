@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
+import WatchaLogo from './WatchaLogo'
 import QRCode from 'qrcode'
 import {
   ArrowUpRight,
@@ -204,6 +205,7 @@ export default function Settings({
   const dataOperationInFlightRef = useRef(false)
   const importReadTokenRef = useRef(0)
   const handledApiConfigurationRequestRef = useRef(0)
+  const handledTokendanceCallbackRef = useRef<string | null>(null)
 
   const requireAccountForApi = () => {
     if (checkingAccount) return false
@@ -292,20 +294,36 @@ export default function Settings({
         : `TokenDance AI authorization must be linked to a signed-in account. Sign in${watchaOAuthEnabled ? ' with Watcha' : ''}, then start authorization again.`, '/?view=settings')
       return
     }
+    const callbackId = JSON.stringify([code, params.get('state')])
+    if (handledTokendanceCallbackRef.current === callbackId) return
+    handledTokendanceCallbackRef.current = callbackId
     setShowAiConfiguration(true)
     setTokendanceOAuthLoading(true)
+    setApiKeyConsentError(null)
     void exchangeTokendanceCode(code, params.get('state'))
       .then(async key => {
-        const next = { ...getSettings(), ...settings, apiKey: key, aiProvider: 'tokendance' as const }
-        setSettings(next)
+        // The authorization code is single-use. Preserve the key in the vault
+        // before allowing navigation; never persist the plaintext in settings.
+        setSettings(current => ({ ...current, apiKey: key, aiProvider: 'tokendance' }))
+        await saveAccountApiKey(key, 'tokendance')
+        const persisted = { ...getSettings(), apiKey: SERVER_MANAGED_API_KEY, aiProvider: 'tokendance' as const }
+        saveSettings(persisted)
+        await flushSettingsWrites()
+        setSettings(current => ({ ...current, apiKey: SERVER_MANAGED_API_KEY, aiProvider: 'tokendance' }))
+        onSettingsChange(persisted)
         setSaved(false)
         setApiKeyConsentError(null)
-        setApiActionStatus(lang === 'zh' ? 'TokenDance 授权成功。请确认数据传输同意，然后点击“保存设置”。' : 'TokenDance authorization succeeded. Confirm data consent, then click Save Settings.')
-        window.history.replaceState({}, '', window.location.pathname)
+        setApiActionStatus(persisted.language === 'zh' ? 'TokenDance 授权已保存。确认数据传输后，点击“验证并启用 AI”。' : 'TokenDance authorization saved. Confirm data transfer, then select Verify and enable AI.')
+        const destination = new URL(window.location.href)
+        for (const parameter of ['code', 'state', 'tokendance_callback']) destination.searchParams.delete(parameter)
+        destination.searchParams.set('view', 'settings')
+        window.history.replaceState({}, '', `${destination.pathname}${destination.search}${destination.hash}`)
       })
-      .catch(error => setApiKeyConsentError(error instanceof Error ? error.message : 'TokenDance AI key authorization failed.'))
+      .catch(() => setApiKeyConsentError(settings.language === 'zh'
+        ? 'TokenDance 授权未能完成接收或保存，请重试“授权 TokenDance”。'
+        : 'TokenDance authorization could not be received or saved. Select Authorize TokenDance to try again.'))
       .finally(() => setTokendanceOAuthLoading(false))
-  }, [checkingAccount, hasSignedInAccount, requestLogin, settings.language, settingsLoaded])
+  }, [checkingAccount, hasSignedInAccount, onSettingsChange, requestLogin, settings.language, settingsLoaded, watchaOAuthEnabled])
 
   useEffect(() => subscribeToAIUsage(() => {
     setAIUsageSummary(getAIUsageSummary())
@@ -452,7 +470,7 @@ export default function Settings({
   }
 
   const handleSave = async () => {
-    if (settingsSaveInFlightRef.current) return
+    if (settingsSaveInFlightRef.current || tokendanceOAuthLoading) return
     if (!requireAccountForApi()) return
     setApiActionStatus(null)
     const trimmedApiKey = settings.apiKey.trim()
@@ -500,7 +518,7 @@ export default function Settings({
     setSaving(true)
     const settingsToSave = { ...settings, apiKey: trimmedApiKey }
     try {
-      if (!usesServerManagedKey) {
+      if (!usesServerManagedKey || activeProvider === 'tokendance') {
         await validateDeepSeekApiKey(trimmedApiKey, undefined, activeProvider)
       }
     } catch (error) {
@@ -1088,11 +1106,13 @@ export default function Settings({
     if (updatingAiPrivacy || !hasReadConsentPolicy) return
     setSettings(current => ({ ...current, aiDataConsent: true }))
     setSaved(false)
-    setApiKeyConsentError(null)
+    if (settings.apiKey.trim()) setApiKeyConsentError(null)
     setApiActionStatus(
-      settings.language === 'zh'
-        ? '已勾选 AI 数据传输同意，请点击“保存设置”完成配置。'
-        : 'AI data transfer consent selected. Click Save Settings to complete configuration.'
+      tokendanceOAuthLoading
+        ? (settings.language === 'zh' ? '已确认数据传输，正在接收 TokenDance 授权。' : 'Data transfer confirmed. Receiving TokenDance authorization.')
+        : !settings.apiKey.trim() && activeProvider === 'tokendance'
+          ? (settings.language === 'zh' ? '已确认数据传输，还需完成 TokenDance AI Key 授权。' : 'Data transfer confirmed. TokenDance AI key authorization is still required.')
+          : (settings.language === 'zh' ? '已确认数据传输，请点击“验证并启用 AI”完成配置。' : 'Data transfer confirmed. Select Verify and enable AI to complete setup.')
     )
     setShowConsentPolicy(false)
   }
@@ -1238,7 +1258,7 @@ export default function Settings({
           ) : !hasSignedInAccount ? (
             <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/8 p-4">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>
+                {watchaOAuthEnabled && !localOnlyMode ? <WatchaLogo size={36} className="mt-0.5" /> : <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>}
                 <div className="min-w-0 flex-1">
                   <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '当前使用本地数据模式' : 'Local data mode is active') : (lang === 'zh' ? watchaOAuthEnabled ? `先使用【观猹】登录，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : `先登录账号，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : watchaOAuthEnabled ? `Sign in with Watcha before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}` : `Sign in before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}`)}</h2>
                   <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
@@ -1247,7 +1267,7 @@ export default function Settings({
                       : (lang === 'zh' ? 'API Key 必须绑定到当前账号，并由服务端加密保存。未登录时不会显示、接收或保存 API Key。' : 'The API key must be linked to the current account and encrypted by the server. Signed-out users cannot view, enter, or save an API key.')}
                   </p>
                   {!localOnlyMode && <button type="button" onClick={requireAccountForApi} className="btn-primary mt-3 inline-flex min-h-11 items-center gap-2 px-4">
-                    <LogIn size={17} aria-hidden="true" />
+                    {watchaOAuthEnabled ? <WatchaLogo size={24} /> : <LogIn size={17} aria-hidden="true" />}
                     {lang === 'zh' ? watchaOAuthEnabled ? '使用【观猹】登录' : '登录账号' : watchaOAuthEnabled ? 'Sign in with Watcha' : 'Sign in'}
                   </button>}
                 </div>
@@ -1372,7 +1392,7 @@ export default function Settings({
                 </div>
                 <button type="button" onClick={() => void handleTokendanceAuthorize()} disabled={tokendanceOAuthLoading || updatingAiPrivacy || saving} className="btn-primary inline-flex items-center gap-1.5">
                   {tokendanceOAuthLoading ? <RefreshCw size={15} className="animate-spin" aria-hidden="true" /> : <ExternalLink size={15} aria-hidden="true" />}
-                  {tokendanceOAuthLoading ? (lang === 'zh' ? '跳转中...' : 'Opening...') : (lang === 'zh' ? '授权 TokenDance' : 'Authorize TokenDance')}
+                  {tokendanceOAuthLoading ? (lang === 'zh' ? '正在连接 TokenDance...' : 'Connecting to TokenDance...') : (lang === 'zh' ? '授权 TokenDance' : 'Authorize TokenDance')}
                 </button>
               </div>
             </div>
@@ -1384,7 +1404,7 @@ export default function Settings({
               type={showKey ? 'text' : 'password'}
               value={settings.apiKey}
               onChange={(e) => updateSetting('apiKey', e.target.value)}
-              disabled={updatingAiPrivacy}
+              disabled={updatingAiPrivacy || tokendanceOAuthLoading || saving}
               placeholder={activeProvider === 'tokendance' ? 'TokenDance API Key' : t(lang, 'settings.apiKeyPlaceholder')}
               aria-describedby={apiKeyConsentError ? 'api-key-consent-error' : undefined}
               className="input-field pr-24"
@@ -1435,7 +1455,7 @@ export default function Settings({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || updatingAiPrivacy}
+              disabled={saving || updatingAiPrivacy || tokendanceOAuthLoading || !settings.apiKey.trim()}
               className="btn-primary mt-4 w-full py-3"
             >
               {saving ? <RefreshCw size={17} className="animate-spin" aria-hidden="true" /> : <Check size={17} aria-hidden="true" />}
@@ -1593,7 +1613,7 @@ export default function Settings({
         {/* Save non-AI settings; AI setup has its own adjacent action above. */}
         <button
           onClick={handleSave}
-          disabled={saving || updatingAiPrivacy}
+          disabled={saving || updatingAiPrivacy || tokendanceOAuthLoading}
           className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {saved && <Check size={18} aria-hidden="true" />}

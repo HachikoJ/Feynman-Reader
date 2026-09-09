@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { AlertTriangle, UserRound, Download, HardDrive } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
+import WatchaLogo from './WatchaLogo'
 
 interface Props {
   lang: Language
@@ -53,7 +54,7 @@ export default function DataLossWarning({ lang, onContinue }: Props) {
         <div className="min-h-0 flex-1 overflow-y-auto p-5 text-sm leading-6 md:p-6">
           <div className="space-y-3">
           <div className="flex items-start gap-3">
-            <UserRound size={19} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+            {isWatchaOAuthEnabled() ? <WatchaLogo size={20} className="mt-0.5" /> : <UserRound size={19} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />}
             <p>{isZh ? `通过${isWatchaOAuthEnabled() ? '【观猹】' : '账号'}登录后，可在账号中心统一管理个人书架、笔记、金句和费曼小助手记录。` : `After signing in${isWatchaOAuthEnabled() ? ' with Watcha' : ''}, manage your library, notes, quotes, and Feynman Assistant records in Account Center.`}</p>
           </div>
           <div className="flex items-start gap-3">

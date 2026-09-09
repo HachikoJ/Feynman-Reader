@@ -5,6 +5,7 @@ import { ExternalLink, LogIn, RefreshCw } from 'lucide-react'
 import { accountLoginHref, getAccount, getMigrationState, isLocalAuthBypassEnabled, isWatchaOAuthEnabled, migrateLocalData, type AccountUser, type MigrationState } from '@/lib/accountClient'
 import { clearMigratedLocalData, dismissLocalMigrationNotice, inspectLocalMigration, type LocalMigrationSnapshot } from '@/lib/accountMigration'
 import { initializeStore } from '@/lib/store'
+import WatchaLogo from './WatchaLogo'
 
 interface Props {
   children: React.ReactNode
@@ -149,7 +150,7 @@ export default function AuthGuard({ children }: Props) {
         <div className="modal-overlay z-[100]" role="dialog" aria-modal="true" aria-labelledby="login-required-title" onClick={() => setLoginPrompt(null)}>
           <section className="card w-[min(92vw,28rem)] p-6" onClick={event => event.stopPropagation()}>
             <div className="flex items-start gap-3">
-              <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={19} aria-hidden="true" /></span>
+              {isWatchaOAuthEnabled() ? <WatchaLogo size={36} className="mt-0.5" /> : <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={19} aria-hidden="true" /></span>}
               <div className="min-w-0">
                 <h2 id="login-required-title" className="text-lg font-semibold">需要登录</h2>
                 <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{loginPrompt.message}</p>

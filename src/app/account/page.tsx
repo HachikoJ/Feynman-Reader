@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import WatchaLogo from "@/components/WatchaLogo";
+import AccountAvatar from "@/components/AccountAvatar";
 import { useRouter } from "next/navigation";
 import {
   Archive,
@@ -1345,11 +1347,11 @@ export default function AccountPage() {
     return (
       <main className="mx-auto flex min-h-screen max-w-md items-center bg-[var(--bg-primary)] px-4 py-8">
         <section className="card w-full p-6 text-center">
-          <UserRound
+          {isWatchaOAuthEnabled() ? <WatchaLogo size={48} /> : <UserRound
             className="mx-auto text-[var(--accent)]"
             size={28}
             aria-hidden="true"
-          />
+          />}
           <h1 className="mt-3 text-xl font-bold">请先登录账号</h1>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
             登录后查看个人书架，继续阅读与练习。
@@ -1409,15 +1411,12 @@ export default function AccountPage() {
                   aria-label="上传头像"
                   title="点击更换头像"
                 >
-                  {profileAvatar ? (
-                    <img
-                      src={profileAvatar}
-                      alt="账号头像"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    (profileName || profileUsername || "我").slice(0, 1)
-                  )}
+                  <AccountAvatar
+                    avatarUrl={profileAvatar}
+                    name={profileName || profileUsername || "我"}
+                    watcha={!localPreview && Boolean(user.tokendanceSubject)}
+                    size={56}
+                  />
                   <input
                     ref={profileAvatarInputRef}
                     type="file"
