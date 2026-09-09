@@ -661,19 +661,19 @@ function ReaderWorkspaceContent() {
               </div>
             </section>
 
-            <WatchaProductBadge lang={lang} />
-
-            <div className="grid gap-3 py-4 text-center sm:grid-cols-2 sm:items-center sm:gap-6 sm:text-left">
+            <div className="grid grid-cols-1 gap-4 py-6 text-center md:grid-cols-[minmax(0,1fr)_minmax(0,300px)_minmax(0,1fr)] md:items-center md:gap-5 md:text-left lg:grid-cols-[minmax(0,1fr)_360px_minmax(0,1fr)]">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-[var(--text-primary)]">
                   {lang === 'zh' ? '费曼读书助手' : 'Feynman Reader'}
                 </p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                   {lang === 'zh' ? '以教代学，让每一次阅读真正沉淀' : 'Learn by teaching, and make every read stick'}
                 </p>
               </div>
 
-              <div className="min-w-0 text-center text-xs text-[var(--text-secondary)] sm:justify-self-end sm:text-right">
+              <WatchaProductBadge lang={lang} />
+
+              <div className="min-w-0 text-center text-xs text-[var(--text-secondary)] md:justify-self-end md:text-right">
                 <p className="leading-5">© 2026 {lang === 'zh' ? '费曼读书助手 · 保留所有权利' : 'Feynman Reader · All Rights Reserved'}</p>
                 <a
                   href="https://beian.miit.gov.cn/"
