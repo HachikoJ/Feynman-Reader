@@ -101,6 +101,9 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   const [showDocumentUpload, setShowDocumentUpload] = useState(false)
   const [deleteConfirmBook, setDeleteConfirmBook] = useState<Book | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const coverReaderRef = useRef<FileReader | null>(null)
+  const [readingCover, setReadingCover] = useState(false)
+  const [coverError, setCoverError] = useState<string | null>(null)
 
   // P0 新增：搜索功能
   const [searchQuery, setSearchQuery] = useState('')
@@ -146,6 +149,12 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
   useEffect(() => {
     setBooks(getBooks())
+  }, [])
+
+  useEffect(() => () => {
+    const reader = coverReaderRef.current
+    coverReaderRef.current = null
+    if (reader?.readyState === 1) reader.abort()
   }, [])
 
   useEffect(() => {
@@ -287,7 +296,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   }
 
   const handleAddBook = async () => {
-    if (bookSaveInFlightRef.current) return
+    if (bookSaveInFlightRef.current || coverReaderRef.current || coverError) return
     if (!isAuthenticated) {
       requestLogin(lang === 'zh' ? '登录后才能保存这本书，并在其他设备继续学习。' : 'Sign in to save this book and continue learning on other devices.')
       return
@@ -349,7 +358,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   }
 
   const handleUpdateBook = async () => {
-    if (!editingBook || bookSaveInFlightRef.current) return
+    if (!editingBook || bookSaveInFlightRef.current || coverReaderRef.current || coverError) return
     if (!isAuthenticated) {
       requestLogin(lang === 'zh' ? '登录后才能编辑并保存书籍。' : 'Sign in to edit and save books.')
       return
@@ -383,10 +392,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     // 清理输入
     const updates: Partial<Book> = {
       name: sanitizeTextInput(newBookName, 200),
-      author: newBookAuthor ? sanitizeTextInput(newBookAuthor, 100) : undefined,
-      description: newBookDesc ? sanitizeTextInput(newBookDesc, 500) : undefined,
-      cover: newBookCover || undefined,
-      tags: editingTags.length > 0 ? editingTags : undefined
+      author: newBookAuthor ? sanitizeTextInput(newBookAuthor, 100) : '',
+      description: newBookDesc ? sanitizeTextInput(newBookDesc, 500) : '',
+      cover: newBookCover,
+      tags: editingTags
     }
     bookSaveInFlightRef.current = true
     setSavingBook(true)
@@ -407,7 +416,17 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     }
   }
 
+  const cancelCoverRead = () => {
+    const reader = coverReaderRef.current
+    coverReaderRef.current = null
+    if (reader?.readyState === 1) reader.abort()
+    setReadingCover(false)
+    setCoverError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   const resetForm = () => {
+    cancelCoverRead()
     setNewBookName('')
     setNewBookAuthor('')
     setNewBookDesc('')
@@ -418,6 +437,9 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   }
 
   const openEditModal = (book: Book) => {
+    if (bookSaveInFlightRef.current) return
+    cancelCoverRead()
+    setShowAddModal(false)
     setEditingBook(book)
     setNewBookName(book.name)
     setNewBookAuthor(book.author || '')
@@ -429,6 +451,20 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     setTimeout(() => {
       autoResizeTextarea(descTextareaRef.current)
     }, 0)
+  }
+
+  const openAddModal = () => {
+    if (bookSaveInFlightRef.current) return
+    resetForm()
+    setEditingBook(null)
+    setShowAddModal(true)
+  }
+
+  const closeBookModal = () => {
+    if (bookSaveInFlightRef.current) return
+    setShowAddModal(false)
+    setEditingBook(null)
+    resetForm()
   }
 
   const handleAddTag = () => {
@@ -709,13 +745,36 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
   const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
-    
+    e.target.value = ''
+    if (!file || bookSaveInFlightRef.current) return
+    cancelCoverRead()
     const reader = new FileReader()
-    reader.onload = (event) => {
-      setNewBookCover(event.target?.result as string)
+    coverReaderRef.current = reader
+    setReadingCover(true)
+    const fail = () => {
+      if (coverReaderRef.current !== reader) return
+      coverReaderRef.current = null
+      setReadingCover(false)
+      setCoverError(lang === 'zh' ? '封面图片读取失败，请重新选择 PNG、JPEG、GIF、WebP 或 AVIF 图片。' : 'Could not read the cover. Select a PNG, JPEG, GIF, WebP, or AVIF image again.')
     }
-    reader.readAsDataURL(file)
+    reader.onload = () => {
+      if (coverReaderRef.current !== reader) return
+      const result = reader.result
+      if (typeof result !== 'string' || !result.startsWith('data:image/') || !getSafeImageSrc(result)) {
+        fail()
+        return
+      }
+      coverReaderRef.current = null
+      setReadingCover(false)
+      if (result.length > 5_000_000) {
+        setCoverError(lang === 'zh' ? '封面图片过大，请选择较小的图片。' : 'The cover image is too large. Choose a smaller image.')
+        return
+      }
+      setNewBookCover(result)
+    }
+    reader.onerror = fail
+    reader.onabort = fail
+    try { reader.readAsDataURL(file) } catch { fail() }
   }
 
   const getStatusIcon = (status: BookStatus, size = 20, onBadge = false) => {
@@ -1015,7 +1074,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
           </div>
         )}
         <div className="ml-auto flex shrink-0 gap-1">
-          <button data-testid="add-book-button" onClick={() => setShowAddModal(true)} className="btn-primary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={t(lang, 'bookshelf.addBook')} title={t(lang, 'bookshelf.addBook')}>
+          <button data-testid="add-book-button" onClick={openAddModal} className="btn-primary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={t(lang, 'bookshelf.addBook')} title={t(lang, 'bookshelf.addBook')}>
             <AppIcon name="plus" size={17} />
             <span className="hidden lg:inline">{t(lang, 'bookshelf.addBook')}</span>
           </button>
@@ -1186,7 +1245,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
         <div className="card text-center py-16">
           <AppIcon name="library" tone="blue" size={56} className="mx-auto mb-4" />
           <p className="text-[var(--text-secondary)] text-lg">{t(lang, 'bookshelf.empty')}</p>
-          <button onClick={() => setShowAddModal(true)} className="btn-primary mt-4">
+          <button onClick={openAddModal} className="btn-primary mt-4">
             <AppIcon name="plus" size={17} />
             {t(lang, 'bookshelf.addBook')}
           </button>
@@ -1372,7 +1431,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
       )}
 
       {(showAddModal || editingBook) && (
-        <div className="modal-overlay" onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}>
+        <div className="modal-overlay" onClick={closeBookModal}>
           <div className="modal-content product-dialog max-h-[calc(100dvh-32px)]" onClick={e => e.stopPropagation()}>
             <div className="product-dialog-header">
               <div className="product-dialog-title">
@@ -1382,7 +1441,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   <p>{editingBook ? (lang === 'zh' ? '更新书籍信息与阅读标签' : 'Update book details and tags') : (lang === 'zh' ? '创建一个清晰、可持续学习的阅读条目' : 'Create a focused reading entry')}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }} disabled={savingBook} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭书籍窗口' : 'Close book dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
+              <button type="button" onClick={closeBookModal} disabled={savingBook} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭书籍窗口' : 'Close book dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
                 <AppIcon name="close" size={20} />
               </button>
             </div>
@@ -1395,7 +1454,10 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   {lang === 'zh' ? '封面图片' : 'Cover Image'}
                 </label>
                 <div className="flex items-center gap-4">
-                  <div
+                  <button
+                    type="button"
+                    disabled={savingBook}
+                    aria-label={lang === 'zh' ? '上传封面' : 'Upload cover'}
                     className="product-dialog-cover flex items-center justify-center cursor-pointer"
                     onClick={() => fileInputRef.current?.click()}
                   >
@@ -1404,20 +1466,24 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                     ) : (
                       <AppIcon name="camera" tone="blue" size={28} />
                     )}
-                  </div>
+                  </button>
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
                     onChange={handleCoverUpload}
+                    disabled={savingBook}
+                    aria-label={lang === 'zh' ? '封面图片文件' : 'Cover image file'}
                     className="hidden"
                   />
                   <div className="text-sm text-[var(--text-secondary)]">
                     <span className="font-medium text-[var(--text-primary)]">{lang === 'zh' ? '上传封面' : 'Upload cover'}</span>
                     <span className="mt-1 block text-xs">{lang === 'zh' ? '建议使用竖版图片，可选' : 'Portrait image, optional'}</span>
-                    {newBookCover && (
+                    {(newBookCover || readingCover || coverError) && (
                       <button
-                        onClick={() => setNewBookCover('')}
+                        type="button"
+                        disabled={savingBook}
+                        onClick={() => { cancelCoverRead(); setNewBookCover('') }}
                         className="mt-2 block text-xs text-[var(--text-secondary)] underline underline-offset-2 hover:text-[var(--text-primary)]"
                       >
                         {lang === 'zh' ? '移除图片' : 'Remove'}
@@ -1425,6 +1491,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                     )}
                   </div>
                 </div>
+                {readingCover && <p role="status" className="mt-2 text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '正在读取封面图片...' : 'Reading cover image...'}</p>}
+                {coverError && <p role="alert" className="mt-2 text-sm text-[var(--error)]">{coverError}</p>}
               </div>
 
               {/* Book Name */}
@@ -1491,6 +1559,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                         <span className="font-medium text-[var(--accent)]">{tag.name}</span>
                         <button
                           onClick={() => handleRemoveTag(tag)}
+                          aria-label={lang === 'zh' ? `移除标签 ${tag.name}` : `Remove tag ${tag.name}`}
                           className="ml-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                         >
                           <AppIcon name="close" size={13} />
@@ -1573,7 +1642,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
             <div className="product-dialog-footer">
               <button
-                onClick={() => { setShowAddModal(false); setEditingBook(null); resetForm() }}
+                onClick={closeBookModal}
                 className="btn-secondary min-h-11 !border-transparent !bg-transparent !text-[var(--text-secondary)] hover:!bg-[var(--bg-secondary)]"
                 disabled={savingBook}
               >
@@ -1582,7 +1651,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               <button
                 onClick={editingBook ? handleUpdateBook : handleAddBook}
                 className="btn-primary min-h-11"
-                disabled={savingBook || !newBookName.trim()}
+                disabled={savingBook || readingCover || !!coverError || !newBookName.trim()}
               >
                 {savingBook
                   ? (lang === 'zh' ? '保存中...' : 'Saving...')

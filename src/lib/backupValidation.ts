@@ -369,9 +369,9 @@ function normalizeBook(value: unknown, path: string): Book {
   const book: Book = {
     id,
     name: stringValue(item.name, `${path}.name`, 200)!,
-    ...(item.author !== undefined ? { author: stringValue(item.author, `${path}.author`, 100)! } : {}),
-    ...(item.cover !== undefined ? { cover: stringValue(item.cover, `${path}.cover`, 5_000_000)! } : {}),
-    ...(item.description !== undefined ? { description: stringValue(item.description, `${path}.description`, 5000)! } : {}),
+    ...(item.author !== undefined ? { author: stringValue(item.author, `${path}.author`, 100, item.author !== '')! } : {}),
+    ...(item.cover !== undefined ? { cover: stringValue(item.cover, `${path}.cover`, 5_000_000, item.cover !== '')! } : {}),
+    ...(item.description !== undefined ? { description: stringValue(item.description, `${path}.description`, 5000, item.description !== '')! } : {}),
     tags: tags.map((tag, index) => normalizeTag(tag, `${path}.tags[${index}]`)),
     ...(item.documentContent !== undefined ? { documentContent: stringValue(item.documentContent, `${path}.documentContent`, MAX_DOCUMENT_TEXT_LENGTH)! } : {}),
     status,

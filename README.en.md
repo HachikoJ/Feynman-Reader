@@ -15,7 +15,7 @@
 
 Feynman Reader is an AI-assisted deep-reading workspace based on the Feynman technique. Instead of returning a passive summary, it asks you to teach the book in your own words, evaluates the explanation, and follows up from three different perspectives.
 
-Current release: [v0.2.0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.0). See the [version and recovery guide](docs/operations/releases-and-rollback.md) for immutable tags, source checksums, deployment identification, and rollback boundaries.
+Current release: [v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1). See the [version and recovery guide](docs/operations/releases-and-rollback.md) for immutable tags, source checksums, deployment identification, and rollback boundaries.
 
 ## What It Does
 

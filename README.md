@@ -17,7 +17,7 @@
 
 **产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
 
-当前版本：[v0.2.0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.0)。源码标签、发布附件与恢复方法见 [版本发布与恢复](docs/operations/releases-and-rollback.md)。
+当前版本：[v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1)。源码标签、发布附件与恢复方法见 [版本发布与恢复](docs/operations/releases-and-rollback.md)。
 
 > [!IMPORTANT]
 > **这是一个登录后使用账号云端的学习产品。** 未登录时可以浏览系统示例；添加书籍、AI 分析和保存学习记录前，需要先使用观猹登录。登录后，书籍、笔记、金句、助手会话和长期记忆会保存到账号对应的 PostgreSQL 云端数据库。IndexedDB 只用于老用户一次性历史迁移。TokenDance API Key 由服务端加密保存，不会显示明文，也不会进入备份文件。

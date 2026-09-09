@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { normalizeImportData } from '@/lib/backupValidation'
 import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 import { sessionUserId } from '@/lib/server/sessionUser'
+import { BookWriteConflictError } from '@/lib/server/postgresPersistence'
 
 export const runtime = 'nodejs'
 
@@ -39,11 +40,18 @@ export async function PUT(request: Request): Promise<NextResponse> {
       assistantMemories: [],
     })
     if (!normalized.valid) return NextResponse.json({ error: normalized.error }, { status: 400 })
+    const book: Record<string, unknown> = { ...normalized.data.books[0] }
+    // Validation adds defaults; omitted metadata is not an instruction to clear it.
+    const supplied = payload.book as Record<string, unknown>
+    for (const field of ['author', 'cover', 'description', 'tags']) {
+      if (!Object.prototype.hasOwnProperty.call(supplied, field)) delete book[field]
+    }
     const store = getPersistence()
     if (!store.saveBook) return NextResponse.json({ error: '数据库尚未启用云端书籍保存。' }, { status: 501 })
-    await store.saveBook(userId, normalized.data.books[0])
+    await store.saveBook(userId, book)
     return NextResponse.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
+    if (error instanceof BookWriteConflictError) return NextResponse.json({ error: error.message }, { status: 409, headers: { 'Cache-Control': 'no-store' } })
     if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     return NextResponse.json({ error: error instanceof Error ? error.message : '保存云端书籍失败。' }, { status: 400 })
   }

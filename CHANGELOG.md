@@ -2,6 +2,19 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.2.1] - 2026-09-09
+
+### Fixed
+
+- Cover replacement and removal, cleared author/description fields, and empty tags persist after navigating or refreshing. Metadata edits preserve server learning details even after the client has opened a full book.
+- Cover uploads cancel stale readers, allow selecting the same file again, and block saving while a read is pending or invalid.
+- Book lists and relations use authenticated, account-scoped record operations so deletions and membership changes persist without replaying unrelated cached data.
+- AI usage appends one idempotent record; ordinary usage tracking no longer imports the entire cached bookshelf and settings. Imports and migration preserve existing account profile fields.
+- Cloud refresh waits for pending writes and ignores responses superseded by a local edit. Failed writes cannot be mistaken for successful saves or hidden by another book's success.
+- Rejected book timestamps return a visible conflict; stale full-book updates cannot restore a book from the recycle bin.
+
+No database schema change or historical data restoration is included. See [release notes](docs/releases/v0.2.1.md) for validation and recovery scope.
+
 ## [0.2.0] - 2026-09-09
 
 First tagged release. Earlier development is preserved in Git history; no earlier tagged release is implied.
@@ -49,3 +62,4 @@ First tagged release. Earlier development is preserved in Git history; no earlie
 - Administrator pages, data routes, and retained administrator JavaScript chunks are protected by server authorization. Credentials and encrypted snapshots are not returned by generic data browsing.
 
 [0.2.0]: https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.0
+[0.2.1]: https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1

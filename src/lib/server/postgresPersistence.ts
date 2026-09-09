@@ -21,7 +21,8 @@ import type {
   UserBookSummary,
   UserDataSummary,
 } from './persistence'
-import { normalizeImportData } from '@/lib/backupValidation'
+import { normalizeAIUsageRecords, normalizeBookLists, normalizeBookRelations, normalizeImportData } from '@/lib/backupValidation'
+import type { BookList, BookRelation } from '@/lib/bookRelations'
 import { SAMPLE_BOOK_ID } from '@/lib/sampleBook'
 import { mergeDefaultQuotes } from '@/lib/defaultQuotes'
 import { isWatchaOAuthEnabled } from './authConfig'
@@ -157,6 +158,13 @@ export function mergeAccountSettings(source: SettingsRow | null, target: Setting
       ...(Array.isArray(targetData.quotes) ? targetData.quotes : []),
     ]),
     apiKey: '',
+  }
+}
+
+export class BookWriteConflictError extends Error {
+  constructor() {
+    super('书籍已更新或当前不可编辑，请重新读取后再保存。')
+    this.name = 'BookWriteConflictError'
   }
 }
 
@@ -679,6 +687,23 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     return this.readUserSettings(userId)
   }
 
+  async saveAIUsageRecord(userId: string, input: unknown): Promise<void> {
+    const normalized = normalizeAIUsageRecords([input])
+    if (!normalized.valid) throw new Error(normalized.error)
+    const record = normalized.data[0]
+    if ([record.promptTokens, record.completionTokens, record.totalTokens].some(value => value > 2_147_483_647)) {
+      throw new Error('AI 用量记录超过单条存储限制。')
+    }
+    await this.pool.query(
+      `insert into public.user_ai_usage
+         (user_id, record_id, book_id, session_id, task, model, prompt_tokens, completion_tokens, total_tokens, data, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, to_timestamp($11 / 1000.0))
+       on conflict (user_id, record_id) do nothing`,
+      [userId, record.id, record.bookId || null, record.sessionId || null, record.task, record.model,
+        record.promptTokens, record.completionTokens, record.totalTokens, JSON.stringify(record), record.createdAt],
+    )
+  }
+
   async saveBook(userId: string, input: unknown): Promise<void> {
     const book = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
     const id = typeof book.id === 'string' ? book.id : ''
@@ -690,29 +715,34 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     if (book._summaryOnly === true) {
       // Shelf edits carry empty detail placeholders. Only metadata may be
       // updated from a summary; analysis, notes and practice stay authoritative.
-      const metadata = {
-        name, author: book.author, cover: book.cover, description: book.description,
-        tags: book.tags, updatedAt,
+      const metadata: Record<string, unknown> = { name, updatedAt }
+      for (const field of ['author', 'cover', 'description', 'tags']) {
+        if (book[field] !== undefined) metadata[field] = book[field]
       }
-      await this.pool.query(
-        `update public.user_books set name = $3, author = $4,
+      const result = await this.pool.query(
+        `update public.user_books set name = $3,
+           author = case when $5::jsonb ? 'author' then $4 else author end,
            data = (data - '_summaryOnly') || $5::jsonb, updated_at = to_timestamp($6 / 1000.0)
          where user_id = $1 and book_id = $2 and deleted_at is null
            and to_timestamp($6 / 1000.0) >= updated_at`,
-        [userId, id, name, typeof book.author === 'string' ? book.author : null, JSON.stringify(metadata), updatedAt],
+        [userId, id, name, typeof book.author === 'string' && book.author.trim() ? book.author.trim() : null, JSON.stringify(metadata), updatedAt],
       )
+      if (result.rowCount === 0) throw new BookWriteConflictError()
       return
     }
-    await this.pool.query(
+    const result = await this.pool.query(
       `insert into public.user_books
          (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at, purge_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), now(), null, null)
        on conflict (user_id, book_id) do update set
-         name = excluded.name, author = excluded.author, status = excluded.status,
+         name = excluded.name,
+         author = case when excluded.data ? 'author' then excluded.author else public.user_books.author end,
+         status = excluded.status,
          current_phase = excluded.current_phase, best_score = excluded.best_score,
          data = (public.user_books.data - '_summaryOnly') || excluded.data,
          updated_at = excluded.updated_at, deleted_at = null, purge_at = null
-       where excluded.updated_at >= public.user_books.updated_at`,
+       where public.user_books.deleted_at is null
+         and excluded.updated_at >= public.user_books.updated_at`,
       [
         userId,
         id,
@@ -726,6 +756,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
         updatedAt,
       ],
     )
+    if (result.rowCount === 0) throw new BookWriteConflictError()
   }
 
   async getBook(userId: string, bookId: string): Promise<unknown | null> {
@@ -1031,12 +1062,14 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
            last_migration_error = null, updated_at = now()`,
         [userId, migrationVersion],
       )
-      const settings = { ...(data.settings || {}), apiKey: '', quotes: mergeDefaultQuotes((data.settings as { quotes?: unknown } | undefined)?.quotes) }
+      const settings: Record<string, unknown> = { ...(data.settings || {}), apiKey: '', quotes: mergeDefaultQuotes((data.settings as { quotes?: unknown } | undefined)?.quotes) }
+      delete settings.profile
       const settingsAt = new Date(data.exportDate)
       await client.query(
         `insert into public.user_settings (user_id, data, version, updated_at)
          values ($1, $2::jsonb, 1, to_timestamp($3 / 1000.0))
-         on conflict (user_id) do update set data = excluded.data, version = public.user_settings.version + 1, updated_at = excluded.updated_at
+         on conflict (user_id) do update set data = coalesce(public.user_settings.data, '{}'::jsonb) || (excluded.data - 'profile'),
+           version = public.user_settings.version + 1, updated_at = excluded.updated_at
          where excluded.updated_at >= public.user_settings.updated_at`,
         [userId, JSON.stringify(settings), settingsAt.getTime()],
       )
@@ -1253,6 +1286,63 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     return result.rowCount || 0
   }
 
+  async saveBookList(userId: string, input: BookList): Promise<void> {
+    const normalized = normalizeBookLists([input])
+    if (!normalized.valid) throw new Error(normalized.error)
+    const list = normalized.data[0]
+    if (!list.name) throw new Error('书单名称不能为空。')
+    const client = await this.pool.connect()
+    try {
+      await client.query('begin')
+      const books = await client.query<{ book_id: string }>(
+        'select book_id from public.user_books where user_id = $1 and book_id = any($2::text[]) and deleted_at is null for share',
+        [userId, list.bookIds],
+      )
+      if (books.rows.length !== list.bookIds.length) throw new Error('书单只能包含当前账号下未删除的书籍。')
+      await client.query(`insert into public.user_book_lists (user_id, list_id, name, description, book_ids, created_at, updated_at)
+        values ($1, $2, $3, $4, $5::jsonb, to_timestamp($6 / 1000.0), to_timestamp($7 / 1000.0))
+        on conflict (user_id, list_id) do update set name=excluded.name, description=excluded.description,
+          book_ids=excluded.book_ids, updated_at=excluded.updated_at`,
+      [userId, list.id, list.name, list.description || null, JSON.stringify(list.bookIds), list.createdAt, list.updatedAt])
+      await client.query('commit')
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    } finally { client.release() }
+  }
+
+  async deleteBookList(userId: string, listId: string): Promise<void> {
+    await this.pool.query('delete from public.user_book_lists where user_id = $1 and list_id = $2', [userId, listId])
+  }
+
+  async saveBookRelation(userId: string, input: BookRelation): Promise<void> {
+    const normalized = normalizeBookRelations([input])
+    if (!normalized.valid) throw new Error(normalized.error)
+    const relation = normalized.data[0]
+    const client = await this.pool.connect()
+    try {
+      await client.query('begin')
+      const books = await client.query<{ book_id: string }>(
+        'select book_id from public.user_books where user_id = $1 and book_id = any($2::text[]) and deleted_at is null for share',
+        [userId, [relation.fromBookId, relation.toBookId]],
+      )
+      if (books.rows.length !== 2) throw new Error('书籍关系两端必须属于当前账号且未删除。')
+      await client.query(`insert into public.user_book_relations (user_id, relation_id, from_book_id, to_book_id, relation_type, note, created_at, updated_at)
+        values ($1, $2, $3, $4, $5, $6, to_timestamp($7 / 1000.0), to_timestamp($8 / 1000.0))
+        on conflict (user_id, relation_id) do update set from_book_id=excluded.from_book_id,
+          to_book_id=excluded.to_book_id, relation_type=excluded.relation_type, note=excluded.note, updated_at=excluded.updated_at`,
+      [userId, relation.id, relation.fromBookId, relation.toBookId, relation.type, relation.note || null, relation.createdAt, relation.updatedAt || relation.createdAt])
+      await client.query('commit')
+    } catch (error) {
+      await client.query('rollback')
+      throw error
+    } finally { client.release() }
+  }
+
+  async deleteBookRelation(userId: string, relationId: string): Promise<void> {
+    await this.pool.query('delete from public.user_book_relations where user_id = $1 and relation_id = $2', [userId, relationId])
+  }
+
   async importUserData(userId: string, payload: unknown): Promise<ImportResult> {
     const normalized = normalizeImportData(payload)
     if (!normalized.valid) throw new Error(normalized.error)
@@ -1267,9 +1357,11 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const client = await this.pool.connect()
     try {
       await client.query('begin')
-      const settings = { ...data.settings, apiKey: '', quotes: mergeDefaultQuotes(data.settings.quotes) }
+      const settings: Record<string, unknown> = { ...data.settings, apiKey: '', quotes: mergeDefaultQuotes(data.settings.quotes) }
+      delete settings.profile
       await client.query(`insert into public.user_settings (user_id, data, version, updated_at) values ($1, $2::jsonb, 1, now())
-        on conflict (user_id) do update set data = excluded.data, version = public.user_settings.version + 1, updated_at = now()`, [userId, JSON.stringify(settings)])
+        on conflict (user_id) do update set data = coalesce(public.user_settings.data, '{}'::jsonb) || (excluded.data - 'profile'),
+          version = public.user_settings.version + 1, updated_at = now()`, [userId, JSON.stringify(settings)])
       for (const book of books) {
         // Core snapshots include summaries so relations and usage can reference
         // every book. They must never replace the stored full book JSON.

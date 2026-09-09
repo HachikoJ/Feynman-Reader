@@ -272,21 +272,6 @@ function clearPersistenceErrors(scope?: string): void {
   }
 }
 
-function clearTransientCloudErrors(): void {
-  const next = persistenceErrors.filter(entry => {
-    if (!entry.scope.startsWith('cloud-')) return true
-    const error = entry.error as PersistenceErrorInfo
-    return error.code === 'payload-too-large' || error.code === 'auth' || error.retryable === false
-  })
-  if (next.length === persistenceErrors.length) return
-  persistenceErrors = next
-  if (persistenceErrors.length === 0) {
-    persistenceErrorListeners.forEach(listener => {
-      try { listener(null) } catch (listenerError) { logger.error('Persistence status listener failed:', listenerError) }
-    })
-  }
-}
-
 async function fetchWithRetry(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -356,7 +341,6 @@ function enqueueCloudSnapshot(): void {
     })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端保存失败。')
     clearPersistenceErrors('cloud-snapshot')
-    clearTransientCloudErrors()
   }).catch(error => {
     reportPersistenceError('cloud-snapshot', error)
     logger.error('Failed to persist cloud snapshot:', error)
@@ -391,6 +375,15 @@ function flushScheduledCloudSnapshot(): void {
   }
 }
 
+async function drainCloudWrites(): Promise<void> {
+  let pending: Promise<void>
+  do {
+    flushScheduledCloudSnapshot()
+    pending = cloudWriteQueue
+    await pending
+  } while (pending !== cloudWriteQueue || cloudSnapshotPending)
+}
+
 function queueCloudSettings(settings: AppSettings): void {
   const payload = { ...cloneForStorage(settings), apiKey: '' }
   cloudSettingsWriteQueue = cloudSettingsWriteQueue.then(async () => {
@@ -401,7 +394,6 @@ function queueCloudSettings(settings: AppSettings): void {
     })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端设置保存失败。')
     clearPersistenceErrors('cloud-settings')
-    clearTransientCloudErrors()
   }).catch(error => {
     reportPersistenceError('cloud-settings', error)
     logger.error('Failed to persist cloud settings:', error)
@@ -412,10 +404,9 @@ function queueCloudBookDeletion(id: string): void {
   cloudWriteQueue = cloudWriteQueue.then(async () => {
     const response = await fetchWithRetry(`/api/account/books/${encodeURIComponent(id)}/`, { method: 'DELETE', credentials: 'include' })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍删除失败。')
-    clearPersistenceErrors('cloud-book')
-    clearTransientCloudErrors()
+    clearPersistenceErrors(`cloud-book:${id}`)
   }).catch(error => {
-    reportPersistenceError('cloud-book', error)
+    reportPersistenceError(`cloud-book:${id}`, error)
     logger.error('Failed to delete cloud book:', error)
   })
 }
@@ -430,10 +421,9 @@ function queueCloudBookUpsert(book: Book): void {
       body: JSON.stringify({ book: payload }),
     })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍保存失败。')
-    clearPersistenceErrors('cloud-book')
-    clearTransientCloudErrors()
+    clearPersistenceErrors(`cloud-book:${book.id}`)
   }).catch(error => {
-    reportPersistenceError('cloud-book', error)
+    reportPersistenceError(`cloud-book:${book.id}`, error)
     logger.error('Failed to persist cloud book:', error)
   })
 }
@@ -445,10 +435,9 @@ function queueCloudBookRestore(id: string): void {
       body: JSON.stringify({ bookId: id, action: 'restore' }),
     })
     if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍恢复失败。')
-    clearPersistenceErrors('cloud-book')
-    clearTransientCloudErrors()
+    clearPersistenceErrors(`cloud-book:${id}`)
   }).catch(error => {
-    reportPersistenceError('cloud-book', error)
+    reportPersistenceError(`cloud-book:${id}`, error)
     logger.error('Failed to restore cloud book:', error)
   })
 }
@@ -780,13 +769,40 @@ export function getBookRelations(): BookRelation[] {
   return cloneForStorage(bookRelationsCache)
 }
 
-function persistBookOrganization(): void {
+function queueCloudOrganizationChange(kind: 'list' | 'relation', record: BookList | BookRelation, deleted = false): void {
+  const body = JSON.stringify(deleted ? { kind, id: record.id } : { kind, record })
+  const scope = `cloud-organization:${kind}:${record.id}`
+  cloudWriteQueue = cloudWriteQueue.then(async () => {
+    const response = await fetchWithRetry('/api/account/book-organization/', {
+      method: deleted ? 'DELETE' : 'PUT', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }, body,
+    })
+    if (!response.ok) throw await toCloudPersistenceError(response, '云端书单或书籍关系保存失败。')
+    clearPersistenceErrors(scope)
+  }).catch(error => {
+    reportPersistenceError(scope, error)
+    logger.error('Failed to persist book organization:', error)
+  })
+}
+
+function persistBookOrganization(previous: BookOrganizationData): void {
   const snapshot: BookOrganizationData = cloneForStorage({
     lists: bookListsCache,
     relations: bookRelationsCache
   })
   if (cloudMode) {
-    queueCloudSnapshot()
+    // Only send records changed by this action; another tab may have newer records.
+    for (const [kind, before, after] of [
+      ['list', previous.lists, snapshot.lists],
+      ['relation', previous.relations, snapshot.relations],
+    ] as const) {
+      const beforeById = new Map<string, BookList | BookRelation>(before.map(record => [record.id, record]))
+      const afterIds = new Set(after.map(record => record.id))
+      for (const record of before) if (!afterIds.has(record.id)) queueCloudOrganizationChange(kind, record, true)
+      for (const record of after) {
+        if (JSON.stringify(beforeById.get(record.id)) !== JSON.stringify(record)) queueCloudOrganizationChange(kind, record)
+      }
+    }
     return
   }
   bookOrganizationWriteQueue = bookOrganizationWriteQueue
@@ -801,6 +817,7 @@ function persistBookOrganization(): void {
 }
 
 function replaceBookOrganization(lists: BookList[], relations: BookRelation[]): void {
+  const previous = { lists: bookListsCache, relations: bookRelationsCache }
   const bookIds = new Set(booksCache.map(book => book.id))
   const normalizedLists = normalizeBookLists(lists, bookIds)
   const normalizedRelations = normalizeBookRelations(relations, bookIds)
@@ -808,7 +825,7 @@ function replaceBookOrganization(lists: BookList[], relations: BookRelation[]): 
   if (!normalizedRelations.valid) throw new Error(normalizedRelations.error)
   bookListsCache = normalizedLists.data
   bookRelationsCache = normalizedRelations.data
-  persistBookOrganization()
+  persistBookOrganization(previous)
 }
 
 export function createBookList(name: string, description?: string): BookList {
@@ -831,8 +848,8 @@ export function updateBookList(listId: string, updates: Pick<Partial<BookList>, 
   const updated: BookList = {
     ...existing,
     ...(updates.name !== undefined ? { name: updates.name.trim() } : {}),
-    ...(updates.description?.trim() ? { description: updates.description.trim() } : { description: undefined }),
-    updatedAt: Date.now()
+    ...(Object.hasOwn(updates, 'description') ? { description: updates.description?.trim() || undefined } : {}),
+    updatedAt: Math.max(Date.now(), existing.updatedAt + 1)
   }
   replaceBookOrganization(bookListsCache.map(list => list.id === listId ? updated : list), bookRelationsCache)
   return cloneForStorage(updated)
@@ -927,7 +944,18 @@ export function addAIUsageRecord(record: Omit<AIUsageRecord, 'id'>): AIUsageReco
   aiUsageCache = [...aiUsageCache, savedRecord].slice(-MAX_AI_USAGE_RECORDS)
   const snapshot = cloneForStorage(aiUsageCache)
   if (cloudMode) {
-    queueCloudSnapshot()
+    const body = JSON.stringify({ record: savedRecord })
+    const scope = `cloud-ai-usage:${savedRecord.id}`
+    cloudWriteQueue = cloudWriteQueue.then(async () => {
+      const response = await fetchWithRetry('/api/account/ai-usage/', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body,
+      })
+      if (!response.ok) throw await toCloudPersistenceError(response, '云端 AI 用量保存失败。')
+      clearPersistenceErrors(scope)
+    }).catch(error => {
+      reportPersistenceError(scope, error)
+      logger.error('Failed to persist AI usage:', error)
+    })
   } else aiUsageWriteQueue = aiUsageWriteQueue
     .then(
       async () => { await saveIndexedDBAIUsageRecords(snapshot); clearPersistenceErrors('ai-usage') },
@@ -990,10 +1018,16 @@ function persistBook(book: Book): void {
     })
 }
 
-function persistExistingBook(book: Book, expectedUpdatedAt: number): void {
+function persistExistingBook(book: Book, expectedUpdatedAt: number, metadataOnly = false): void {
   const snapshot = cloneForStorage(book)
   if (cloudMode) {
-    queueCloudBookUpsert(snapshot)
+    if (metadataOnly) {
+      const { id, name, author, cover, description, tags, status, currentPhase, bestScore, createdAt, updatedAt } = snapshot
+      queueCloudBookUpsert({
+        id, name, author, cover, description, tags, status, currentPhase, bestScore, createdAt, updatedAt,
+        _summaryOnly: true, responses: {}, noteRecords: [], practiceRecords: [], qaPracticeRecords: [],
+      })
+    } else queueCloudBookUpsert(snapshot)
     return
   }
   booksWriteQueue = booksWriteQueue
@@ -1041,8 +1075,8 @@ function persistBookDeletion(id: string, expectedUpdatedAt: number): void {
 }
 
 export async function flushPendingStoreWrites(): Promise<void> {
-  flushScheduledCloudSnapshot()
-  await Promise.all([settingsWriteQueue, booksWriteQueue, aiUsageWriteQueue, bookOrganizationWriteQueue, cloudWriteQueue, cloudSettingsWriteQueue])
+  await drainCloudWrites()
+  await Promise.all([settingsWriteQueue, booksWriteQueue, aiUsageWriteQueue, bookOrganizationWriteQueue, cloudSettingsWriteQueue])
   if (persistenceErrors.length === 0) return
 
   const [entry] = persistenceErrors.splice(0, persistenceErrors.length)
@@ -1122,13 +1156,23 @@ export function updateBook(id: string, updates: Partial<Book>): void {
   )) throw new Error('书籍详情尚未读取，请重新打开书籍后重试。')
 
   logger.debug('🔄 updateBook:', { id, updates, oldStatus: existingBook.status })
-  const updatedBook = normalizeBookLearningState({ ...existingBook, ...updates, updatedAt: Date.now() })
+  const metadataUpdates = { ...updates }
+  for (const key of ['author', 'cover', 'description'] as const) {
+    if (Object.hasOwn(updates, key)) metadataUpdates[key] = updates[key] ?? ''
+  }
+  if (Object.hasOwn(updates, 'tags')) metadataUpdates.tags = updates.tags ?? []
+  const updatedBook = normalizeBookLearningState({
+    ...existingBook, ...metadataUpdates, updatedAt: Math.max(Date.now(), existingBook.updatedAt + 1),
+  })
   booksCache = booksCache.map(book => book.id === id ? updatedBook : book)
-  persistExistingBook(updatedBook, existingBook.updatedAt)
+  persistExistingBook(updatedBook, existingBook.updatedAt, Object.keys(updates).every(key =>
+    ['name', 'author', 'cover', 'description', 'tags'].includes(key)
+  ))
   logger.debug('🔄 updateBook 完成，新状态:', updatedBook.status)
 }
 
 export function deleteBook(id: string): void {
+  const previousOrganization = { lists: bookListsCache, relations: bookRelationsCache }
   const existingBook = booksCache.find(book => book.id === id)
   if (!existingBook) throw new Error(`BOOK_NOT_FOUND:${id}`)
   booksCache = booksCache.filter(book => book.id !== id)
@@ -1139,7 +1183,8 @@ export function deleteBook(id: string): void {
     ...(list.bookIds.includes(id) ? { updatedAt: Date.now() } : {})
   }))
   bookRelationsCache = bookRelationsCache.filter(relation => relation.fromBookId !== id && relation.toBookId !== id)
-  persistBookOrganization()
+  // The cloud delete transaction already removes memberships and relations.
+  if (!cloudMode) persistBookOrganization(previousOrganization)
 }
 
 export function restoreBook(book: Book): void {
@@ -1179,7 +1224,8 @@ export function getBook(id: string): Book | undefined {
 
 export async function reloadBookFromPersistence(id: string): Promise<Book | undefined> {
   if (cloudMode) {
-    await cloudWriteQueue
+    await drainCloudWrites()
+    const beforeRead = booksCache.find(book => book.id === id)
     const response = await fetch(`/api/account/books/${encodeURIComponent(id)}/`, { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端书籍。')
     const payload = await response.json() as { book?: unknown }
@@ -1199,7 +1245,7 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
     if (!remoteBook || remoteBook.id === SAMPLE_BOOK_ID || remoteBook.isSample) return undefined
     if (remoteBook._summaryOnly) throw new Error('云端尚未返回完整书籍详情，请重试。')
     const cachedBook = booksCache.find(book => book.id === id)
-    if (cachedBook && !cachedBook._summaryOnly && cachedBook.updatedAt > remoteBook.updatedAt) return cachedBook
+    if (cachedBook !== beforeRead) return cachedBook
     const normalizedBook = normalizeBookLearningState(remoteBook)
     booksCache = booksCache.some(book => book.id === id)
       ? booksCache.map(book => book.id === id ? normalizedBook : book)
@@ -1224,12 +1270,14 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
 
 export async function reloadBooksFromPersistence(): Promise<Book[]> {
   if (cloudMode) {
+    await drainCloudWrites()
+    const beforeRead = booksCache
     const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端书架。')
     const normalized = normalizeImportData(await response.json())
     if (!normalized.valid) throw new Error(normalized.error)
     const remote = normalized.data.books.filter(book => !book.isSample && book.id !== SAMPLE_BOOK_ID).map(normalizeBookLearningState)
-    booksCache = remote.length > 0 ? remote : [createSampleBook()]
+    if (booksCache === beforeRead) booksCache = remote.length > 0 ? remote : [createSampleBook()]
     return getBooks()
   }
   await booksWriteQueue
@@ -1240,6 +1288,9 @@ export async function reloadBooksFromPersistence(): Promise<Book[]> {
 
 export async function reloadBookOrganizationFromPersistence(): Promise<BookOrganizationData> {
   if (cloudMode) {
+    await drainCloudWrites()
+    const beforeLists = bookListsCache
+    const beforeRelations = bookRelationsCache
     const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端书单。')
     const normalized = normalizeImportData(await response.json())
@@ -1249,8 +1300,10 @@ export async function reloadBookOrganizationFromPersistence(): Promise<BookOrgan
     const relations = normalizeBookRelations(normalized.data.bookRelations, bookIds)
     if (!lists.valid) throw new Error(lists.error)
     if (!relations.valid) throw new Error(relations.error)
-    bookListsCache = lists.data
-    bookRelationsCache = relations.data
+    if (beforeLists === bookListsCache && beforeRelations === bookRelationsCache) {
+      bookListsCache = lists.data
+      bookRelationsCache = relations.data
+    }
     return cloneForStorage({ lists: bookListsCache, relations: bookRelationsCache })
   }
   await bookOrganizationWriteQueue
@@ -1269,7 +1322,7 @@ function replaceBookInCache(book: Book): void {
   const existingBook = booksCache.find(existing => existing.id === book.id)
   if (!existingBook) throw new Error(`BOOK_NOT_FOUND:${book.id}`)
   if (existingBook._summaryOnly) throw new Error('书籍详情尚未读取，请重新打开书籍后重试。')
-  const normalizedBook = normalizeBookLearningState(book)
+  const normalizedBook = normalizeBookLearningState({ ...book, updatedAt: Math.max(book.updatedAt, existingBook.updatedAt + 1) })
   booksCache = booksCache.map(existing => existing.id === book.id ? normalizedBook : existing)
   persistExistingBook(normalizedBook, existingBook.updatedAt)
 }

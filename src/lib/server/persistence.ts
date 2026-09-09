@@ -1,5 +1,6 @@
 import type { AuthStore, AuthUser, AuthSession } from './auth'
 import type { EncryptedSecret } from './apiKeyVault'
+import type { BookList, BookRelation } from '@/lib/bookRelations'
 import { PostgresPersistenceAdapter } from './postgresPersistence'
 
 export interface ApiKeyRecord {
@@ -32,6 +33,11 @@ export interface PersistenceAdapter extends AuthStore {
   getUserSettings?(userId: string): Promise<Record<string, unknown>>
   listUserBooks?(userId: string): Promise<UserBookSummary[]>
   saveBook?(userId: string, book: unknown): Promise<void>
+  saveAIUsageRecord?(userId: string, record: unknown): Promise<void>
+  saveBookList?(userId: string, list: BookList): Promise<void>
+  deleteBookList?(userId: string, listId: string): Promise<void>
+  saveBookRelation?(userId: string, relation: BookRelation): Promise<void>
+  deleteBookRelation?(userId: string, relationId: string): Promise<void>
   getBook?(userId: string, bookId: string): Promise<unknown | null>
   exportUserData?(userId: string, format?: 'full' | 'core'): Promise<unknown>
   saveUserSettings?(userId: string, data: unknown): Promise<void>
