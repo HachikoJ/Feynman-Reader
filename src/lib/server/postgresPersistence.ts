@@ -968,7 +968,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const avatarUrl = typeof profile.avatarUrl === 'string' && profile.avatarUrl.trim() ? profile.avatarUrl.trim().slice(0, 2000) : null
     const profilePatch = {
       ...(nickname ? { watchaNickname: nickname } : {}),
-      watchaAvatarUrl: avatarUrl,
+      ...(avatarUrl ? { watchaAvatarUrl: avatarUrl } : {}),
     }
     await this.pool.query(
       `update public.app_users set

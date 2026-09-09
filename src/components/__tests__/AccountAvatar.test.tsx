@@ -14,6 +14,15 @@ describe('account avatar display', () => {
     expect(container.querySelector('img')).toHaveAttribute('src', '/brand/watcha/icon-round.svg')
   })
 
+  it('replaces the anonymous placeholder when the signed-in Watcha profile arrives', () => {
+    const { container, rerender } = render(<AccountAvatar watcha />)
+    expect(container.querySelector('img')).toHaveAttribute('src', '/brand/watcha/icon-round.svg')
+
+    rerender(<AccountAvatar avatarUrl="https://example.test/watcha-user.png" name="Reader" watcha />)
+    expect(container.querySelector('img')).toHaveAttribute('src', 'https://example.test/watcha-user.png')
+    expect(container.querySelector('img[src="/brand/watcha/icon-round.svg"]')).toBeNull()
+  })
+
   it('keeps a generic initial for a non-Watcha account', () => {
     const { container } = render(<AccountAvatar name="读者" />)
     expect(container).toHaveTextContent('读')

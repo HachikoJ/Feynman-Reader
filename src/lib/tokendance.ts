@@ -102,7 +102,9 @@ export async function exchangeTokendanceCode(code: string, state: string | null)
 
   const response = await fetch(`${TOKENDANCE_BASE_URL}/portal/api/v1/auth/keys`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-App-URL': TOKENDANCE_REQUEST_APP_URL },
+    // This endpoint only allows Content-Type in its CORS preflight. The new
+    // key inherits app_url from the authorization URL; AI calls keep X-App-URL.
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, code_verifier: verifier, code_challenge_method: 'S256' })
   })
   if (!response.ok) throw new Error(`Tokendance OAuth exchange failed (${response.status}).`)

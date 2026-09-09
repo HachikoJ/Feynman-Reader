@@ -2,6 +2,15 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.2.4] - 2026-09-09
+
+### Fixed
+
+- Use only the supported Content-Type header when exchanging TokenDance authorization codes. The upstream endpoint rejects X-App-URL in browser CORS preflight, preventing authorization on both mobile and desktop browsers. OAuth app_url and AI request attribution remain https://www.deline.top.
+- Preserve the previously saved Watcha avatar when a later login omits its image. User avatars remain ahead of the placeholder; custom images retain priority.
+
+No database schema or account permission changes. See [release notes](docs/releases/v0.2.4.md).
+
 ## [0.2.3] - 2026-09-09
 
 ### Fixed

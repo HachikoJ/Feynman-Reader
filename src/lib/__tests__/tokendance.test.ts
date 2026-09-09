@@ -3,6 +3,7 @@ import {
   fetchTokendanceBalance,
   getTokendancePaymentSession,
   createTokendanceAuthorizationUrl,
+  exchangeTokendanceCode,
   TOKENDANCE_APP_URL,
   TOKENDANCE_CALLBACK_ORIGIN
 } from '../tokendance'
@@ -66,6 +67,64 @@ describe('TokenDance payment session URLs', () => {
   it('does not send the API key to a non-TokenDance status URL', async () => {
     await expect(getTokendancePaymentSession('sk-secret', 'https://example.com/status')).rejects.toThrow('status URL is invalid')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('TokenDance OAuth code exchange', () => {
+  const fetchMock = jest.fn()
+  const session = new Map<string, string>()
+  const originalWindow = globalThis.window
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')
+  const verifierKey = 'feynman-tokendance-pkce-verifier'
+  const stateKey = 'feynman-tokendance-oauth-state'
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    session.clear()
+    session.set(verifierKey, 'fixture-verifier')
+    session.set(stateKey, 'fixture-state')
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: fetchMock })
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: {} })
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => session.get(key) ?? null,
+        removeItem: (key: string) => session.delete(key),
+      },
+    })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
+    if (originalStorage) Object.defineProperty(globalThis, 'sessionStorage', originalStorage)
+    else Reflect.deleteProperty(globalThis, 'sessionStorage')
+  })
+
+  it('exchanges with only CORS-allowed headers and consumes local PKCE state after success', async () => {
+    const key = 'fixture-authorized-token-key'
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ key }) })
+
+    await expect(exchangeTokendanceCode('fixture-code', 'fixture-state')).resolves.toBe(key)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://tokendance.space/portal/api/v1/auth/keys')
+    expect(Object.fromEntries(new Headers(init.headers))).toEqual({ 'content-type': 'application/json' })
+    expect(JSON.parse(init.body as string)).toEqual({
+      code: 'fixture-code', code_verifier: 'fixture-verifier', code_challenge_method: 'S256',
+    })
+    expect(session.has(verifierKey)).toBe(false)
+    expect(session.has(stateKey)).toBe(false)
+  })
+
+  it('does not exchange a code from a different authorization flow', async () => {
+    await expect(exchangeTokendanceCode('fixture-code', 'other-state')).rejects.toThrow('state expired or did not match')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('retains PKCE state if the exchange is rejected', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 403 })
+    await expect(exchangeTokendanceCode('expired-code', 'fixture-state')).rejects.toThrow('(403)')
+    expect(session.get(verifierKey)).toBe('fixture-verifier')
+    expect(session.get(stateKey)).toBe('fixture-state')
   })
 })
 
