@@ -7,7 +7,7 @@ import {
   BookOpen,
   BrainCircuit,
   Check,
-  Cloud,
+  UserRound,
   Sparkles,
   type LucideIcon
 } from 'lucide-react'
@@ -56,14 +56,14 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       ]
     },
     {
-      title: '登录后，学习数据自动上云',
-      description: <>添加自己的书、使用 AI 和保存学习记录前，请先<strong className="font-bold text-[var(--accent)]">{isWatchaOAuthEnabled() ? '使用【观猹】登录' : '登录账号'}</strong>。账号用于确认数据归属。</>,
-      icon: Cloud,
+      title: '开始自己的阅读与练习',
+      description: <><strong className="font-bold text-[var(--accent)]">{isWatchaOAuthEnabled() ? '使用【观猹】登录' : '登录账号'}</strong>后，建立自己的书架，记录理解与疑问，继续每一本书的学习。</>,
+      icon: UserRound,
       iconTone: 'accent',
       tips: [
-        { text: '书籍、笔记、金句、学习进度和助手会话保存到账号云端', emphasis: '保存到账号云端', tone: 'accent' },
-        { text: '账号中心可跨设备查看云端书架、活动、金句和数据统计', emphasis: '账号中心', tone: 'emerald' },
-        { text: '登录后，学习数据会自动保存到云端，可在账号中心跨设备查看', emphasis: '自动保存到云端', tone: 'sky' }
+        { text: '建立个人书架，按六阶段阅读，用自己的话讲解和练习', emphasis: '个人书架', tone: 'accent' },
+        { text: '在账号中心查看金句、学习统计与活动日历，回顾阅读积累', emphasis: '账号中心', tone: 'emerald' },
+        { text: '管理助手会话与长期记忆，按需导入或导出学习记录', emphasis: '学习记录', tone: 'sky' }
       ]
     },
     {
@@ -85,7 +85,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       tips: [
         { text: '系统使用 DeepSeek V4 Flash；TokenDance 峰时火山方舟端口最高约省 20%', emphasis: '最高约省 20%', tone: 'emerald' },
         { text: '限时优惠当前适用于峰时火山方舟端口，可在 TokenDance 设置路由偏好', emphasis: '限时优惠', tone: 'amber' },
-        { text: 'API Key 登录后加密保存在服务端，不写入云端备份或浏览器明文', emphasis: '加密保存在服务端', tone: 'emerald' },
+        { text: 'API Key 登录后加密保存在服务端，不写入数据备份或浏览器明文', emphasis: '加密保存在服务端', tone: 'emerald' },
         { text: '计费以 TokenDance 官方实时标准及后续通知为准', emphasis: '官方实时标准及后续通知', tone: 'amber' }
       ]
     }
@@ -103,14 +103,14 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       ]
     },
     {
-      title: 'Sign in to save learning data to the cloud',
-      description: `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before adding your own books, using AI, or saving learning records. Your account identifies the owner of the data.`,
-      icon: Cloud,
+      title: 'Start your own reading and practice',
+      description: `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} to build your bookshelf, record insights and questions, and continue learning from each book.`,
+      icon: UserRound,
       iconTone: 'accent',
       tips: [
-        { text: 'Books, notes, quotes, progress, and assistant sessions are saved to your account cloud', emphasis: 'account cloud', tone: 'accent' },
-        { text: 'Use Account Center to view your cloud bookshelf, activity, quotes, and data statistics across devices', emphasis: 'Account Center', tone: 'emerald' },
-        { text: 'After sign-in, learning data is saved to your account cloud and available across devices', emphasis: 'account cloud', tone: 'sky' }
+        { text: 'Build your personal bookshelf, read through six phases, and practice explaining in your own words', emphasis: 'personal bookshelf', tone: 'accent' },
+        { text: 'Review quotes, learning statistics, and your activity calendar in Account Center', emphasis: 'Account Center', tone: 'emerald' },
+        { text: 'Manage assistant sessions and long-term memories, and import or export learning records as needed', emphasis: 'learning records', tone: 'sky' }
       ]
     },
     {
@@ -132,7 +132,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
       tips: [
         { text: 'For DeepSeek V4 Flash, TokenDance offers up to about 20% off on the Volcengine Ark route during peak hours', emphasis: 'up to about 20% off', tone: 'emerald' },
         { text: 'Limited-time savings currently apply to the Volcengine Ark route at peak hours; route preferences can be set in TokenDance', emphasis: 'Limited-time savings', tone: 'amber' },
-        { text: 'After sign-in, your API key is encrypted on the server and excluded from cloud backups and browser plaintext', emphasis: 'encrypted on the server', tone: 'emerald' },
+        { text: 'After sign-in, your API key is encrypted on the server and excluded from data backups and browser plaintext', emphasis: 'encrypted on the server', tone: 'emerald' },
         { text: 'Billing follows TokenDance official real-time pricing and subsequent notices', emphasis: 'official real-time pricing', tone: 'amber' }
       ]
     }
@@ -196,7 +196,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
     steps[steps.length - 1] = lang === 'zh'
       ? {
           title: 'TokenDance 已连接',
-          description: `${watchaOAuthEnabled ? '观猹' : '账号'}已登录，TokenDance API Key 与 AI 数据传输同意均已保存，可以添加自己的书并开始分析。`,
+          description: `${watchaOAuthEnabled ? '【观猹】' : '账号'}已登录，TokenDance API Key 与 AI 数据传输同意均已保存，可以添加自己的书并开始分析。`,
           icon: Sparkles,
           iconTone: 'emerald',
           tips: [

@@ -13,7 +13,7 @@ import {
   Archive,
   ArrowLeft,
   Check,
-  Cloud,
+  Quote,
   Download,
   ExternalLink,
   FileDown,
@@ -105,8 +105,8 @@ const tabs: Array<{
   icon: typeof LayoutDashboard;
 }> = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
-  { id: "bookshelf", label: "云端书架", icon: Archive },
-  { id: "quotes", label: "金句管理", icon: Cloud },
+  { id: "bookshelf", label: "个人书架", icon: Archive },
+  { id: "quotes", label: "金句管理", icon: Quote },
   { id: "assistant", label: "费曼小助手", icon: UserRound },
   { id: "recycle", label: "回收站", icon: Trash2 },
   { id: "data", label: "数据管理", icon: Download },
@@ -780,7 +780,7 @@ export default function AccountPage() {
             setAssistantMemoryError("长期记忆暂时无法读取，请稍后重试。");
           }),
         ]).catch(reason => {
-          setError(reason instanceof Error ? reason.message : "部分云端数据暂时无法读取。");
+          setError(reason instanceof Error ? reason.message : "部分学习记录暂时无法读取。");
         });
       })
       .catch((reason) =>
@@ -953,7 +953,7 @@ export default function AccountPage() {
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     if (localPreview) {
       event.target.value = "";
-      setMessage("本地预览模式不会写入云端数据。");
+      setMessage("本地预览模式不会修改账号记录。");
       return;
     }
     const file = event.target.files?.[0];
@@ -963,13 +963,13 @@ export default function AccountPage() {
       const result = await importLocalData(JSON.parse(await file.text()));
       setCloudData(await getUserDataSummary());
       setMessage(
-        `云端数据已合并：${result.booksImported} 本书、${result.aiUsageImported} 条 AI 使用记录。`,
+        `学习记录已合并：${result.booksImported} 本书、${result.aiUsageImported} 条 AI 使用记录。`,
       );
     });
   };
   const handleCloudExport = async () => {
     if (localPreview) {
-      setMessage("本地预览模式不会导出云端数据。");
+      setMessage("本地预览模式不会导出账号记录。");
       return;
     }
     await runBusy(async () => {
@@ -977,7 +977,7 @@ export default function AccountPage() {
         await getCloudData(),
         `feynman-cloud-backup-${new Date().toISOString().slice(0, 10)}.json`,
       );
-      setMessage("云端数据备份已开始下载。API Key 不会包含在备份中。");
+      setMessage("学习记录备份已开始下载。API Key 不会包含在备份中。");
     });
   };
   const handleRecycleAction = async (
@@ -985,7 +985,7 @@ export default function AccountPage() {
     action: "restore" | "delete",
   ) => {
     if (localPreview) {
-      setMessage("本地预览模式不会修改云端回收站。");
+      setMessage("本地预览模式不会修改账号回收站。");
       return;
     }
     if (
@@ -1009,7 +1009,7 @@ export default function AccountPage() {
       setCloudData(await getUserDataSummary());
       setMessage(
         action === "restore"
-          ? `《${item.name}》已恢复到云端书架。`
+          ? `《${item.name}》已恢复到个人书架。`
           : `《${item.name}》已永久删除。`,
       );
     });
@@ -1041,7 +1041,7 @@ export default function AccountPage() {
       setMessage(successMessage);
       return;
     }
-    if (!cloudSettings) throw new Error("云端设置尚未加载，请刷新后重试。");
+    if (!cloudSettings) throw new Error("账号设置尚未加载，请刷新后重试。");
     const response = await fetch("/api/account/data/", {
       method: "PUT",
       credentials: "include",
@@ -1106,7 +1106,7 @@ export default function AccountPage() {
     session: CloudAssistantSession,
   ) => {
     if (localPreview) {
-      setMessage("本地预览模式不会修改云端会话。");
+      setMessage("本地预览模式不会修改账号中的会话。");
       return;
     }
     if (busy || !window.confirm(`删除会话“${session.title}”？`)) return;
@@ -1120,7 +1120,7 @@ export default function AccountPage() {
   };
   const handleDeleteAssistantMemory = async (memory: AssistantMemory) => {
     if (localPreview) {
-      setMessage("本地预览模式不会修改云端记忆。");
+      setMessage("本地预览模式不会修改账号中的记忆。");
       return;
     }
     if (busy || !window.confirm("删除这条长期记忆？")) return;
@@ -1279,7 +1279,7 @@ export default function AccountPage() {
       );
       setCloudData(await getUserDataSummary());
       setCloudBooks((await getCloudBookSummaries()) as CloudBook[]);
-      setMessage("本机历史数据已迁移到云端，本机用户数据已清理。");
+      setMessage("本机历史记录已导入当前账号，已迁移的本机记录已清理。");
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -1352,7 +1352,7 @@ export default function AccountPage() {
           />
           <h1 className="mt-3 text-xl font-bold">请先登录账号</h1>
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
-            登录后才能查看云端书架和管理学习数据。
+            登录后查看个人书架，继续阅读与练习。
           </p>
           <a
             href={accountLoginHref("/account")}
@@ -1396,9 +1396,9 @@ export default function AccountPage() {
                     账号名称和头像会在费曼读书助手内展示。
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)]/10 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)]">
-                  <Cloud size={14} aria-hidden="true" />
-                  云端已启用
+                <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-[var(--accent)]/10 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)]">
+                  <UserRound size={14} aria-hidden="true" />
+                  {localPreview ? "本地预览" : "已登录"}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -1433,7 +1433,7 @@ export default function AccountPage() {
                   <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">
                     {user.hasPassword
                       ? "本地账号 · 名称同时用于登录"
-                      : "观猹账号 · 云端资料已同步"}
+                      : "观猹账号 · 个人阅读空间"}
                   </p>
                 </div>
                 <button
@@ -1703,7 +1703,7 @@ export default function AccountPage() {
     if (activeTab === "bookshelf")
       return (
         <Panel
-          title="我的云端书架"
+          title="个人书架"
           icon={Archive}
           hint={`${visibleBooks.length}/${cloudBooks.length} 本书`}
         >
@@ -1721,7 +1721,7 @@ export default function AccountPage() {
                   aria-hidden="true"
                 />
                 {cloudBooks.length === 0
-                  ? "云端书架还没有用户书籍。"
+                  ? "书架里还没有书，开始你的第一本阅读吧。"
                   : "没有匹配的书籍。"}
               </div>
             ) : (
@@ -1791,7 +1791,7 @@ export default function AccountPage() {
       return (
         <Panel
           title="金句管理"
-          icon={Cloud}
+          icon={Quote}
           hint={`${visibleQuotes.length}/${quotes.length} 条金句`}
         >
           <div className="space-y-3">
@@ -1836,13 +1836,13 @@ export default function AccountPage() {
             <div className="card p-4">
               {visibleQuotes.length === 0 ? (
                 <div className="py-10 text-center text-sm text-[var(--text-secondary)]">
-                  <Cloud
+                  <Quote
                     className="mx-auto mb-2 opacity-50"
                     size={24}
                     aria-hidden="true"
                   />
                   {quotes.length === 0
-                    ? "还没有云端金句。"
+                    ? "还没有收藏金句。"
                     : "没有匹配的金句。"}
                 </div>
               ) : (
@@ -1974,7 +1974,7 @@ export default function AccountPage() {
                     aria-hidden="true"
                   />
                   {assistantSessions.length === 0
-                    ? "还没有云端会话"
+                    ? "还没有助手会话"
                     : "没有匹配的会话。"}
                 </div>
               ) : (
@@ -2162,7 +2162,7 @@ export default function AccountPage() {
       );
     if (activeTab === "data")
       return (
-        <Panel title="数据管理" icon={Download} hint="云端内容统计与备份">
+        <Panel title="数据管理" icon={Download} hint="学习记录与备份">
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
@@ -2176,7 +2176,7 @@ export default function AccountPage() {
                   "个会话",
                 ],
                 [cloudData?.assistantMemories ?? 0, "条记忆"],
-                [formatBytes(cloudData?.storageBytes ?? 0), "云端容量"],
+                [formatBytes(cloudData?.storageBytes ?? 0), "资料大小"],
               ].map(([value, label]) => (
                 <div
                   key={String(label)}
@@ -2193,7 +2193,7 @@ export default function AccountPage() {
             </div>
             <div className="card p-4">
               <p className="text-sm leading-6 text-[var(--text-secondary)]">
-                云端备份不包含 API Key。导入会按记录 ID
+                备份不包含 API Key。导入会按记录 ID
                 和更新时间合并，较新的记录优先。IndexedDB
                 只在首次登录时用于历史迁移。
               </p>
@@ -2205,13 +2205,13 @@ export default function AccountPage() {
                   className="btn-primary inline-flex min-h-11 items-center gap-2"
                 >
                   <FileDown size={16} aria-hidden="true" />
-                  导出云端数据
+                  导出学习记录
                 </button>
                 <label
                   className={`btn-secondary inline-flex min-h-11 cursor-pointer items-center gap-2 ${busy || localPreview ? "pointer-events-none opacity-60" : ""}`}
                 >
                   <Upload size={16} aria-hidden="true" />
-                  导入云端备份
+                  导入学习备份
                   <input
                     type="file"
                     accept="application/json,.json"
@@ -2314,7 +2314,7 @@ export default function AccountPage() {
             className="mx-4 mt-3 shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 sm:mx-5"
             role="status"
           >
-            本地调试预览模式：未连接观猹账号，云端数据读写已暂停。
+            本地调试预览模式：未连接观猹账号，操作不会影响实际账号记录。
           </div>
         )}
         {(message || error) && (

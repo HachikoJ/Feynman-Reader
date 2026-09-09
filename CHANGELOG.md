@@ -2,6 +2,17 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.2.2] - 2026-09-09
+
+### Changed
+
+- Align product pages, onboarding, sign-in, Account Center, settings, document upload, assistant guidance, and save errors with the README's focus on personal reading and learning records.
+- Replace storage-oriented promotion with account and reading terminology in Chinese and English. Keep actionable save failures and legacy local-history import warnings.
+- Clarify existing data handling in the privacy notice, including account-scoped server storage, AI context, credentials, cookies, exports, and deletion. Actual data handling and consent controls are unchanged.
+- Refresh Account Center screenshots and retain previous release assets for reference.
+
+No database schema, account permissions, or persistence behavior changed. See [release notes](docs/releases/v0.2.2.md).
+
 ## [0.2.1] - 2026-09-09
 
 ### Fixed

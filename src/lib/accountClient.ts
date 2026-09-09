@@ -201,7 +201,7 @@ export async function getUserDataSummary(): Promise<UserDataSummary> {
   return cachedAccountRead('summary', async () => {
     const response = await fetch('/api/account/data/', { credentials: 'include', cache: 'no-store' })
     const data = await response.json().catch(() => ({})) as { error?: string }
-    if (!response.ok) throw new Error(data.error || '无法读取云端数据。')
+    if (!response.ok) throw new Error(data.error || '无法读取学习数据。')
     return data as UserDataSummary
   })
 }
@@ -209,7 +209,7 @@ export async function getUserDataSummary(): Promise<UserDataSummary> {
 export async function getCloudData(format: 'full' | 'core' = 'full'): Promise<unknown> {
   const response = await fetch(`/api/account/data/?format=${format}`, { credentials: 'include', cache: 'no-store' })
   const data = await response.json().catch(() => ({})) as { error?: string }
-  if (!response.ok) throw new Error(data.error || '无法读取云端学习数据。')
+  if (!response.ok) throw new Error(data.error || '无法读取学习数据。')
   return data
 }
 
@@ -217,7 +217,7 @@ export async function getCloudBookSummaries(): Promise<UserBookSummary[]> {
   return cachedAccountRead('books', async () => {
     const response = await fetch('/api/account/books/', { credentials: 'include', cache: 'no-store' })
     const data = await response.json().catch(() => ({})) as { error?: string; books?: unknown }
-    if (!response.ok) throw new Error(data.error || '无法读取云端书架。')
+    if (!response.ok) throw new Error(data.error || '无法读取个人书架。')
     return Array.isArray(data.books) ? data.books as UserBookSummary[] : []
   })
 }
@@ -226,7 +226,7 @@ export async function getCloudSettings(): Promise<Record<string, unknown>> {
   return cachedAccountRead('settings', async () => {
     const response = await fetch('/api/account/data/?format=settings', { credentials: 'include', cache: 'no-store' })
     const data = await response.json().catch(() => ({})) as { error?: string; settings?: unknown }
-    if (!response.ok) throw new Error(data.error || '无法读取云端设置。')
+    if (!response.ok) throw new Error(data.error || '无法读取设置。')
     return data.settings && typeof data.settings === 'object' && !Array.isArray(data.settings)
       ? data.settings as Record<string, unknown>
       : {}

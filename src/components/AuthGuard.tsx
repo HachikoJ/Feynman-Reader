@@ -113,7 +113,7 @@ export default function AuthGuard({ children }: Props) {
       // deployment. Keep the callback in place for the normal mode, but do
       // not surface dead login links or modal prompts while bypass is active.
       if (localOnlyMode) return
-      setLoginPrompt({ message: message || '登录后才能保存你的学习内容，并在其他设备继续使用。', returnTo })
+      setLoginPrompt({ message: message || '登录后开始自己的阅读与练习，管理个人书架和学习记录。', returnTo })
     },
   }
   const loginHref = accountLoginHref(loginPrompt?.returnTo || (typeof window === 'undefined' ? '/' : `${window.location.pathname}${window.location.search}${window.location.hash}`))
@@ -124,11 +124,11 @@ export default function AuthGuard({ children }: Props) {
       <main className="flex min-h-screen items-center justify-center bg-[var(--bg-primary)] px-4 py-8">
         <section className="card w-full max-w-lg p-6" aria-labelledby="legacy-migration-title">
           <h1 id="legacy-migration-title" className="text-xl font-bold">先迁移本机历史数据</h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">检测到本浏览器中有 {localMigration?.books || 0} 本历史书籍、{localMigration?.assistantSessions || 0} 个助手会话和 {localMigration?.assistantMemories || 0} 条长期记忆。迁移会与账号云端数据合并，同一记录以更新时间较新的内容为准；系统示例书不会上传。</p>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">检测到本浏览器中有 {localMigration?.books || 0} 本历史书籍、{localMigration?.assistantSessions || 0} 个助手会话和 {localMigration?.assistantMemories || 0} 条长期记忆。迁移会与当前账号的记录合并，同一记录以更新时间较新的内容为准；系统示例书不参与迁移。</p>
           <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">服务端确认写入成功后，浏览器中的历史用户数据才会被清理，并保留已迁移标记。选择“不再提醒”会保留本机数据，之后仍可从账号中心手动迁移。</p>
           <button type="button" onClick={() => void handleMigration()} disabled={migrationBusy} className="btn-primary mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2">
             {migrationBusy && <RefreshCw size={16} className="animate-spin" aria-hidden="true" />}
-            {migrationBusy ? '正在迁移…' : '迁移到云端并继续'}
+            {migrationBusy ? '正在迁移…' : '导入当前账号并继续'}
           </button>
           <button
             type="button"

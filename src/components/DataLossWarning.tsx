@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { AlertTriangle, Cloud, HardDrive } from 'lucide-react'
+import { AlertTriangle, UserRound, Download, HardDrive } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 
@@ -41,10 +41,10 @@ export default function DataLossWarning({ lang, onContinue }: Props) {
           </div>
           <div>
             <h2 id="data-loss-warning-title" className="text-xl font-bold">
-              {isZh ? '请确认数据保存与迁移规则' : 'Confirm data storage and migration'}
+              {isZh ? '了解历史记录与备份' : 'Review history and backup options'}
             </h2>
             <p className="mt-1 text-sm font-medium text-amber-600 dark:text-amber-400">
-              {isZh ? '登录后的新数据自动保存到账号云端；仅本机旧数据需要迁移。' : 'New signed-in data is saved automatically to your account cloud; only legacy local data needs migration.'}
+              {isZh ? '旧版本的本机记录需要单独导入，请先保留好这部分内容。' : 'Local records from older versions need a separate import. Keep them until the import is complete.'}
             </p>
           </div>
           </div>
@@ -53,8 +53,8 @@ export default function DataLossWarning({ lang, onContinue }: Props) {
         <div className="min-h-0 flex-1 overflow-y-auto p-5 text-sm leading-6 md:p-6">
           <div className="space-y-3">
           <div className="flex items-start gap-3">
-            <Cloud size={19} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
-            <p>{isZh ? `登录${isWatchaOAuthEnabled() ? '观猹' : '账号'}后，书籍、笔记、金句、学习记录和费曼小助手数据会按账号保存到云端。` : `After signing in${isWatchaOAuthEnabled() ? ' with Watcha' : ''}, books, notes, quotes, learning records, and Feynman Assistant data are saved to the cloud per account.`}</p>
+            <UserRound size={19} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+            <p>{isZh ? `通过${isWatchaOAuthEnabled() ? '【观猹】' : '账号'}登录后，可在账号中心统一管理个人书架、笔记、金句和费曼小助手记录。` : `After signing in${isWatchaOAuthEnabled() ? ' with Watcha' : ''}, manage your library, notes, quotes, and Feynman Assistant records in Account Center.`}</p>
           </div>
           <div className="flex items-start gap-3">
             <HardDrive size={19} className="mt-0.5 shrink-0 text-rose-500" aria-hidden="true" />
@@ -65,11 +65,11 @@ export default function DataLossWarning({ lang, onContinue }: Props) {
             </p>
           </div>
           <div className="flex items-start gap-3">
-            <Cloud size={19} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
+            <Download size={19} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
             <p>
               {isZh
-                ? '请前往“账号中心 > 数据管理”迁移历史数据。导入与导出工具用于主动迁移或备份，不影响云端自动保存；API Key 不会包含在导出文件中。'
-                : 'Use Account Center > Data Management to migrate history. Import and export are optional tools for intentional migration or backup and do not affect automatic cloud saving; API keys are excluded.'}
+                ? '请前往“账号中心 > 数据管理”导入本机历史记录，或导出一份学习备份。API Key 不会包含在导出文件中。'
+                : 'Use Account Center > Data Management to import local history or export a backup of your learning records. API keys are excluded from exports.'}
             </p>
           </div>
           </div>
@@ -93,15 +93,15 @@ export default function DataLossWarning({ lang, onContinue }: Props) {
           />
           <span>
             {isZh
-              ? '我已了解登录后的云端保存、IndexedDB 历史迁移和备份规则。'
-              : 'I understand cloud storage after sign-in, IndexedDB history migration, and backup rules.'}
+              ? '我已了解本机历史记录的导入与备份规则。'
+              : 'I understand how to import and back up local history.'}
           </span>
           </label>
 
           {confirmationError && (
             <p id="data-risk-confirmation-error" role="alert" className="mt-2 text-sm font-medium text-red-500">
               {isZh
-                ? '请先勾选上方确认项，确认了解数据保存与迁移规则后再继续。'
+                ? '请先勾选上方确认项，了解历史记录的导入与备份规则后再继续。'
                 : 'Please check the confirmation above before continuing.'}
             </p>
           )}

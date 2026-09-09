@@ -5,7 +5,7 @@ import 'katex/dist/katex.min.css'
 export const metadata: Metadata = {
   metadataBase: new URL('https://reader.deline.top'),
   title: '费曼读书助手 | Feynman Reader',
-  description: '把一本书讲给 AI 听，直到你真的理解。费曼读书助手是一个支持账号云端学习记录的 AI 深度阅读工作区。',
+  description: '基于费曼学习法的 AI 阅读工作台：六阶段阅读、讲解评估、角色问答与费曼小助手，让阅读沉淀为自己的理解。',
   applicationName: '费曼读书助手',
   manifest: '/manifest.json',
   alternates: { canonical: '/' },

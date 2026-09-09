@@ -56,7 +56,7 @@ export default function LoginPage() {
             <UserRound size={26} aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold">登录费曼读书助手</h1>
-          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{localOnlyMode ? '当前使用本地数据模式。' : watchaEnabled ? '使用观猹账号登录后，你的账号和学习数据可以与服务器安全关联。' : '备案期间观猹登录暂时关闭，可使用用户名和密码注册或登录；登录后账号和学习数据会安全保存到云端。'}</p>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{localOnlyMode ? '当前使用本地数据模式。' : watchaEnabled ? '使用【观猹】登录，开始自己的阅读与练习，继续整理书架、笔记和学习记录。' : '使用用户名和密码注册或登录，开始自己的阅读与练习。'}</p>
           {checking ? (
             <div className="mt-6 flex min-h-11 items-center justify-center text-sm text-[var(--text-secondary)]" role="status">
               <RefreshCw size={16} className="mr-2 animate-spin" aria-hidden="true" />正在检查登录状态
@@ -70,8 +70,8 @@ export default function LoginPage() {
             </div>
           ) : localOnlyMode ? (
             <div className="mt-6 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/8 p-4" role="status">
-              <p className="font-medium">备案期间使用本地模式</p>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">请返回费曼读书助手，在设置中打开本地数据管理。备案完成后会重新开放账号登录和云端迁移。</p>
+              <p className="font-medium">当前使用本地模式</p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">请返回费曼读书助手，在设置中管理本机记录。账号登录启用后，可将本机历史记录导入自己的账号。</p>
               <Link href="/" className="btn-primary mt-4 inline-flex min-h-11 items-center gap-2"><ArrowLeft size={16} aria-hidden="true" />返回书架</Link>
             </div>
           ) : user ? (
@@ -84,8 +84,8 @@ export default function LoginPage() {
             </div>
           ) : watchaEnabled ? (
               <>
-                <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-primary mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用观猹登录</a>
-                <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">观猹是费曼读书助手当前唯一登录方式。备案期间创建过账号的用户，可在登录后的账号中心合并原有数据。</p>
+                <a href={tokendanceLoginHref(new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('returnTo') || '/')} className="btn-primary mt-6 inline-flex min-h-11 w-full items-center justify-center gap-2"><ExternalLink size={16} aria-hidden="true" />使用【观猹】登录</a>
+                <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">【观猹】是当前唯一登录方式。曾使用用户名和密码的用户，可在账号中心合并原有学习记录。</p>
               </>
             ) : (
               <>

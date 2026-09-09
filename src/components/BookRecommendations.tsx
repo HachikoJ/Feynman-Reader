@@ -139,8 +139,8 @@ export function getRecommendationErrorMessage(error: unknown, lang: Language): s
 
   if (error instanceof Error && error.message === 'RECOMMENDATION_SAVE_FAILED') {
     return lang === 'zh'
-      ? '推荐已生成，但未能保存到账号云端。原有推荐已保留，请检查登录和网络后重试。'
-      : 'Recommendations were generated but could not be saved to your account cloud. Existing recommendations were kept; check sign-in and network.'
+      ? '推荐已生成，但未能保存。原有推荐已保留，请检查登录和网络后重试。'
+      : 'Recommendations were generated but could not be saved. Existing recommendations were kept; check sign-in and network.'
   }
 
   if (error instanceof Error && error.message === AI_REQUEST_CANCELLED) {
@@ -367,7 +367,7 @@ export default function BookRecommendations({
 
   const handleAddToBookshelf = async (recBook: RecommendedBook) => {
     if (!isAuthenticated) {
-      requestLogin(lang === 'zh' ? '登录后才能把推荐书籍保存到云端书架。' : 'Sign in to save recommended books to your cloud bookshelf.')
+      requestLogin(lang === 'zh' ? '登录后将推荐书籍加入个人书架。' : 'Sign in to add recommended books to your library.')
       return
     }
     // 检查是否已存在
@@ -390,8 +390,8 @@ export default function BookRecommendations({
       if (addedBookId) await reloadBookFromPersistence(addedBookId).catch(() => undefined)
       logger.error('Adding recommended book failed:', error)
       setErrorMessage(lang === 'zh'
-        ? '未能保存到账号云端，书籍不会显示为已添加。请检查登录和网络后重试。'
-        : 'The book could not be saved to your account cloud and will not appear as added. Check sign-in and network, then try again.')
+        ? '书籍未能保存，不会显示为已添加。请检查登录和网络后重试。'
+        : 'The book could not be saved and will not appear as added. Check sign-in and network, then try again.')
     } finally {
       addingBookKeysRef.current.delete(bookKey)
       setAddingBookKey(null)

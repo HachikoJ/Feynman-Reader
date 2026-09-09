@@ -25,14 +25,14 @@ describe('login page authentication transition', () => {
     render(<LoginPage />)
     await waitFor(() => expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: '注册账号' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: '使用观猹登录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '使用【观猹】登录' })).not.toBeInTheDocument()
   })
 
   it('shows only Watcha login after OAuth is enabled', async () => {
     process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED = 'true'
     process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS = 'false'
     render(<LoginPage />)
-    await waitFor(() => expect(screen.getByRole('link', { name: '使用观猹登录' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('link', { name: '使用【观猹】登录' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: '登录' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '注册账号' })).not.toBeInTheDocument()
   })
@@ -41,7 +41,7 @@ describe('login page authentication transition', () => {
     process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED = 'true'
     process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS = 'true'
     render(<LoginPage />)
-    await waitFor(() => expect(screen.getByRole('link', { name: '使用观猹登录' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('link', { name: '使用【观猹】登录' })).toBeInTheDocument())
     expect(screen.queryByText('备案期间使用本地模式')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '登录' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '注册账号' })).not.toBeInTheDocument()

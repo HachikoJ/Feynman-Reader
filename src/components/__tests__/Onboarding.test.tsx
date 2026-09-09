@@ -18,7 +18,7 @@ describe('Onboarding implemented-feature copy', () => {
 
     expect(screen.queryByRole('button', { name: '上一步' })).not.toBeInTheDocument()
     next()
-    expect(screen.getByText('登录后，学习数据自动上云')).toBeInTheDocument()
+    expect(screen.getByText('开始自己的阅读与练习')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '上一步' }))
 
@@ -34,7 +34,7 @@ describe('Onboarding implemented-feature copy', () => {
     expect(screen.getByText('六阶段分析').tagName).toBe('STRONG')
 
     next()
-    expect(screen.getByText('保存到账号云端').tagName).toBe('STRONG')
+    expect(screen.getByText('个人书架').tagName).toBe('STRONG')
     expect(screen.getByText('账号中心').tagName).toBe('STRONG')
 
     next()

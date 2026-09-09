@@ -143,10 +143,10 @@ describe('Settings AI privacy controls', () => {
 
     renderSettings()
 
-    expect(await screen.findByText('先使用观猹登录，再配置 TokenDance')).toBeInTheDocument()
+    expect(await screen.findByText('先使用【观猹】登录，再配置 TokenDance')).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('TokenDance API Key')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '使用观猹登录' }))
-    expect(mockAccountAccess.requestLogin).toHaveBeenCalledWith(expect.stringContaining('请先使用观猹登录'), '/?view=settings')
+    fireEvent.click(screen.getByRole('button', { name: '使用【观猹】登录' }))
+    expect(mockAccountAccess.requestLogin).toHaveBeenCalledWith(expect.stringContaining('请先使用【观猹】登录'), '/?view=settings')
     expect(saveAccountApiKeyMock).not.toHaveBeenCalled()
   })
 
@@ -160,7 +160,7 @@ describe('Settings AI privacy controls', () => {
     renderSettings()
 
     expect(await screen.findByText('正在读取账号状态…')).toBeInTheDocument()
-    expect(screen.queryByText('先使用观猹登录，再配置 TokenDance')).not.toBeInTheDocument()
+    expect(screen.queryByText('先使用【观猹】登录，再配置 TokenDance')).not.toBeInTheDocument()
     expect(mockAccountAccess.requestLogin).not.toHaveBeenCalled()
   })
 
@@ -391,7 +391,7 @@ describe('Settings AI privacy controls', () => {
   it('moves data management to the account center', () => {
     renderSettings()
 
-    expect(screen.getByRole('link', { name: '账号中心 · 云端数据与历史迁移' })).toHaveAttribute('href', '/account?tab=data')
+    expect(screen.getByRole('link', { name: '账号中心 · 学习记录与备份' })).toHaveAttribute('href', '/account?tab=data')
     expect(screen.queryByRole('dialog', { name: '数据管理' })).not.toBeInTheDocument()
   })
 })
@@ -419,7 +419,7 @@ describe('Settings quote manager', () => {
       </>
     )
 
-    expect(await screen.findByRole('link', { name: '账号中心 · 云端数据与历史迁移' })).toHaveAttribute('href', '/account?tab=data')
+    expect(await screen.findByRole('link', { name: '账号中心 · 学习记录与备份' })).toHaveAttribute('href', '/account?tab=data')
     expect(screen.queryByRole('dialog', { name: '金句管理' })).not.toBeInTheDocument()
   })
 })

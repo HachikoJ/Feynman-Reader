@@ -294,7 +294,7 @@ async function fetchWithRetry(
     }
     if (attempt < attempts - 1) await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)))
   }
-  if (!response) throw new Error('云端请求失败。')
+  if (!response) throw new Error('数据请求失败。')
   return response
 }
 
@@ -329,7 +329,7 @@ function enqueueCloudSnapshot(): void {
     const body = JSON.stringify(payload)
     const bodyBytes = typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(body).byteLength : body.length
     if (bodyBytes > MAX_CLOUD_SNAPSHOT_BYTES) {
-      const error = new Error('云端保存内容超过 20 MB 限制，请先导出备份或减少单本书文档内容。') as PersistenceErrorInfo
+      const error = new Error('保存内容超过 20 MB 限制，请先导出备份或减少单本书文档内容。') as PersistenceErrorInfo
       error.code = 'payload-too-large'
       throw error
     }
@@ -339,7 +339,7 @@ function enqueueCloudSnapshot(): void {
       headers: { 'Content-Type': 'application/json' },
       body,
     })
-    if (!response.ok) throw await toCloudPersistenceError(response, '云端保存失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '学习数据保存失败。')
     clearPersistenceErrors('cloud-snapshot')
   }).catch(error => {
     reportPersistenceError('cloud-snapshot', error)
@@ -392,7 +392,7 @@ function queueCloudSettings(settings: AppSettings): void {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ settings: payload }),
     })
-    if (!response.ok) throw await toCloudPersistenceError(response, '云端设置保存失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '设置保存失败。')
     clearPersistenceErrors('cloud-settings')
   }).catch(error => {
     reportPersistenceError('cloud-settings', error)
@@ -403,7 +403,7 @@ function queueCloudSettings(settings: AppSettings): void {
 function queueCloudBookDeletion(id: string): void {
   cloudWriteQueue = cloudWriteQueue.then(async () => {
     const response = await fetchWithRetry(`/api/account/books/${encodeURIComponent(id)}/`, { method: 'DELETE', credentials: 'include' })
-    if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍删除失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '书籍删除失败。')
     clearPersistenceErrors(`cloud-book:${id}`)
   }).catch(error => {
     reportPersistenceError(`cloud-book:${id}`, error)
@@ -420,7 +420,7 @@ function queueCloudBookUpsert(book: Book): void {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ book: payload }),
     })
-    if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍保存失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '书籍保存失败。')
     clearPersistenceErrors(`cloud-book:${book.id}`)
   }).catch(error => {
     reportPersistenceError(`cloud-book:${book.id}`, error)
@@ -434,7 +434,7 @@ function queueCloudBookRestore(id: string): void {
       method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bookId: id, action: 'restore' }),
     })
-    if (!response.ok) throw await toCloudPersistenceError(response, '云端书籍恢复失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '书籍恢复失败。')
     clearPersistenceErrors(`cloud-book:${id}`)
   }).catch(error => {
     reportPersistenceError(`cloud-book:${id}`, error)
@@ -554,7 +554,7 @@ export async function initializeStore(options: { authenticated?: boolean } = {})
         if (accountResponse.status === 401 || accountResponse.status === 403) {
           authenticated = false
         } else {
-          if (accountResponse.status === 503) throw new Error('云端数据库暂不可用，请稍后重试。')
+          if (accountResponse.status === 503) throw new Error('学习数据服务暂不可用，请稍后重试。')
           if (!accountResponse.ok) throw new Error('登录状态已失效，请重新登录。')
           const account = await accountResponse.json() as { user?: unknown }
           authenticated = Boolean(account.user)
@@ -570,8 +570,8 @@ export async function initializeStore(options: { authenticated?: boolean } = {})
             fetch('/api/account/api-key/', { credentials: 'include', cache: 'no-store' }).catch(() => null),
           ])
           if (cloudResponse.status === 401 || cloudResponse.status === 403) throw new Error('登录状态已失效，请重新登录。')
-          if (cloudResponse.status === 503) throw new Error('云端数据库暂时繁忙，请稍后重试。')
-          if (!cloudResponse.ok) throw new Error(`无法读取云端学习数据（HTTP ${cloudResponse.status}）。`)
+          if (cloudResponse.status === 503) throw new Error('学习数据服务暂时繁忙，请稍后重试。')
+          if (!cloudResponse.ok) throw new Error(`无法读取学习数据（HTTP ${cloudResponse.status}）。`)
           const cloudPayload = await cloudResponse.json()
           const normalized = normalizeImportData(cloudPayload)
           if (!normalized.valid) throw new Error(normalized.error)
@@ -684,7 +684,7 @@ export function getSettings(): AppSettings {
 export async function reloadSettingsFromPersistence(): Promise<AppSettings> {
   if (cloudMode) {
     const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
-    if (!response.ok) throw new Error('无法读取云端设置。')
+    if (!response.ok) throw new Error('无法读取设置。')
     const payload = await response.json()
     const normalized = normalizeImportData(payload)
     if (!normalized.valid) throw new Error(normalized.error)
@@ -777,7 +777,7 @@ function queueCloudOrganizationChange(kind: 'list' | 'relation', record: BookLis
       method: deleted ? 'DELETE' : 'PUT', credentials: 'include',
       headers: { 'Content-Type': 'application/json' }, body,
     })
-    if (!response.ok) throw await toCloudPersistenceError(response, '云端书单或书籍关系保存失败。')
+    if (!response.ok) throw await toCloudPersistenceError(response, '书单或书籍关系保存失败。')
     clearPersistenceErrors(scope)
   }).catch(error => {
     reportPersistenceError(scope, error)
@@ -950,7 +950,7 @@ export function addAIUsageRecord(record: Omit<AIUsageRecord, 'id'>): AIUsageReco
       const response = await fetchWithRetry('/api/account/ai-usage/', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body,
       })
-      if (!response.ok) throw await toCloudPersistenceError(response, '云端 AI 用量保存失败。')
+      if (!response.ok) throw await toCloudPersistenceError(response, 'AI 用量保存失败。')
       clearPersistenceErrors(scope)
     }).catch(error => {
       reportPersistenceError(scope, error)
@@ -1227,7 +1227,7 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
     await drainCloudWrites()
     const beforeRead = booksCache.find(book => book.id === id)
     const response = await fetch(`/api/account/books/${encodeURIComponent(id)}/`, { credentials: 'include', cache: 'no-store' })
-    if (!response.ok) throw new Error('无法读取云端书籍。')
+    if (!response.ok) throw new Error('无法读取书籍。')
     const payload = await response.json() as { book?: unknown }
     const normalized = normalizeImportData({
       version: DATA_VERSION,
@@ -1243,7 +1243,7 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
     if (!normalized.valid) throw new Error(normalized.error)
     const [remoteBook] = normalized.data.books
     if (!remoteBook || remoteBook.id === SAMPLE_BOOK_ID || remoteBook.isSample) return undefined
-    if (remoteBook._summaryOnly) throw new Error('云端尚未返回完整书籍详情，请重试。')
+    if (remoteBook._summaryOnly) throw new Error('尚未读取到完整书籍详情，请重试。')
     const cachedBook = booksCache.find(book => book.id === id)
     if (cachedBook !== beforeRead) return cachedBook
     const normalizedBook = normalizeBookLearningState(remoteBook)
@@ -1273,7 +1273,7 @@ export async function reloadBooksFromPersistence(): Promise<Book[]> {
     await drainCloudWrites()
     const beforeRead = booksCache
     const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
-    if (!response.ok) throw new Error('无法读取云端书架。')
+    if (!response.ok) throw new Error('无法读取个人书架。')
     const normalized = normalizeImportData(await response.json())
     if (!normalized.valid) throw new Error(normalized.error)
     const remote = normalized.data.books.filter(book => !book.isSample && book.id !== SAMPLE_BOOK_ID).map(normalizeBookLearningState)
@@ -1292,7 +1292,7 @@ export async function reloadBookOrganizationFromPersistence(): Promise<BookOrgan
     const beforeLists = bookListsCache
     const beforeRelations = bookRelationsCache
     const response = await fetch('/api/account/data/?format=core', { credentials: 'include', cache: 'no-store' })
-    if (!response.ok) throw new Error('无法读取云端书单。')
+    if (!response.ok) throw new Error('无法读取书单。')
     const normalized = normalizeImportData(await response.json())
     if (!normalized.valid) throw new Error(normalized.error)
     const bookIds = new Set(booksCache.map(book => book.id))
@@ -1686,7 +1686,7 @@ export async function downloadDataBackup(options: BackupDownloadOptions = {}): P
   let data = createExportData()
   if (cloudMode) {
     const response = await fetch('/api/account/data/?format=full', { credentials: 'include', cache: 'no-store' })
-    if (!response.ok) throw new Error('无法读取云端数据，导出已取消。')
+    if (!response.ok) throw new Error('无法读取学习数据，导出已取消。')
     const normalized = normalizeImportData(await response.json())
     if (!normalized.valid) throw new Error(normalized.error)
     data = normalized.data

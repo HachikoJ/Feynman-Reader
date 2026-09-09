@@ -12,9 +12,9 @@ describe('DataLossWarning', () => {
       />
     )
 
-    expect(document.body.textContent).toContain('请确认数据保存与迁移规则')
-    expect(document.body.textContent).toContain('登录后的新数据自动保存到账号云端')
-    expect(document.body.textContent).toContain('不影响云端自动保存')
+    expect(document.body.textContent).toContain('了解历史记录与备份')
+    expect(document.body.textContent).toContain('旧版本的本机记录需要单独导入')
+    expect(document.body.textContent).toContain('API Key 不会包含在导出文件中')
     expect(document.body.textContent).toContain('IndexedDB 历史数据只存在于当前浏览器')
     expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(false)
     expect(screen.queryByRole('button', { name: '前往数据管理' })).toBeNull()
@@ -43,7 +43,7 @@ describe('DataLossWarning', () => {
     expect(onContinue).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the message focused on automatic cloud saving', () => {
+  it('keeps the message focused on preserving local history', () => {
     render(
       <DataLossWarning
         lang="zh"
@@ -51,7 +51,7 @@ describe('DataLossWarning', () => {
       />
     )
 
-    expect(document.body.textContent).toContain('新数据自动保存到账号云端')
+    expect(document.body.textContent).toContain('本机历史记录的导入与备份规则')
     expect(document.body.textContent).not.toContain('超过 7 天')
   })
 })

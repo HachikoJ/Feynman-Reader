@@ -11,12 +11,12 @@ export async function GET(request: Request): Promise<NextResponse> {
     const userId = await sessionUserId(request)
     if (!userId) return NextResponse.json({ error: '未登录。' }, { status: 401 })
     const store = getPersistence()
-    if (!store.listUserBooks) return NextResponse.json({ error: '数据库尚未启用云端书架读取。' }, { status: 501 })
+    if (!store.listUserBooks) return NextResponse.json({ error: '数据库尚未启用个人书架读取。' }, { status: 501 })
     const books = await store.listUserBooks(userId)
     return NextResponse.json({ books }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
-    return NextResponse.json({ error: '读取云端书架失败。' }, { status: 500 })
+    return NextResponse.json({ error: '读取个人书架失败。' }, { status: 500 })
   }
 }
 
@@ -47,12 +47,12 @@ export async function PUT(request: Request): Promise<NextResponse> {
       if (!Object.prototype.hasOwnProperty.call(supplied, field)) delete book[field]
     }
     const store = getPersistence()
-    if (!store.saveBook) return NextResponse.json({ error: '数据库尚未启用云端书籍保存。' }, { status: 501 })
+    if (!store.saveBook) return NextResponse.json({ error: '数据库尚未启用书籍保存。' }, { status: 501 })
     await store.saveBook(userId, book)
     return NextResponse.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (error instanceof BookWriteConflictError) return NextResponse.json({ error: error.message }, { status: 409, headers: { 'Cache-Control': 'no-store' } })
     if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
-    return NextResponse.json({ error: error instanceof Error ? error.message : '保存云端书籍失败。' }, { status: 400 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : '保存书籍失败。' }, { status: 400 })
   }
 }

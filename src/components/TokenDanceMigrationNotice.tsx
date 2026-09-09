@@ -29,7 +29,7 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
     if (!hasSignedInAccount) {
       onClose()
       requestLogin(isZh
-        ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。登录成功后，再为当前账号配置 TokenDance API Key。`
+        ? `请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录。登录成功后，再为当前账号配置 TokenDance API Key。`
         : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first. After sign-in, configure a TokenDance API key for the current account.`)
       return
     }
@@ -48,10 +48,10 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
         <div className="brand-dialog-header flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4 sm:px-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-primary)]">
-              {isZh ? '老用户升级通知' : 'Returning user update'}
+              {isZh ? '继续之前的阅读' : 'Continue your reading'}
             </p>
             <h2 id="tokendance-migration-title" className="mt-1 text-xl font-bold">
-              {isZh ? '账号与云端保存已升级' : 'Accounts and cloud storage have been upgraded'}
+              {isZh ? '将本机历史记录导入账号' : 'Import local history into your account'}
             </h2>
           </div>
           <button
@@ -69,8 +69,8 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
           <div className="space-y-4">
           <p>
             {isZh
-              ? `感谢你一直使用费曼读书助手。现在请${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录确认账号身份；登录后的书籍、学习记录、金句、助手会话和长期记忆会保存到账号云端。`
-              : `Thank you for using Feynman Reader. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} to identify your account. Books, learning records, quotes, assistant sessions, and long-term memories are then saved to your account cloud.`}
+              ? `请${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录，在账号中心导入本机已有的书籍和学习记录，继续阅读与练习，并集中管理金句、助手会话和长期记忆。`
+              : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} and use Account Center to import books and learning records from this browser, continue reading and practice, and manage quotes, assistant sessions, and long-term memories.`}
           </p>
 
           <div className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/8 p-3">
@@ -108,10 +108,10 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
               <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
                 {isZh
                   ? tokenDanceEnabled
-                    ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再为当前账号配置 TokenDance API Key 并同意相关数据传输。API Key 加密保存在服务端，不进入云端备份。`
+                    ? `请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录，再为当前账号配置 TokenDance API Key 并同意相关数据传输。API Key 加密保存在服务端，不进入数据备份。`
                     : 'TokenDance 配置将在备案完成后恢复，现有能力和配置不会删除。恢复后可在设置中继续使用。'
                   : tokenDanceEnabled
-                    ? `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first, then configure a TokenDance API key for the current account and consent to the relevant data transfer. The key is encrypted on the server and excluded from cloud backups.`
+                    ? `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first, then configure a TokenDance API key for the current account and consent to the relevant data transfer. The key is encrypted on the server and excluded from data backups.`
                     : 'TokenDance configuration will return after filing. Existing support and configuration are preserved and can be used again from Settings.'}
               </p>
             </div>

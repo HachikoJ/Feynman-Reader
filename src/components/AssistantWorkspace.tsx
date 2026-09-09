@@ -723,7 +723,7 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
                         <Sparkles className="absolute right-1 top-1" size={12} strokeWidth={2.2} />
                       </span>
                       <h3 className="font-semibold">{isZh ? '想聊点什么？' : 'What would you like to discuss?'}</h3>
-                      <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{isZh ? '登录后可以自由提问。输入 @ 选择云端书架中的书，或直接写出书名，即可按需加载当前账号的书籍信息和学习记录。' : 'After sign-in, ask freely. Type @ to choose a cloud bookshelf book, or write its title to load book details and learning history from the current account as needed.'}</p>
+                      <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{isZh ? '登录后可以自由提问。输入 @ 选择个人书架中的书，或直接写出书名，即可结合相关书籍信息和学习记录继续讨论。' : 'After sign-in, ask freely. Type @ to choose a book from your library, or write its title to continue with relevant book details and learning history.'}</p>
                     </div>
                   )}
                   <div className="min-w-0 space-y-3">
@@ -764,7 +764,7 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
                 {error && <div role="alert" className="mx-4 mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-200">{error}</div>}
                 <div className="border-t border-[var(--border)] p-2.5 sm:p-3">
                   {activeSession?.summary && !editingMessageId && (
-                    <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"><RotateCcw size={13} aria-hidden="true" />{isZh ? '较早对话已自动压缩用于控制 Token 消耗，完整会话仍保存在当前账号云端。' : 'Earlier turns were compacted to control token usage; the full session remains in the current account cloud.'}</p>
+                    <p className="mb-2 flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"><RotateCcw size={13} aria-hidden="true" />{isZh ? '较早对话已自动压缩用于控制 Token 消耗，完整会话仍可在账号中心查看。' : 'Earlier turns were compacted to control token usage; the full session remains available in Account Center.'}</p>
                   )}
                   {editingMessageId && (
                     <div className="mb-3 rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/5 p-3">

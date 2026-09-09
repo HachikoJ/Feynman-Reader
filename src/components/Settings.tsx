@@ -210,7 +210,7 @@ export default function Settings({
     if (hasSignedInAccount) return true
     const providerLabel = tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'DeepSeek 官方' : 'AI'
     requestLogin(settings.language === 'zh'
-      ? watchaOAuthEnabled ? `请先使用观猹登录。登录成功后，才能配置 ${providerLabel} API Key，并将密钥加密保存到当前账号。` : `请先登录账号。登录成功后，才能配置 ${providerLabel} API Key，并将密钥加密保存到当前账号。`
+      ? watchaOAuthEnabled ? `请先使用【观猹】登录。登录成功后，才能配置 ${providerLabel} API Key，并将密钥加密保存到当前账号。` : `请先登录账号。登录成功后，才能配置 ${providerLabel} API Key，并将密钥加密保存到当前账号。`
       : watchaOAuthEnabled ? `Sign in with Watcha first. After sign-in, you can configure a ${providerLabel} API key and save it encrypted to the current account.` : `Sign in first. After sign-in, you can configure a ${providerLabel} API key and save it encrypted to the current account.`, '/?view=settings')
     return false
   }
@@ -1192,7 +1192,7 @@ export default function Settings({
           <span className="min-w-0">
             <span className="block font-semibold">{lang === 'zh' ? '查看账号与 AI 更新说明' : 'View account and AI update'}</span>
             <span className="mt-0.5 block text-xs leading-5 text-[var(--text-secondary)]">
-              {lang === 'zh' ? `${watchaOAuthEnabled ? '了解观猹登录、' : ''}账号云端、TokenDance AI 配置和本机历史数据迁移规则。` : `Review ${watchaOAuthEnabled ? 'Watcha sign-in, ' : ''}account cloud storage, TokenDance AI setup, and legacy local data migration.`}
+              {lang === 'zh' ? `${watchaOAuthEnabled ? '了解【观猹】登录、' : ''}个人阅读记录管理、TokenDance AI 配置和本机历史记录导入。` : `Review ${watchaOAuthEnabled ? 'Watcha sign-in, ' : ''}personal reading records, TokenDance AI setup, and importing legacy local records.`}
             </span>
           </span>
           <ExternalLink size={16} className="ml-auto mt-0.5 shrink-0 text-[var(--text-secondary)]" aria-hidden="true" />
@@ -1240,15 +1240,15 @@ export default function Settings({
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-full bg-[var(--accent)]/12 p-2 text-[var(--accent)]"><LogIn size={18} aria-hidden="true" /></span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '备案期间使用本地数据模式' : 'Local data mode during domain filing') : (lang === 'zh' ? watchaOAuthEnabled ? `先使用观猹登录，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : `先登录账号，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : watchaOAuthEnabled ? `Sign in with Watcha before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}` : `Sign in before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}`)}</h2>
+                  <h2 className="font-semibold">{localOnlyMode ? (lang === 'zh' ? '当前使用本地数据模式' : 'Local data mode is active') : (lang === 'zh' ? watchaOAuthEnabled ? `先使用【观猹】登录，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : `先登录账号，再配置${tokendanceEnabled ? ' TokenDance' : deepSeekOfficialEnabled ? ' DeepSeek 官方' : ' AI'}` : watchaOAuthEnabled ? `Sign in with Watcha before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}` : `Sign in before configuring ${tokendanceEnabled ? 'TokenDance' : deepSeekOfficialEnabled ? 'official DeepSeek' : 'AI'}`)}</h2>
                   <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
                     {localOnlyMode
-                      ? (lang === 'zh' ? '当前使用本地模式，书籍和学习数据会保存在此浏览器。备案完成后重新开启登录，即可在账号中心迁移到云端。' : 'Local-only mode is active, so books and learning data stay in this browser. Sign-in will return after filing and the data can then be migrated to your account cloud.')
+                      ? (lang === 'zh' ? '当前使用本地模式，书籍和学习记录仅保存在此浏览器。账号登录启用后，可在账号中心导入本机历史记录。' : 'Local mode is active, so books and learning records stay in this browser. When sign-in is enabled, you can import these records in Account Center.')
                       : (lang === 'zh' ? 'API Key 必须绑定到当前账号，并由服务端加密保存。未登录时不会显示、接收或保存 API Key。' : 'The API key must be linked to the current account and encrypted by the server. Signed-out users cannot view, enter, or save an API key.')}
                   </p>
                   {!localOnlyMode && <button type="button" onClick={requireAccountForApi} className="btn-primary mt-3 inline-flex min-h-11 items-center gap-2 px-4">
                     <LogIn size={17} aria-hidden="true" />
-                    {lang === 'zh' ? watchaOAuthEnabled ? '使用观猹登录' : '登录账号' : watchaOAuthEnabled ? 'Sign in with Watcha' : 'Sign in'}
+                    {lang === 'zh' ? watchaOAuthEnabled ? '使用【观猹】登录' : '登录账号' : watchaOAuthEnabled ? 'Sign in with Watcha' : 'Sign in'}
                   </button>}
                 </div>
               </div>
@@ -1567,22 +1567,22 @@ export default function Settings({
           )}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-        <div className="card p-2 sm:col-span-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="card min-w-0 p-2 sm:col-span-2">
           {!localOnlyMode ? (
             <a href="/account?tab=data" className="flex min-h-10 items-center justify-between gap-3 rounded-md px-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
-              <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="truncate">{lang === 'zh' ? '账号中心 · 云端数据与历史迁移' : 'Account center · Cloud data and migration'}</span></span>
+              <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="min-w-0 break-words">{lang === 'zh' ? '账号中心 · 学习记录与备份' : 'Account Center · Records and backups'}</span></span>
               <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
             </a>
           ) : (
             <button type="button" onClick={() => setShowDataManagement(true)} className="flex min-h-10 w-full items-center justify-between gap-3 rounded-md px-2 text-left text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
-              <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="min-w-0"><span className="block truncate text-[var(--text-primary)]">{lang === 'zh' ? '本地数据管理' : 'Local data management'}</span><span className="mt-0.5 block truncate text-xs">{lang === 'zh' ? '备案期间保存在当前浏览器，之后可迁移到账号云端' : 'Stored in this browser during filing; migrate to your account later'}</span></span></span>
+              <span className="inline-flex min-w-0 items-center gap-2"><Database size={16} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="min-w-0"><span className="block truncate text-[var(--text-primary)]">{lang === 'zh' ? '本地数据管理' : 'Local data management'}</span><span className="mt-0.5 block truncate text-xs">{lang === 'zh' ? '管理当前浏览器中的记录与备份' : 'Manage records and backups in this browser'}</span></span></span>
               <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
             </button>
           )}
         </div>
 
-        <div className="card p-2 sm:col-span-2">
+        <div className="card min-w-0 p-2 sm:col-span-2">
           <a href="/account?tab=assistant" className="flex min-h-12 items-center justify-between gap-3 rounded-md px-2 text-sm text-[var(--text-secondary)] transition hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]">
             <span className="inline-flex min-w-0 items-center gap-2"><Sparkles size={17} className="shrink-0 text-[var(--accent)]" aria-hidden="true" /><span className="min-w-0"><span className="block font-medium text-[var(--text-primary)]">{lang === 'zh' ? '费曼小助手 · 会话与长期记忆' : 'Feynman Assistant · Sessions and memory'}</span><span className="mt-0.5 block truncate text-xs">{lang === 'zh' ? '统一在账号中心查看、导出、删除和管理记忆开关' : 'Manage sessions, exports, deletions, and memory settings in Account Center'}</span></span></span>
             <ArrowUpRight size={16} className="shrink-0" aria-hidden="true" />
@@ -1787,17 +1787,17 @@ export default function Settings({
                 <AlertTriangle size={19} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
                 <div className="text-sm leading-5">
                   <p className="font-semibold text-amber-700 dark:text-amber-300">
-                    {localOnlyMode ? (lang === 'zh' ? '备案期间使用本地数据模式' : 'Local data mode during domain filing') : (lang === 'zh' ? '云端数据自动保存，本机历史数据请及时迁移' : 'Cloud data saves automatically; migrate legacy local data promptly')}
+                    {localOnlyMode ? (lang === 'zh' ? '当前浏览器中的学习记录' : 'Learning records in this browser') : (lang === 'zh' ? '学习记录与本机历史导入' : 'Learning records and local history')}
                   </p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
                     {localOnlyMode
-                      ? (lang === 'zh' ? '备案期间书籍、笔记和学习记录会保存在当前浏览器的 IndexedDB。请勿清理网站数据；备案完成后重新开启登录即可迁移到账号云端。' : 'During filing, books, notes, and learning records stay in this browser\'s IndexedDB. Do not clear site data; migrate them to your account cloud after sign-in returns.')
-                      : (lang === 'zh' ? '登录后的学习数据会按账号保存到云端；尚未迁移的 IndexedDB 历史数据仍只在当前浏览器，清理网站数据会使这部分内容永久丢失。' : 'Signed-in learning data is saved to your account cloud. Unmigrated IndexedDB history remains only in this browser and is permanently lost if site data is cleared.')}
+                      ? (lang === 'zh' ? '本地模式下，书籍、笔记和学习记录仅保存在当前浏览器。请先导出备份再清理网站数据；账号登录启用后，可将这些记录导入自己的账号。' : 'In local mode, books, notes, and learning records stay in this browser. Export a backup before clearing site data. When sign-in is enabled, you can import these records into your account.')
+                      : (lang === 'zh' ? '在账号中心整理个人书架、笔记和练习记录。旧版本尚未迁移的记录仍只在当前浏览器，请先导入账号或导出备份，再清理网站数据。' : 'Organize your library, notes, and practice in Account Center. Unmigrated records from older versions remain only in this browser; import or back them up before clearing site data.')}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     {localOnlyMode
                       ? (lang === 'zh' ? '本地数据会持续保存；导出用于主动备份或备案完成后的迁移。数据较大时会自动分卷，导入时需一次选择全部分卷。' : 'Local data is saved continuously. Export is useful for a manual backup or migration after filing. Large backups are split automatically; select every part together when importing.')
-                      : (lang === 'zh' ? '云端会自动保存日常修改；导出仅用于你主动备份或迁移到其他账号。数据较大时会自动分卷，导入时需一次选择全部分卷。' : 'Daily changes are saved to the cloud automatically. Export is only for an intentional backup or migration to another account. Large backups are split automatically; select every part together when importing.')}
+                      : (lang === 'zh' ? '日常修改会自动保存；需要保留副本或迁移记录时，可使用导出。较大的备份会自动分卷，导入时需一次选择全部分卷。' : 'Daily changes are saved automatically. Export a copy when you need a backup or want to move records. Large backups are split automatically; select every part together when importing.')}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
                     <strong className="text-amber-700 dark:text-amber-300">
@@ -1810,9 +1810,9 @@ export default function Settings({
                   <p className="mt-2 text-xs font-medium">
                     {lastBackupAt
                       ? (lang === 'zh'
-                        ? `最近一次主动备份：${new Date(lastBackupAt).toLocaleString('zh-CN')}（云端自动保存不受影响）`
-                        : `Last manual backup: ${new Date(lastBackupAt).toLocaleString('en-US')} (automatic cloud saving is unaffected)`)
-                      : (lang === 'zh' ? '尚未进行主动备份（云端数据仍会自动保存）' : 'No manual backup yet (cloud data is still saved automatically)')}
+                        ? `最近一次导出备份：${new Date(lastBackupAt).toLocaleString('zh-CN')}`
+                        : `Last exported backup: ${new Date(lastBackupAt).toLocaleString('en-US')}`)
+                      : (lang === 'zh' ? '尚未导出备份' : 'No exported backup yet')}
                   </p>
                 </div>
               </div>

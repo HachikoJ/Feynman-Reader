@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
-import { AlertTriangle, CircleHelp, Cloud, ExternalLink, Menu, RefreshCw, UserRound, X } from 'lucide-react'
+import { AlertTriangle, CircleHelp, ExternalLink, Menu, RefreshCw, UserRound, X } from 'lucide-react'
 import { logger } from '@/lib/logger'
 import {
   AppSettings,
@@ -97,8 +97,8 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
     <a
       href={signedIn ? '/account' : accountLoginHref(returnTo)}
       className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-2.5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15 sm:px-3"
-      aria-label={signedIn ? (lang === 'zh' ? '打开账号中心' : 'Open Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用观猹登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
-      title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用观猹登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
+      aria-label={signedIn ? (lang === 'zh' ? '打开账号中心' : 'Open Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用【观猹】登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
+      title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用【观猹】登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
       aria-disabled={checking}
     >
       {user?.avatarUrl ? (
@@ -111,7 +111,7 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
         <UserRound size={16} aria-hidden="true" />
       )}
       <span className="hidden sm:inline">
-        {checking ? (lang === 'zh' ? '读取账号' : 'Checking') : signedIn ? (lang === 'zh' ? '账号中心' : 'Account') : (lang === 'zh' ? (watchaEnabled ? '观猹登录' : '登录账号') : (watchaEnabled ? 'Watcha sign-in' : 'Sign in'))}
+        {checking ? (lang === 'zh' ? '读取账号' : 'Checking') : signedIn ? (lang === 'zh' ? '账号中心' : 'Account') : (lang === 'zh' ? (watchaEnabled ? '【观猹】登录' : '登录账号') : (watchaEnabled ? 'Watcha sign-in' : 'Sign in'))}
       </span>
     </a>
   )
@@ -136,11 +136,11 @@ function AccountCloudNotice({ lang, hidden, returnTo }: { lang: AppSettings['lan
   return (
     <div role="status" className="border-b border-[var(--accent)]/20 bg-[var(--accent)]/8 px-3 py-2.5 sm:px-4">
       <div className="mx-auto flex max-w-6xl items-start gap-2.5 text-sm">
-        <Cloud size={17} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+        <UserRound size={17} className="mt-0.5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
         <p className="min-w-0 flex-1 leading-5 text-[var(--text-secondary)]">
           {lang === 'zh'
-            ? `当前可浏览系统示例。添加书籍、保存学习记录或使用 AI 前，请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录；登录后数据会保存到你的账号云端。`
-            : `You can browse the system sample now. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before adding books, saving learning records, or using AI; signed-in data is saved to your account cloud.`}
+            ? `先浏览系统示例，体验完整学习流程；${isWatchaOAuthEnabled() ? '通过【观猹】' : ''}登录后，开始自己的阅读与练习。`
+            : `Explore the system sample to try the complete learning flow, then sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} to begin your own reading and practice.`}
         </p>
         <a href={accountLoginHref(returnTo)} className="shrink-0 font-medium text-[var(--accent)] hover:underline">
           {lang === 'zh' ? '登录' : 'Sign in'}
@@ -462,19 +462,19 @@ function ReaderWorkspaceContent() {
                 <span>
                   {lang === 'zh'
                     ? storageWriteError.code === 'payload-too-large'
-                      ? '本次内容较大，暂未同步到云端。请先导出备份，或减少单本书的文档内容后再试。'
+                      ? '本次内容较大，暂未保存。请先导出备份，或减少单本书的文档内容后再试。'
                       : storageWriteError.code === 'auth'
-                        ? '账号登录状态已失效，最新修改暂未同步。请重新登录后再试。'
+                        ? '账号登录状态已失效，最新修改暂未保存。请重新登录后再试。'
                         : storageWriteError.code === 'local'
                           ? '浏览器本地存储暂时不可用，最新修改可能无法保留。请检查浏览器存储权限。'
-                          : '云端同步暂时失败，最新修改尚未确认保存。请保持页面打开并稍后重试。'
+                          : '最新修改尚未确认保存。请保持页面打开，检查网络后重试。'
                     : storageWriteError.code === 'payload-too-large'
-                      ? 'This content is too large to sync. Export a backup or reduce the document size and try again.'
+                      ? 'This content is too large to save. Export a backup or reduce the document size and try again.'
                       : storageWriteError.code === 'auth'
-                        ? 'Your sign-in session expired and recent changes were not synced. Sign in again and retry.'
+                        ? 'Your sign-in session expired and recent changes were not saved. Sign in again and retry.'
                         : storageWriteError.code === 'local'
                           ? 'Browser storage is unavailable, so recent changes may not be retained. Check storage permissions.'
-                          : 'Cloud sync failed and recent changes are not confirmed. Keep this page open and retry shortly.'}
+                          : 'Recent changes are not confirmed as saved. Keep this page open, check your connection, and retry.'}
                 </span>
                 <button
                   type="button"

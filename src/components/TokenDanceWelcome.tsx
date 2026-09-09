@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, Cloud, CreditCard, ExternalLink, KeyRound, UserRound } from 'lucide-react'
+import { ArrowRight, BookOpen, CreditCard, ExternalLink, KeyRound, UserRound } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
 import TokenDanceLogo from './TokenDanceLogo'
@@ -18,12 +18,12 @@ const pricingUrl = 'https://tokendance.space/models/deepseek-v4-flash-0731'
 export default function TokenDanceWelcome({ lang, onContinue }: Props) {
   const content = lang === 'zh'
     ? {
-        eyebrow: '新账号与云端能力已上线',
+        eyebrow: '开始自己的阅读与练习',
         title: isWatchaOAuthEnabled() ? '先使用【观猹】登录，再配置 AI' : '先登录账号，再配置 AI',
         description: `添加自己的书、保存学习记录或使用 AI 前，请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录；登录后再为当前账号配置 TokenDance API Key。`,
         features: [
-          { icon: UserRound, title: isWatchaOAuthEnabled() ? '【观猹】登录' : '账号登录', text: '确认账号身份和数据归属，用于登录费曼读书助手' },
-          { icon: Cloud, title: '账号云端', text: '书籍、学习记录、金句、助手会话和长期记忆按账号保存' },
+          { icon: UserRound, title: isWatchaOAuthEnabled() ? '【观猹】登录' : '账号登录', text: '进入个人书架，在账号中心回顾金句、学习统计和活动记录' },
+          { icon: BookOpen, title: '阅读与练习', text: '按六阶段理解一本书，用自己的话讲解，通过角色追问发现理解漏洞' },
           { icon: KeyRound, title: 'TokenDance AI', text: 'API Key 和数据传输同意用于生成分析、推荐及助手回复' },
           { icon: CreditCard, title: '余额与计费', text: '在 TokenDance 查询余额、充值并管理路由；费用由用户自己的 Key 承担' }
         ],
@@ -31,12 +31,12 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
         continue: '了解并进入书架'
       }
     : {
-        eyebrow: 'Accounts and cloud data are now available',
+        eyebrow: 'Start your own reading and practice',
         title: 'Sign in before configuring AI',
-        description: `You can browse the system sample immediately. Before adding books, saving learning records, or using AI, sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''}; then configure a TokenDance API key for the current account.`,
+        description: `Before adding books, saving learning records, or using AI, sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''}; then configure a TokenDance API key for the current account.`,
         features: [
-          { icon: UserRound, title: isWatchaOAuthEnabled() ? 'Watcha sign-in' : 'Account sign-in', text: 'Identifies your account and owns your Feynman Reader cloud data' },
-          { icon: Cloud, title: 'Account cloud', text: 'Books, learning records, quotes, sessions, and long-term memories are saved per account' },
+          { icon: UserRound, title: isWatchaOAuthEnabled() ? 'Watcha sign-in' : 'Account sign-in', text: 'Open your bookshelf and review quotes, learning statistics, and activity in Account Center' },
+          { icon: BookOpen, title: 'Reading and practice', text: 'Explore a book in six phases, explain it in your own words, and uncover gaps through persona questions' },
           { icon: KeyRound, title: 'TokenDance AI', text: 'An API key and data consent enable analyses, recommendations, and assistant replies' },
           { icon: CreditCard, title: 'Balance and billing', text: 'Check balance, top up, and manage routes in TokenDance; usage is billed to your key' }
         ],

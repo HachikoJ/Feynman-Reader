@@ -15,11 +15,11 @@
 
 费曼读书助手是基于费曼学习法的 AI 阅读工作台。围绕一本书建立六阶段阅读框架，用自己的话讲解，再通过评分和三个角色的追问发现理解漏洞。笔记、金句和费曼小助手把一次练习连接到后续阅读与复习。
 
-产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。
+产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.2.2](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.2)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。
 
 ![当前桌面书架，展示五本书、学习状态、得分与复习建议](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
-> 截图来自 v0.2.1 实际界面，使用虚构普通账号、模拟书架、对话和评分；部分阶段内容来自公开系统示例。不包含真实用户数据，也不代表模型效果测评。详见[截图说明](docs/product/screenshots/v0.2.1/README.md)。
+> 截图来自实际应用界面，使用虚构普通账号、模拟书架、对话和评分；部分阶段内容来自公开系统示例。不包含真实用户数据，也不代表模型效果测评。账号中心已更新为 v0.2.2，其余界面沿用 v0.2.1 截图，详见[截图来源](docs/product/screenshots/v0.2.1/README.md)与[本次更新](docs/product/screenshots/v0.2.2/README.md)。
 
 ## 核心体验
 
@@ -68,14 +68,14 @@
 <p>
   <img src="docs/product/screenshots/v0.2.1/bookshelf-mobile.png" alt="手机端书架" width="300">
   <img src="docs/product/screenshots/v0.2.1/assistant-mobile.png" alt="手机端费曼小助手会话" width="300">
-  <img src="docs/product/screenshots/v0.2.1/account-mobile.png" alt="手机端普通用户账号中心" width="300">
+  <img src="docs/product/screenshots/v0.2.2/account-mobile.png" alt="手机端普通用户账号中心" width="300">
 </p>
 
 </details>
 
 ### 账号中心与暗色模式
 
-![普通用户账号中心，展示虚构用户林间读者的资料、学习统计和活动日历](docs/product/screenshots/v0.2.1/account-desktop.png)
+![普通用户账号中心，展示虚构用户林间读者的资料、学习统计和活动日历](docs/product/screenshots/v0.2.2/account-desktop.png)
 
 <details>
 <summary>查看暗色书架与随主题切换的 TokenDance 标志</summary>

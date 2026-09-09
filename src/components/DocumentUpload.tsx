@@ -102,8 +102,8 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
         setBookTags([])
         setAnalysisWarning(!isAuthenticated
           ? (lang === 'zh'
-            ? `文档已在当前页面完成解析。请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再保存到云端书架；配置 TokenDance 后还可自动提取书籍信息。`
-            : `The document was parsed on this page. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before saving it to your cloud bookshelf; configure TokenDance to extract book details automatically.`)
+            ? `文档已在当前页面完成解析。请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录，再添加到个人书架；配置 TokenDance 后还可自动提取书籍信息。`
+            : `The document was parsed on this page. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} to add it to your library; configure TokenDance to extract book details automatically.`)
           : (lang === 'zh'
             ? '尚未配置 TokenDance API Key，文档已解析。请手工确认书籍信息后添加。'
             : 'No TokenDance API key is configured. The document was parsed; confirm the book details manually.'))
@@ -262,7 +262,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
     } catch (saveError) {
       if (bookId) await reloadBookFromPersistence(bookId).catch(() => undefined)
       logger.error('Document book save failed:', saveError)
-      setError(lang === 'zh' ? '书籍保存失败，文档和填写内容仍保留，请检查浏览器存储后重试。' : 'Saving failed. Your document and form content were kept; check browser storage and try again.')
+      setError(lang === 'zh' ? '书籍保存失败，文档和填写内容仍保留，请稍后重试。' : 'Saving failed. Your document and form content were kept; please try again shortly.')
     } finally {
       saveInFlightRef.current = false
       setSaving(false)
@@ -292,8 +292,8 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
           <div>
             <p className="mb-4 text-sm leading-6 text-[var(--text-secondary)]">
               {lang === 'zh'
-                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB）。登录后才能保存到云端书架；配置 TokenDance API Key 后可自动提取书籍信息，未配置时也可手工填写。`
-                : `Supports PDF, DOCX, Markdown, TXT, and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). Sign in to save it to your cloud bookshelf. A TokenDance API key extracts book details automatically; without one, you can fill them in manually.`}
+                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB）。登录后添加到个人书架；连接 TokenDance 可自动提取书籍信息，也可手工填写。`
+                : `Supports PDF, DOCX, Markdown, TXT, and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). Sign in to add a document to your library. Connect TokenDance to extract book details automatically, or fill them in manually.`}
             </p>
             
             <div 

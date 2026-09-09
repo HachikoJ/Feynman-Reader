@@ -108,8 +108,8 @@ export default function BookListManager({ lang, book, onBookAdded, onOpenBook }:
       await reloadBookOrganizationFromPersistence().catch(() => undefined)
       refresh()
       setError(lang === 'zh'
-        ? '书单或书籍关系未能保存到账号云端，请检查登录和网络后重试。'
-        : 'The list or relationship could not be saved to your account cloud. Check sign-in and network, then try again.')
+        ? '书单或书籍关系未能保存，请检查登录和网络后重试。'
+        : 'The list or relationship could not be saved. Check sign-in and network, then try again.')
       return false
     } finally {
       setBusy(false)

@@ -28,7 +28,7 @@ describe('TokenDanceWelcome', () => {
 
     expect(screen.getByRole('img', { name: 'TokenDance' })).toBeInTheDocument()
     expect(screen.getByText('【观猹】登录')).toBeInTheDocument()
-    expect(screen.getByText('账号云端')).toBeInTheDocument()
+    expect(screen.getByText('阅读与练习')).toBeInTheDocument()
     expect(screen.getByText('TokenDance AI')).toBeInTheDocument()
     expect(screen.getByText(/DeepSeek V4 Flash 峰时最高约省 20%/)).toBeInTheDocument()
     expect(screen.getByText(/实际价格、适用线路、时段及活动期限/)).toBeInTheDocument()

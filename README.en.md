@@ -15,11 +15,11 @@
 
 Feynman Reader is an AI reading workspace built around the Feynman technique. Build a six-phase understanding of a book, teach it in your own words, and use feedback and questions from three roles to identify gaps. Notes, quotes, and the Feynman Assistant connect each practice session to future reading and review.
 
-Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md).
+Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.2.2](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.2). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md).
 
 ![Current desktop bookshelf with five books, learning status, scores, and a review suggestion](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
-> Screenshots show the actual v0.2.1 interface with a fictional ordinary account, library, conversations, and scores. Some phase content comes from the public system sample. These contain no real user data and are not model benchmarks. See [screenshot provenance](docs/product/screenshots/v0.2.1/README.md).
+> Screenshots show the actual application with a fictional ordinary account, library, conversations, and scores. Some phase content comes from the public system sample. These contain no real user data and are not model benchmarks. Account Center images are updated to v0.2.2; the remaining images are from v0.2.1. See [original provenance](docs/product/screenshots/v0.2.1/README.md) and [this update](docs/product/screenshots/v0.2.2/README.md).
 
 ## Features
 
@@ -68,14 +68,14 @@ Continue a discussion using relevant material from your account. Switch sessions
 <p>
   <img src="docs/product/screenshots/v0.2.1/bookshelf-mobile.png" alt="Mobile bookshelf" width="300">
   <img src="docs/product/screenshots/v0.2.1/assistant-mobile.png" alt="Mobile Feynman Assistant" width="300">
-  <img src="docs/product/screenshots/v0.2.1/account-mobile.png" alt="Mobile ordinary Account Center" width="300">
+  <img src="docs/product/screenshots/v0.2.2/account-mobile.png" alt="Mobile ordinary Account Center" width="300">
 </p>
 
 </details>
 
 ### Account Center and Dark Mode
 
-![Ordinary Account Center showing a fictional profile, statistics, and activity calendar](docs/product/screenshots/v0.2.1/account-desktop.png)
+![Ordinary Account Center showing a fictional profile, statistics, and activity calendar](docs/product/screenshots/v0.2.2/account-desktop.png)
 
 <details>
 <summary>Dark bookshelf and theme-aware TokenDance branding</summary>

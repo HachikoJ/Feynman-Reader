@@ -20,10 +20,10 @@ describe('TokenDanceMigrationNotice', () => {
     else process.env.NEXT_PUBLIC_FEYNMAN_TOKENDANCE_ENABLED = previousTokenDance
   })
 
-  it('explains account cloud storage and protects historical data', () => {
+  it('explains local history import and protects historical data', () => {
     render(<TokenDanceMigrationNotice lang="zh" onClose={jest.fn()} />)
 
-    expect(screen.getByText(/账号与云端保存已升级/)).toBeInTheDocument()
+    expect(screen.getByText(/将本机历史记录导入账号/)).toBeInTheDocument()
     expect(screen.getByText(/迁移窗口内完成迁移/)).toBeInTheDocument()
     expect(screen.getByText(/只有服务端确认迁移写入成功后/)).toBeInTheDocument()
     expect(screen.getByText(/永久关闭自动提醒/)).toBeInTheDocument()
@@ -50,7 +50,7 @@ describe('TokenDanceMigrationNotice', () => {
   it('keeps the same migration facts in English', () => {
     render(<TokenDanceMigrationNotice lang="en" onClose={jest.fn()} />)
 
-    expect(screen.getByText(/Accounts and cloud storage have been upgraded/)).toBeInTheDocument()
+    expect(screen.getByText(/Import local history into your account/)).toBeInTheDocument()
     expect(screen.getByText(/during the migration window/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open Account Center' })).toHaveAttribute('href', '/account?tab=data')
   })

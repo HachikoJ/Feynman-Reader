@@ -506,8 +506,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       if (persistedBook) setBook(persistedBook)
       logger.error('Learning progress save failed:', error)
       setAnalysisError(lang === 'zh'
-        ? '阶段进度未能保存到账号云端，页面未继续跳转。请检查登录和网络后重试。'
-        : 'Phase progress could not be saved to your account cloud. The page did not advance; check sign-in and network, then try again.')
+        ? '阶段进度未能保存，页面未继续跳转。请检查登录和网络后重试。'
+        : 'Phase progress could not be saved. The page did not advance; check sign-in and network, then try again.')
     } finally {
       progressSaveInFlightRef.current = false
       setSavingProgress(false)
@@ -782,7 +782,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           <h1 className="text-2xl font-bold">《{book.name}》</h1>
           {book.isSample && (
             <p className="mt-1 text-xs text-[var(--accent)]">
-              {lang === 'zh' ? '系统示例学习档案 · 不计入个人云端数据或历史迁移' : 'System sample learning record · excluded from personal cloud data and legacy migration'}
+              {lang === 'zh' ? '系统示例学习档案 · 不计入个人学习记录' : 'System sample learning record · separate from your personal records'}
             </p>
           )}
           {metadataEnrichmentStatus === 'loading' && (
