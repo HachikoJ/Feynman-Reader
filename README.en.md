@@ -6,7 +6,7 @@
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
 ![TokenDance](https://img.shields.io/badge/AI-TokenDance-2463eb)
-![PostgreSQL](https://img.shields.io/badge/data-PostgreSQL-339966)
+[![MIT License](https://img.shields.io/badge/license-MIT-339966)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
 
 [Open Feynman Reader](https://reader.deline.top/) · [中文](README.md) · [Features](#features) · [Preview](#preview) · [How AI Works](#how-ai-works) · [Quick Start](#quick-start) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
@@ -31,9 +31,9 @@ Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. C
 | Three-role Q&A | After passing teaching, use the default roles, a preset, or choose three roles yourself. Answer, evaluate, and retry individual questions. |
 | Notes and review | Keep notes, quotes, and practice history. Bookshelf suggestions consider weak areas, unfinished work, and activity history. |
 | Feynman Assistant | Multiple conversations, book references, attachments, edit and resend, conversation branches, copy, Word export, and selection-to-quote saving. |
-| Account Center | Profile, statistics, activity calendar, cloud library, quotes, assistant sessions, long-term preferences, recycle bin, and data import/export. |
+| Account Center | Manage your profile, library, quotes, and assistant sessions; review learning statistics and activity, manage preferences, and organize records with import/export and the recycle bin. |
 
-Signed-out visitors can explore the *Kite Runner* sample. Sign in with **【观猹】 (Watcha)** to save personal records. AI tasks also require a TokenDance connection and consent to the relevant data transfer.
+Explore the *Kite Runner* sample to try the complete learning flow, then sign in with **【观猹】 (Watcha)** to begin your own reading and practice. Before using AI, connect TokenDance in Settings and review and accept the relevant data-use notice.
 
 ## Preview
 
@@ -117,7 +117,7 @@ flowchart TD
   B --> C[Same-origin endpoint verifies session and decrypts account key]
   C --> D[TokenDance gateway calls DeepSeek V4 Flash]
   D --> E[Complete response returns for structure and score validation]
-  E --> F[Display feedback and save to the current account]
+  E --> F[Display feedback and update learning records]
 ```
 
 Production uses `deepseek-v4-flash-0731` through TokenDance. The browser calls `/api/ai/chat/completions/`; the server decrypts the current account's key and forwards the request. Responses are non-streaming. Direct official DeepSeek access remains an optional deployment channel, disabled in current production.
@@ -167,7 +167,7 @@ Follow the [version and recovery guide](docs/operations/releases-and-rollback.md
 
 ## Data, Costs, and Limits
 
-- Personal records are scoped to accounts in PostgreSQL. IndexedDB remains for legacy migration and some local preview behavior. Account Center includes import, export, and a recycle bin.
+- Your library, notes, and practice records belong to your account. View and manage them in Account Center, with import, export, and a recycle bin to organize your learning material.
 - Saved account API keys are encrypted on the server; their plaintext is not returned to the browser or included in learning data exports. AI requests require consent to transfer relevant content.
 - Book documents support PDF, DOCX, TXT, Markdown, and JSON: up to 20 MB, 1,000 PDF pages, and one million parsed characters. Excel, legacy DOC, and image OCR are unsupported.
 - Model costs vary with input, output, and route. Consult [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731); temporary offers are not permanent pricing promises.

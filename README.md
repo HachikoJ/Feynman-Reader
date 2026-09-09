@@ -6,7 +6,7 @@
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
 ![TokenDance](https://img.shields.io/badge/AI-TokenDance-2463eb)
-![PostgreSQL](https://img.shields.io/badge/data-PostgreSQL-339966)
+[![MIT License](https://img.shields.io/badge/license-MIT-339966)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
 
 [打开费曼读书助手](https://reader.deline.top/) · [English](README.en.md) · [核心体验](#核心体验) · [产品预览](#产品预览) · [AI 怎么工作](#ai-怎么工作) · [如何运行](#如何运行) · [反馈问题](https://github.com/HachikoJ/Feynman-Reader/issues)
@@ -31,9 +31,9 @@
 | 三角色问答 | 教学通过后，使用默认组合、预设组合或自行选择三个角色；逐题回答、评估和重答。 |
 | 笔记与复习 | 保存笔记、金句和学习历史；书架依据薄弱点、未完成任务及活动记录给出复习建议。 |
 | 费曼小助手 | 多会话问答、关联书籍、参考附件、编辑重发、分支会话、复制和 Word 导出；选中文本可收藏为金句。 |
-| 账号中心 | 个人资料、学习统计、活动日历、云端书架、金句、助手会话、长期记忆、回收站及数据导入导出。 |
+| 账号中心 | 统一管理个人资料、书架、金句与助手会话，查看学习统计和活动日历，管理长期记忆、回收站及记录导入导出。 |
 
-未登录时可浏览《追风筝的人》系统示例。个人书籍和学习记录通过 **【观猹】登录**后保存在对应账号；调用 AI 还需在设置中连接 TokenDance，并确认数据传输同意。
+可先浏览《追风筝的人》系统示例，体验完整学习流程；通过 **【观猹】登录**后，开始自己的阅读与练习。使用 AI 前，在设置中连接 TokenDance，并确认相关的数据使用说明。
 
 ## 产品预览
 
@@ -117,7 +117,7 @@ flowchart TD
   B --> C[本站接口校验登录并解密账号密钥]
   C --> D[TokenDance 网关调用 DeepSeek V4 Flash]
   D --> E[完整响应返回，应用校验结构与评分]
-  E --> F[展示反馈并保存当前账号记录]
+  E --> F[展示反馈并更新学习记录]
 ```
 
 当前线上通过 TokenDance 调用 `deepseek-v4-flash-0731`。浏览器访问本站 `/api/ai/chat/completions/`，服务端读取并解密当前账号的 API Key 后转发请求。当前接口返回完整响应，不提供逐字流式输出；官方 DeepSeek 直连保留为部署可选渠道，线上默认关闭。
@@ -167,7 +167,7 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=false
 
 ## 数据、费用与边界
 
-- 个人学习记录按账号保存到 PostgreSQL；IndexedDB 保留历史迁移和部分本地预览用途。账号中心提供数据导入、导出和回收站。
+- 个人书架、笔记和练习记录归属各自账号，可在账号中心查看和管理，并通过导入、导出及回收站整理自己的学习资料。
 - 账号中保存的 API Key 由服务端加密，不向浏览器返回其明文，也不进入学习数据导出；调用 AI 前需确认相关内容的数据传输。
 - 书籍文档支持 PDF、DOCX、TXT、Markdown、JSON；文件最多 20 MB，PDF 最多 1,000 页，解析文本最多 100 万字符。当前不支持 Excel、旧版 DOC 或图片 OCR。
 - AI 费用取决于输入、输出及所选线路，以 [TokenDance 实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)为准，不把限时活动视为固定价格承诺。
