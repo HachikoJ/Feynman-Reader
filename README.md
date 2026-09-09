@@ -1,198 +1,156 @@
-# 费曼读书助手 - Feynman Reader
+# 费曼读书助手 · Feynman Reader
 
-<p align="center">
-  <img src="assets/brand/feynman-reader-logo.png" alt="费曼读书助手 Logo" width="144">
-</p>
+<a id="top"></a>
+
+<p align="center"><img src="assets/brand/feynman-reader-logo.png" alt="费曼读书助手 Logo" width="120"></p>
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
-![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
-![中文优先](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E4%BC%98%E5%85%88-c1121f)
-![账号云端](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-%E8%B4%A6%E5%8F%B7%E4%BA%91%E7%AB%AF-22c55e)
+![TokenDance](https://img.shields.io/badge/AI-TokenDance-2463eb)
+![PostgreSQL](https://img.shields.io/badge/data-PostgreSQL-339966)
+[![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
 
-[English](README.en.md) · [个人官网](https://www.deline.top) · [进入费曼读书助手](https://reader.deline.top/) · [为什么做这个](#为什么做这个) · [核心体验](#核心体验) · [产品预览](#产品预览) · [如何运行](#如何运行) · [项目资料](#项目资料) · [联系作者](#联系作者)
+[打开费曼读书助手](https://reader.deline.top/) · [English](README.en.md) · [核心体验](#核心体验) · [产品预览](#产品预览) · [AI 怎么工作](#ai-怎么工作) · [如何运行](#如何运行) · [反馈问题](https://github.com/HachikoJ/Feynman-Reader/issues)
 
 **读完不算懂，能讲清楚才算。**
 
-费曼读书助手不是再帮你总结一本书，而是让你把书里的内容讲给 AI 听。AI 会先看你的解释，再从 3 个不同角色的角度追问你，直到你真的知道自己哪里没懂、该怎么改。
+费曼读书助手是基于费曼学习法的 AI 阅读工作台。围绕一本书建立六阶段阅读框架，用自己的话讲解，再通过评分和三个角色的追问发现理解漏洞。笔记、金句和费曼小助手把一次练习连接到后续阅读与复习。
 
-**产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
+产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。
 
-当前版本：[v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1)。源码标签、发布附件与恢复方法见 [版本发布与恢复](docs/operations/releases-and-rollback.md)。
+![当前桌面书架，展示五本书、学习状态、得分与复习建议](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
-> [!IMPORTANT]
-> **这是一个登录后使用账号云端的学习产品。** 未登录时可以浏览系统示例；添加书籍、AI 分析和保存学习记录前，需要先使用观猹登录。登录后，书籍、笔记、金句、助手会话和长期记忆会保存到账号对应的 PostgreSQL 云端数据库。IndexedDB 只用于老用户一次性历史迁移。TokenDance API Key 由服务端加密保存，不会显示明文，也不会进入备份文件。
-
-## GitHub 传播素材
-
-- 一句话简介：把一本书讲给 AI 听，直到 3 个角色都问不倒你。
-- 项目短描述：一个基于费曼学习法的 AI 深度阅读工具，包含六阶段学习、教学模拟、严格评分和 3 角色追问。
-- 建议 Topics：`ai-learning`、`feynman-technique`、`deepseek`、`nextjs`、`learning-tool`、`critical-thinking`、`readwise`
-- 产品素材：真实 Safari 截图、核心流程图和完整录屏均已整理归档。
-
-[![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
-
-## 为什么做这个
-
-我以前读技术书时经常有一种错觉：看懂了，划线也划了，笔记也记了。可一旦有人问“这本书到底讲了什么”，脑子会突然卡住。
-
-后来我接触到费曼学习法，里面最打动我的一句话是：**如果不能用简单的话解释，就不算真的理解。**
-
-但自己练的时候有两个问题：没有人逼你讲，也没有人告诉你哪里讲错了。所以我想做一个“装傻但懂行”的 AI 陪练。它不直接替用户想答案，而是把用户推回自己的表达里。
+> 截图来自 v0.2.1 实际界面，使用虚构普通账号、模拟书架、对话和评分；部分阶段内容来自公开系统示例。不包含真实用户数据，也不代表模型效果测评。详见[截图说明](docs/product/screenshots/v0.2.1/README.md)。
 
 ## 核心体验
 
-### 1. 先建立阅读框架
+| 环节 | 当前版本的体验 |
+| --- | --- |
+| 书架与资料 | 创建书籍、编辑封面、管理标签与书单，或上传 PDF、DOCX、TXT、Markdown、JSON 作为阅读资料。 |
+| 六阶段学习 | 按背景探索、全书概览、深度拆解、辩证分析、众声回响、融会贯通建立理解；确认完成当前阶段后解锁下一阶段。 |
+| 教学模拟 | 输入 200–20,000 字的个人讲解，查看准确度、完整度、清晰度与综合评分，以及原文和改进建议。 |
+| 三角色问答 | 教学通过后，使用默认组合、预设组合或自行选择三个角色；逐题回答、评估和重答。 |
+| 笔记与复习 | 保存笔记、金句和学习历史；书架依据薄弱点、未完成任务及活动记录给出复习建议。 |
+| 费曼小助手 | 多会话问答、关联书籍、参考附件、编辑重发、分支会话、复制和 Word 导出；选中文本可收藏为金句。 |
+| 账号中心 | 个人资料、学习统计、活动日历、云端书架、金句、助手会话、长期记忆、回收站及数据导入导出。 |
 
-用户可以创建书籍或上传 PDF、Word、Excel 文档。AI 会从背景探索、全书概览、深度拆解、辩证分析、众声回响、融会贯通六个阶段，帮用户建立阅读框架。
-
-### 2. 用自己的话教给 AI
-
-用户需要像给小白上课一样，用至少 200 字解释这本书。AI 会从准确度、完整度、清晰度和综合表现四个维度评分，并明确指出哪里讲清楚了、哪里还不够。
-
-### 3. 接受 3 个角色追问
-
-教学模拟后，AI 会从不同类型中随机选择 3 个角色提问，例如初学者、同行者、专家或批评者。每题单独评分，没通过的回答和改进建议都会保留，用户可以只重答这一题。
-
-### 4. 不让平均分掩盖没学会
-
-只有教学模拟达到练习要求，并且 3 个角色问题全部达到 60 分，这本书才会进入“已读”并计算综合得分。这里想解决的是一个很简单的问题：不能因为前面答得不错，就把后面的漏洞平均掉。
+未登录时可浏览《追风筝的人》系统示例。个人书籍和学习记录通过 **【观猹】登录**后保存在对应账号；调用 AI 还需在设置中连接 TokenDance，并确认数据传输同意。
 
 ## 产品预览
 
-### 书架与学习状态
-
-<p>
-  <img src="docs/product/screenshots/01-bookshelf-desktop.png" alt="费曼读书助手桌面书架页面，展示追风筝的人示例、今日复习和学习进度" width="100%">
-</p>
-
-<p>
-  <img src="docs/product/screenshots/02-bookshelf-mobile.png" alt="费曼读书助手移动端书架页面" width="420">
-</p>
-
-书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《追风筝的人》，完整呈现深度阅读流程。
-
-<details>
-<summary>暗色模式：复习卡片与 TokenDance 标志</summary>
-<img src="docs/product/screenshots/05-bookshelf-dark-desktop.png" alt="暗色桌面书架，复习卡片使用清晰的文字与按钮，TokenDance 使用官方暗色标志" width="100%">
-<img src="docs/product/screenshots/06-bookshelf-dark-mobile.png" alt="暗色手机书架及随背景切换的 TokenDance 标志" width="420">
-</details>
-
-### 账号云端
-
-<p>
-  <img src="docs/product/screenshots/03-account-center-desktop.png" alt="费曼读书助手桌面账号中心，展示云端统计和用户活动日历" width="100%">
-</p>
-
-<p>
-  <img src="docs/product/screenshots/04-account-center-mobile.png" alt="费曼读书助手移动端账号中心" width="420">
-</p>
-
-账号中心集中管理云端书架、金句、费曼小助手会话、回收站和数据导入导出。截图使用明确标注的本地预览数据，不包含真实用户信息。
-
 ### 六阶段阅读
 
-<p>
-  <img src="docs/product/submission/screenshots/04-six-phase-learning-safari.png" alt="费曼读书助手六阶段学习页面" width="100%">
-</p>
+![六阶段阅读页面，展示阶段进度与背景探索](docs/product/screenshots/v0.2.1/reading-desktop.png)
 
-每个阶段的内容可以折叠查看，用户不需要一开始被长文淹没，需要时再展开原理、背景和思考角度。
+阶段学习、费曼实践、我的笔记、相关推荐是同一本书的四个视图。分析结果可以折叠阅读，生成分析不会自动替你确认阶段完成。
 
-### 教学模拟与角色问答
+### 教学模拟与问答记录
 
-<p>
-  <img src="docs/product/submission/screenshots/05-feynman-practice-safari.png" alt="费曼读书助手教学模拟与角色问答页面" width="100%">
-</p>
+![教学实践记录，展示分项评分、AI 点评和个人讲解](docs/product/screenshots/v0.2.1/teaching-history.png)
 
-<p>
-  <img src="docs/product/submission/screenshots/06-teaching-score-history-safari.png" alt="费曼读书助手教学模拟评分记录，展示分维度评分和 AI 点评" width="100%">
-</p>
+<details>
+<summary>查看教学输入与三个角色的完整问答</summary>
 
-<p>
-  <img src="docs/product/submission/screenshots/07-role-qa-record-safari.png" alt="费曼读书助手角色问答记录，展示三题回答、评分和 AI 点评" width="100%">
-</p>
+![教学输入和本轮学习成绩](docs/product/screenshots/v0.2.1/practice-desktop.png)
 
-AI 的作用不是给出“你很棒”的空泛鼓励，而是保留原回答、具体得分和改进方向，让用户知道自己下一次应该怎么讲。
+![三个角色的提问、个人回答和逐题点评](docs/product/screenshots/v0.2.1/qa-history.png)
 
-### 设置与隐私
+</details>
 
-登录后的学习记录保存到账号对应的 PostgreSQL 云端数据库；TokenDance API Key 由服务端加密保存且不进入数据导出。用户在调用 AI 前仍需完成数据传输同意，并可在账号中心管理或导出自己的云端数据。
+### 费曼小助手
 
-### 核心交互流程
+<p><img src="docs/product/screenshots/v0.2.1/assistant-desktop.png" alt="费曼小助手桌面会话，围绕追风筝的人讨论愧疚与赎罪" width="672"></p>
+
+小助手结合当前账号的相关学习资料继续讨论。你可以切换会话、引用书籍或上传参考资料；明确提出“记住”等请求时，可以保存学习偏好，并在账号中心管理记忆开关、删除或导出记忆。
+
+<details>
+<summary>手机端：书架、费曼小助手与账号中心</summary>
 
 <p>
-  <img src="docs/product/core-learning-flow.png" alt="费曼读书助手核心交互流程" width="100%">
+  <img src="docs/product/screenshots/v0.2.1/bookshelf-mobile.png" alt="手机端书架" width="300">
+  <img src="docs/product/screenshots/v0.2.1/assistant-mobile.png" alt="手机端费曼小助手会话" width="300">
+  <img src="docs/product/screenshots/v0.2.1/account-mobile.png" alt="手机端普通用户账号中心" width="300">
 </p>
 
-```text
-书籍 / 本地文档
-  -> 六阶段学习
-  -> 用户教学模拟
-  -> AI 评分和反馈
-  -> 3 个角色追问
-  -> 用户逐题重答
-  -> 全部通过后更新已读状态和综合得分
+</details>
+
+### 账号中心与暗色模式
+
+![普通用户账号中心，展示虚构用户林间读者的资料、学习统计和活动日历](docs/product/screenshots/v0.2.1/account-desktop.png)
+
+<details>
+<summary>查看暗色书架与随主题切换的 TokenDance 标志</summary>
+
+![当前暗色书架与复习卡片](docs/product/screenshots/v0.2.1/bookshelf-dark.png)
+
+</details>
+
+## 核心交互流程
+
+```mermaid
+flowchart TD
+  A[创建书籍或导入资料] --> B[生成并阅读阶段分析]
+  B --> C[确认完成阶段并依次推进]
+  A --> D[用自己的话讲解]
+  D --> E{教学综合分至少 60 分}
+  E -- 未通过 --> D
+  E -- 通过 --> F[选择三个角色并生成问题]
+  F --> G[逐题回答与评估]
+  G --> H{三题均至少 60 分}
+  H -- 未通过 --> I[查看反馈并重答未通过题]
+  I --> G
+  H -- 通过 --> J[计算同一轮教学与问答的成绩]
+  C --> K{六阶段完成且练习达标}
+  J --> K
+  K -- 是 --> L[标记已读并保留最佳合格成绩]
+  A --> M[笔记、金句与费曼小助手]
+  M --> D
+  L --> N[回到书架继续复习]
 ```
+
+教学和问答必须属于**同一学习轮次**。合格轮次的综合成绩为“教学综合分”与“三题平均分”的平均值；每题都需通过，不能用其他题的高分抵消。书籍还需完成六阶段，才会标记为已读。练习、笔记和助手可以在阅读过程中使用，不必等到所有分析结束。
 
 ## AI 怎么工作
 
 ```mermaid
 flowchart TD
-  A[创建书籍或上传本地文档] --> B{已同意 AI 数据使用?}
-  B -- 否 --> C[阅读隐私政策并确认]
-  C --> B
-  B -- 是 --> D[DeepSeek V4 Flash 生成六阶段学习内容]
-  D --> E[用户提交自己的教学解释]
-  E --> F[AI 评分并指出理解漏洞]
-  F --> G[AI 生成 3 个角色问题]
-  G --> H[用户逐题回答与修订]
-  H --> I{3 题都达到 60 分?}
-  I -- 否 --> H
-  I -- 是 --> J[更新已读状态和学习记录]
+  A[学习任务、用户输入与必要上下文] --> B[浏览器确认数据传输同意]
+  B --> C[本站接口校验登录并解密账号密钥]
+  C --> D[TokenDance 网关调用 DeepSeek V4 Flash]
+  D --> E[完整响应返回，应用校验结构与评分]
+  E --> F[展示反馈并保存当前账号记录]
 ```
 
-| 用户负责 | AI 负责 |
+当前线上通过 TokenDance 调用 `deepseek-v4-flash-0731`。浏览器访问本站 `/api/ai/chat/completions/`，服务端读取并解密当前账号的 API Key 后转发请求。当前接口返回完整响应，不提供逐字流式输出；官方 DeepSeek 直连保留为部署可选渠道，线上默认关闭。
+
+| 部分 | 输入与边界 |
 | --- | --- |
-| 读书、选择概念、用自己的话解释、决定是否重答 | 生成阶段分析、提出追问、评分并给出改进建议 |
-| 保持自己的判断，形成最终理解 | 找出表达中的漏洞，而不是替用户宣布“已经学会” |
+| 阶段分析 | 书名、作者、阶段提示及可用的文档参考片段。文档按长度选取上下文，不保证每次发送整本原文。 |
+| 教学评估与问答 | 用户讲解、选择的角色、当前轮次的问题与回答。模型提供评分建议，程序校验有效分数、轮次关系和完成条件。 |
+| 费曼小助手 | 当前账号的相关书籍、学习记录、金句、历史会话及启用的偏好记忆；没有明确书籍匹配时，可使用近期书籍摘要。上下文有长度限制。 |
+| 参考附件与记忆 | 小助手最多附加 5 份资料，单份最多 12,000 字符、合计最多 30,000 字符。长期偏好需明确请求并保存成功，用户可管理与关闭。 |
 
-## 当前已实现
-
-- 书架管理：创建、编辑、删除、搜索、标签筛选、阅读统计。
-- 文档输入：PDF、Word、Excel 内容解析，并作为 AI 分析的参考。
-- 六阶段学习：按顺序完成背景、框架、拆解、批判、评价和连接。
-- 教学模拟：至少 200 字的个人解释、四维度评分、历史记录。
-- 角色问答：固定 3 题、逐题评分、原回答和改进建议、单题重答。
-- 账号云端：未登录可浏览系统示例；个人书籍、学习记录、金句和助手数据在当前登录账号下保存到 PostgreSQL。备案期间临时开放用户名密码账号；域名审核通过后仅保留观猹登录，用户可在账号中心一次性合并原账号，合并后原账号永久停用。IndexedDB 只用于老用户历史迁移，API Key 只在服务端加密保存并始终掩码展示。
-- 隐私同意：保存 Key 和调用 AI 前都需要确认数据传输同意，并强制阅读隐私政策到底部。
+小助手不具备联网搜索、代码执行或自主操作工具。AI 分析、评分和建议是学习辅助，不保证事实正确；重要结论请结合原书核验。你的解释与判断仍是学习的主体。
 
 ## 如何运行
 
-环境：Node.js 20.9 以上（生产使用 Node.js 22）及 npm。
+环境：Node.js 20.9 以上、npm；生产使用 Node.js 22。
 
 ```bash
 npm ci
 npm run dev
 ```
 
-打开 [http://localhost:8080](http://localhost:8080)。第一次使用时：
+打开 [http://localhost:8080](http://localhost:8080) 浏览系统示例。完整账号读写需要 PostgreSQL、OAuth 与服务端密钥配置，字段见 [.env.example](.env.example)。不要把真实密钥提交到 Git。
 
-1. 浏览系统示例；需要保存个人数据时，使用观猹登录。
-2. 在设置中授权或填写 TokenDance API Key，并同意当前 AI 任务所需的数据传输。
-3. 创建一本书或上传资料，开始第一次“讲给 AI 听”的练习；数据会自动保存到当前账号云端。
+### 本地预览
 
-### 本地账号中心预览
+当前正式 OAuth 回调是 `https://reader.deline.top/api/auth/tokendance/callback`，不能直接用于 localhost 授权。在观猹渠道关闭时，可在 `.env.local` 设置 `NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true` 启用本地浏览器存储模式，并在未登录时展示模拟账号中心；模拟账号操作不写入云端。
 
-当前观猹客户端只登记正式回调地址 `https://reader.deline.top/api/auth/tokendance/callback`，因此 `localhost` 不能完成真实观猹授权。本地调试账号中心时，可在已被 Git 忽略的 `.env.local` 中启用只读预览：
+**该开关不会因生产构建自动失效。** 正式部署必须显式关闭旁路；真实 OAuth 和云端读写需使用已登记的回调与服务端配置验证。
 
-```env
-NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
-```
+### 生产部署
 
-预览模式只展示 Mock 账号与示例云端数据，并禁用云端写入；生产构建会忽略该开关。真实 OAuth、会话 Cookie 和 PostgreSQL 读写必须部署后通过正式域名验证。Client Secret、数据库密码和随机密钥只能放在服务器环境文件中，不能写入前端代码或提交到 GitHub。
-
-### 生产部署（腾讯云 + PostgreSQL）
-
-生产环境由 `deploy.sh` 构建 Next.js standalone 服务，并通过 PM2 监听 `127.0.0.1:8080`；Nginx 负责 `https://reader.deline.top` 的 HTTPS 反向代理。服务器只需要准备 `/etc/feynman-reader.env`（权限 `600`），填写 `.env.example` 中的生产值，尤其是 PostgreSQL 的 `DATABASE_URL` 和完全一致的回调地址：
+当前使用腾讯云、PostgreSQL、Next.js standalone、PM2 与 Nginx HTTPS 代理。按 [.env.example](.env.example) 配置仅服务端可读的 `/etc/feynman-reader.env`，并通过 `deploy.sh` 构建和部署。关键开关为：
 
 ```env
 TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.deline.top/api/auth/tokendance/callback
@@ -200,91 +158,76 @@ FEYNMAN_COOKIE_SECURE=true
 FEYNMAN_WATCHA_OAUTH_ENABLED=true
 FEYNMAN_TOKENDANCE_ENABLED=true
 FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=false
+NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=false
 ```
 
-如果使用远程 PostgreSQL，按编号执行适用的 schema 迁移；如果迁移到同一台服务器的本机 PostgreSQL，执行仓库提供的 `scripts/migrate-to-local-postgres.sh`，它会完成备份、停写导出、恢复、表计数校验、环境切换、健康检查和回收站定时清理。常规部署会幂等执行账号合并、管理员安全与操作存档迁移。以上是备案通过后的生产开关组合；编译期开关变化需要完整运行 `deploy.sh`。密钥和连接串不放入 GitHub。
+渠道的前端编译开关由部署流程同步，变更后需完整重建。产品域名与 TokenDance 归因标识用途不同：产品访问和 OAuth 回调使用 `reader.deline.top`，登记的 `X-App-URL` 仍为 `https://www.deline.top`。不要把归因标识随访问地址一并替换。
 
-每次部署会自动执行 `011_admin_security.sql` 并校验观猹主体唯一索引、管理员角色绑定和账号状态，不需要手动打开数据库工具执行 SQL。首次为 Wilson 的观猹账号绑定 TOTP 时，仍需在服务器本地执行一次 `npm run bootstrap:admin`；初始化步骤和安全边界见 [管理员看板文档](docs/admin-dashboard.md)。管理员权限不由前端字段、URL 参数或公开环境变量决定。
+发布与恢复沿用固定版本标签、源码校验文件及部署记录，详见[版本发布与恢复](docs/operations/releases-and-rollback.md)。恢复应用版本与恢复数据库是不同操作，不能用旧版应用覆盖现有学习数据。
 
-系统管理保留统计看板，并提供用户资料、19 张数据表的详情与受控编辑、删除、停用和恢复操作。唯一管理员的 UUID 与观猹主体由服务端 `FEYNMAN_ADMIN_USER_ID`、`FEYNMAN_ADMIN_PROVIDER_SUBJECT` 双绑定；缺失配置时拒绝访问。密码、API Key、认证器密钥与加密存档不会作为普通数据详情返回。完整操作范围见 [系统管理说明](docs/operations/admin-data-browser.md)。
+## 数据、费用与边界
 
-AI 渠道由部署环境开关控制：备案期间可暂时隐藏 TokenDance 并保留官方 DeepSeek；备案完成后可同时恢复观猹登录和 TokenDance，并关闭官方 DeepSeek。已有 TokenDance 代码、配置和数据不会因临时隐藏而删除。根据 TokenDance 官方确认，`v4flash0731` 峰时火山方舟端口提供限时优惠，最高约可省 20%，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用线路、时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准。
+- 个人学习记录按账号保存到 PostgreSQL；IndexedDB 保留历史迁移和部分本地预览用途。账号中心提供数据导入、导出和回收站。
+- 账号中保存的 API Key 由服务端加密，不向浏览器返回其明文，也不进入学习数据导出；调用 AI 前需确认相关内容的数据传输。
+- 书籍文档支持 PDF、DOCX、TXT、Markdown、JSON；文件最多 20 MB，PDF 最多 1,000 页，解析文本最多 100 万字符。当前不支持 Excel、旧版 DOC 或图片 OCR。
+- AI 费用取决于输入、输出及所选线路，以 [TokenDance 实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)为准，不把限时活动视为固定价格承诺。
+- 书架已有复习建议卡片；语音转写、OCR、固定 D1/D7/D21 复习排程和自动提醒尚未实现。主学习流程统一为顺序六阶段。
 
-## 技术栈
+## 技术栈与项目资料
 
-- **前端**：Next.js 16、TypeScript、Tailwind CSS
-- **AI**：DeepSeek API
-- **云端数据**：PostgreSQL（IndexedDB 仅用于历史迁移）
-- **文档解析**：PDF.js、Mammoth、XLSX
-- **测试**：Jest、Playwright
+| 层 | 实现 |
+| --- | --- |
+| 界面 | Next.js 16、React、TypeScript、Tailwind CSS |
+| AI | TokenDance 的 OpenAI 兼容网关、DeepSeek V4 Flash |
+| 数据 | PostgreSQL、账号会话、服务端密钥加密 |
+| 文档 | PDF.js、Mammoth 与文本解析 |
+| 验证 | Jest、Playwright、TypeScript、ESLint |
 
-## 项目资料
+- [更新记录](CHANGELOG.md)与[版本发布与恢复](docs/operations/releases-and-rollback.md)
+- [参与贡献](CONTRIBUTING.md)与[安全问题反馈](SECURITY.md)
+- [隐私政策](https://reader.deline.top/privacy/)
+- [历史产品方案与提交材料](docs/product/submission/README.md)：保留早期设计背景；当前功能以本 README 和版本记录为准。
 
-- [产品方案](docs/product/submission/Product_Plan_ZH.md)：需求来源、用户、核心流程和产品边界。
-- [AI 工作流程](docs/product/submission/AI_Workflow_ZH.md)：模型与规则如何分工，以及数据边界。
-- [产品说明](docs/product/submission/Product_Guide_ZH.md)：建议体验路径、真实 Safari 截图索引和功能边界。
-- [增长方案](docs/product/submission/Growth_Plan_ZH.md)：增长策略、定价、Token 成本控制与 PMF 验证。
-- [更新记录](CHANGELOG.md)：当前版本的账号云端、迁移与安全变更。
-- [版本发布与恢复](docs/operations/releases-and-rollback.md)：固定标签、源码包校验、部署版本识别与恢复边界。
+常用开发检查：
 
-## 后续规划
+```bash
+npx tsc --noEmit
+npm run lint
+npm test -- --runInBand
+npm run build
+git diff --check
+```
 
-- 语音输入和转写，让“讲给 AI 听”更自然。
-- D1/D7/D21 的复习队列和提醒，让用户回来重讲薄弱点。
-- 如果未来确有商业化需要，再基于服务端授权和 Token 配额重新设计使用控制。
-- 用真实用户测试：他们愿不愿意讲、会不会重答、7 天后还会不会回来。
+## 维护与贡献
 
-## 边界说明
+项目维护：[HachikoJ](https://github.com/HachikoJ)。当前 AI 开发协作：**OpenAI Codex**，参与实现、问题排查、测试及文档维护。欢迎通过 [Issues](https://github.com/HachikoJ/Feynman-Reader/issues) 和 Pull Request 提交反馈与改进。
 
-这个项目不是自动读书机，也不应该替用户完成思考。当前版本暂不提供语音输入、OCR 拍书和自动复习提醒；学习模式选择也尚未对用户开放，线上主流程统一采用顺序 6 阶段。
+GitHub 自动生成的 [Contributors](https://github.com/HachikoJ/Feynman-Reader/graphs/contributors)依据提交历史与共同作者署名统计，可能包含历史协作记录，不等同于当前维护团队。
 
-AI 生成的分析、评分和建议仅用于学习辅助，不保证事实准确性；请结合原书和自己的判断核验重要信息。
+## 开源授权
+
+本项目使用 [MIT License](LICENSE)。使用、修改或分发时，请保留原始版权和许可声明。
+
+## 联系与交流
+
+- GitHub：[HachikoJ](https://github.com/HachikoJ)
+- 微信：`hostrow`，请备注 `费曼读书`
+- 邮箱：`946106011@qq.com`
+
+<table>
+  <tr>
+    <td align="center"><strong>微信联系</strong><br><img src="assets/wechat-contact.png" alt="微信联系二维码" width="200"></td>
+    <td align="center"><strong>微信赞赏</strong><br><img src="assets/donate-wechat.png" alt="微信赞赏码" width="200"></td>
+    <td align="center"><strong>支付宝赞赏</strong><br><img src="assets/donate-alipay.png" alt="支付宝赞赏码" width="200"></td>
+  </tr>
+</table>
+
+扫码加入微信交流群，交流使用经验与反馈问题：
+
+<p align="center"><img src="assets/group-qr.jpg" alt="微信交流群二维码" width="240"></p>
 
 ## GitHub 关注度
 
 [![Star History Chart](https://api.star-history.com/svg?repos=HachikoJ/Feynman-Reader&type=Date)](https://star-history.com/#HachikoJ/Feynman-Reader&Date)
 
-## 开源授权
-
-本项目基于 [MIT License](LICENSE) 开源。你可以自由使用、复制、修改、合并、发布、分发、再授权或销售本项目副本，但须保留原始版权声明和许可声明。
-
-## 联系作者
-
-喜欢这个项目、想交流 AI 学习产品或反馈问题，可以通过下面方式联系：
-
-- GitHub：[HachikoJ](https://github.com/HachikoJ)
-- 微信：`hostrow`，添加时请备注 `费曼读书`
-- 邮箱：`946106011@qq.com`
-
-<table>
-  <tr>
-    <td align="center">
-      <strong>微信联系</strong><br>
-      <img src="assets/wechat-contact.png" alt="微信联系二维码" width="220">
-    </td>
-    <td align="center">
-      <strong>微信赞赏</strong><br>
-      <img src="assets/donate-wechat.png" alt="微信赞赏码" width="220">
-    </td>
-    <td align="center">
-      <strong>支付宝赞赏</strong><br>
-      <img src="assets/donate-alipay.png" alt="支付宝赞赏码" width="220">
-    </td>
-  </tr>
-</table>
-
----
-
-如果你也有一本“读完觉得懂了，但讲不清楚”的书，试着先讲给 AI 听一次。
-
----
-
-## 📢 加入交流群
-
-欢迎扫码加入微信交流群，一起交流使用经验、反馈问题：
-
-<p align="center">
-  <img src="assets/group-qr.jpg" alt="微信交流群二维码" width="260">
-</p>
-
----
+[返回顶部](#top)

@@ -1,45 +1,135 @@
 # Feynman Reader
 
-<p align="center">
-  <img src="assets/brand/feynman-reader-logo.png" alt="Feynman Reader logo" width="144">
-</p>
+<a id="top"></a>
+
+<p align="center"><img src="assets/brand/feynman-reader-logo.png" alt="Feynman Reader logo" width="120"></p>
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-111111)
-![DeepSeek](https://img.shields.io/badge/DeepSeek-AI-3b82f6)
-![Account cloud](https://img.shields.io/badge/data-account_cloud-22c55e)
+![TokenDance](https://img.shields.io/badge/AI-TokenDance-2463eb)
+![PostgreSQL](https://img.shields.io/badge/data-PostgreSQL-339966)
 [![GitHub stars](https://img.shields.io/github/stars/HachikoJ/Feynman-Reader?style=flat)](https://github.com/HachikoJ/Feynman-Reader)
 
-[Personal site](https://www.deline.top) · [Open Feynman Reader](https://reader.deline.top/) · [中文 README](README.md) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
+[Open Feynman Reader](https://reader.deline.top/) · [中文](README.md) · [Features](#features) · [Preview](#preview) · [How AI Works](#how-ai-works) · [Quick Start](#quick-start) · [Issues](https://github.com/HachikoJ/Feynman-Reader/issues)
 
 **Reading is not understanding until you can explain it.**
 
-Feynman Reader is an AI-assisted deep-reading workspace based on the Feynman technique. Instead of returning a passive summary, it asks you to teach the book in your own words, evaluates the explanation, and follows up from three different perspectives.
+Feynman Reader is an AI reading workspace built around the Feynman technique. Build a six-phase understanding of a book, teach it in your own words, and use feedback and questions from three roles to identify gaps. Notes, quotes, and the Feynman Assistant connect each practice session to future reading and review.
 
-Current release: [v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1). See the [version and recovery guide](docs/operations/releases-and-rollback.md) for immutable tags, source checksums, deployment identification, and rollback boundaries.
+Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.2.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md).
 
-## What It Does
+![Current desktop bookshelf with five books, learning status, scores, and a review suggestion](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
-- Starts with a complete, no-setup sample workspace for *The Kite Runner*.
-- Guides each book through six sequential learning phases.
-- Stores teaching attempts, four-dimension scores, role-based questions, and revisions.
-- Supports PDF, Word, Excel, and text document input.
-- Lets signed-out visitors browse the system sample. Personal data is saved to the signed-in account's PostgreSQL database. Username/password accounts are temporary during ICP review; after approval, Watcha becomes the only sign-in method and users can merge one temporary account into their Watcha account before the old credentials are permanently disabled.
-- Uses a separately configured TokenDance API key and AI data transfer consent for model access. The key is encrypted on the server and excluded from exports.
+> Screenshots show the actual v0.2.1 interface with a fictional ordinary account, library, conversations, and scores. Some phase content comes from the public system sample. These contain no real user data and are not model benchmarks. See [screenshot provenance](docs/product/screenshots/v0.2.1/README.md).
+
+## Features
+
+| Area | Current behavior |
+| --- | --- |
+| Books and documents | Create books, edit covers, organize tags and lists, or upload PDF, DOCX, TXT, Markdown, and JSON reference material. |
+| Six learning phases | Explore background, overview, deep analysis, critical thinking, reception, and synthesis. Confirm each phase as complete to unlock the next. |
+| Teaching practice | Write an explanation of 200–20,000 characters. Review accuracy, completeness, clarity, overall score, original text, and feedback. |
+| Three-role Q&A | After passing teaching, use the default roles, a preset, or choose three roles yourself. Answer, evaluate, and retry individual questions. |
+| Notes and review | Keep notes, quotes, and practice history. Bookshelf suggestions consider weak areas, unfinished work, and activity history. |
+| Feynman Assistant | Multiple conversations, book references, attachments, edit and resend, conversation branches, copy, Word export, and selection-to-quote saving. |
+| Account Center | Profile, statistics, activity calendar, cloud library, quotes, assistant sessions, long-term preferences, recycle bin, and data import/export. |
+
+Signed-out visitors can explore the *Kite Runner* sample. Sign in with **【观猹】 (Watcha)** to save personal records. AI tasks also require a TokenDance connection and consent to the relevant data transfer.
 
 ## Preview
 
-<p><img src="docs/product/screenshots/01-bookshelf-desktop.png" alt="Feynman Reader desktop bookshelf with The Kite Runner sample" width="100%"></p>
-<p><img src="docs/product/screenshots/02-bookshelf-mobile.png" alt="Feynman Reader mobile bookshelf" width="420"></p>
-<p><img src="docs/product/screenshots/03-account-center-desktop.png" alt="Feynman Reader desktop Account Center with cloud statistics and an activity calendar" width="100%"></p>
-<p><img src="docs/product/screenshots/04-account-center-mobile.png" alt="Feynman Reader mobile Account Center" width="420"></p>
+### Six-Phase Reading
 
-The Account Center preview uses clearly labeled mock data and contains no real user information.
+![Six-phase reading with progress and background exploration](docs/product/screenshots/v0.2.1/reading-desktop.png)
+
+Phase learning, teaching practice, notes, and recommendations are four views of the same book. Analyses can be expanded or collapsed. Generating an analysis does not automatically mark its phase as complete.
+
+### Teaching and Role Questions
+
+![Teaching history with scores, feedback, and the original explanation](docs/product/screenshots/v0.2.1/teaching-history.png)
 
 <details>
-<summary>Dark mode: review cards and theme-aware TokenDance branding</summary>
-<img src="docs/product/screenshots/05-bookshelf-dark-desktop.png" alt="Dark desktop bookshelf with readable review text and buttons and the official dark TokenDance logo" width="100%">
-<img src="docs/product/screenshots/06-bookshelf-dark-mobile.png" alt="Dark mobile bookshelf with theme-aware TokenDance branding" width="420">
+<summary>Teaching input and all three role questions</summary>
+
+![Teaching input and practice scores](docs/product/screenshots/v0.2.1/practice-desktop.png)
+
+![Three role questions with answers and individual feedback](docs/product/screenshots/v0.2.1/qa-history.png)
+
 </details>
+
+### Feynman Assistant
+
+<p><img src="docs/product/screenshots/v0.2.1/assistant-desktop.png" alt="Desktop Feynman Assistant discussing guilt and redemption in The Kite Runner" width="672"></p>
+
+Continue a discussion using relevant material from your account. Switch sessions, reference a book, or attach source material. Explicit Chinese requests such as “记住” can save learning preferences; Account Center provides memory controls and export. Automatic extraction of equivalent English requests is not currently implemented.
+
+<details>
+<summary>Mobile bookshelf, assistant, and Account Center</summary>
+
+<p>
+  <img src="docs/product/screenshots/v0.2.1/bookshelf-mobile.png" alt="Mobile bookshelf" width="300">
+  <img src="docs/product/screenshots/v0.2.1/assistant-mobile.png" alt="Mobile Feynman Assistant" width="300">
+  <img src="docs/product/screenshots/v0.2.1/account-mobile.png" alt="Mobile ordinary Account Center" width="300">
+</p>
+
+</details>
+
+### Account Center and Dark Mode
+
+![Ordinary Account Center showing a fictional profile, statistics, and activity calendar](docs/product/screenshots/v0.2.1/account-desktop.png)
+
+<details>
+<summary>Dark bookshelf and theme-aware TokenDance branding</summary>
+
+![Dark bookshelf with a review suggestion](docs/product/screenshots/v0.2.1/bookshelf-dark.png)
+
+</details>
+
+## Core Interaction
+
+```mermaid
+flowchart TD
+  A[Create a book or import a document] --> B[Generate and read phase analyses]
+  B --> C[Confirm phases in sequence]
+  A --> D[Explain the book in your own words]
+  D --> E{Teaching score at least 60}
+  E -- No --> D
+  E -- Yes --> F[Choose three roles and generate questions]
+  F --> G[Answer and evaluate each question]
+  G --> H{All three scores at least 60}
+  H -- No --> I[Read feedback and retry failed questions]
+  I --> G
+  H -- Yes --> J[Calculate the score for this learning round]
+  C --> K{Six phases complete and practice passed}
+  J --> K
+  K -- Yes --> L[Mark finished and retain the best qualifying score]
+  A --> M[Notes, quotes, and Feynman Assistant]
+  M --> D
+  L --> N[Return for review]
+```
+
+Teaching and Q&A must belong to the **same learning round**. A qualifying round's score averages the teaching overall score and the mean of its three question scores. Every question must pass; a high score elsewhere cannot compensate for a failed answer. A book is marked finished only after all six phases are complete and practice qualifies. Practice, notes, and the assistant can be used during reading.
+
+## How AI Works
+
+```mermaid
+flowchart TD
+  A[Learning task, user input, and relevant context] --> B[Browser confirms data transfer consent]
+  B --> C[Same-origin endpoint verifies session and decrypts account key]
+  C --> D[TokenDance gateway calls DeepSeek V4 Flash]
+  D --> E[Complete response returns for structure and score validation]
+  E --> F[Display feedback and save to the current account]
+```
+
+Production uses `deepseek-v4-flash-0731` through TokenDance. The browser calls `/api/ai/chat/completions/`; the server decrypts the current account's key and forwards the request. Responses are non-streaming. Direct official DeepSeek access remains an optional deployment channel, disabled in current production.
+
+| Task | Context and boundaries |
+| --- | --- |
+| Phase analysis | Book metadata, phase instructions, and available document excerpts. Context is selected within length limits; the full source is not necessarily sent. |
+| Teaching and Q&A | The explanation, selected roles, and the current round's questions and answers. The model proposes scores; application rules validate them and enforce round matching and completion. |
+| Assistant | Relevant books, learning records, quotes, prior sessions, and enabled preferences from the current account. Recent book summaries can be used when no specific book matches. Context length is bounded. |
+| Attachments and memory | Up to five assistant attachments, at most 12,000 characters each and 30,000 total. Preferences require an explicit request and a successful save; users can manage or disable them. |
+
+The assistant has no web search, code execution, or autonomous action tools. Analysis and feedback are learning aids, not guarantees of factual correctness. Check important claims against the original book and your own judgment.
 
 ## Quick Start
 
@@ -50,65 +140,81 @@ npm ci
 npm run dev
 ```
 
-Open <http://localhost:8080>. You can inspect the system sample without signing in or configuring an API key. Sign in with Watcha before saving personal data, then open Settings to authorize or add a TokenDance API key and confirm task-relevant AI data transfer consent.
+Open [http://localhost:8080](http://localhost:8080) to explore the sample. Full account storage requires PostgreSQL, OAuth, and server secrets described in [.env.example](.env.example). Never commit real credentials.
 
-### Local Account Preview
+### Local Preview
 
-The current Watcha client registers only the production callback at `https://reader.deline.top/api/auth/tokendance/callback`, so a localhost session cannot complete real Watcha authorization. To inspect Account Center locally, add this to the Git-ignored `.env.local` file:
+The production OAuth callback is `https://reader.deline.top/api/auth/tokendance/callback` and cannot directly authorize localhost. With Watcha disabled, `NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true` in `.env.local` enables browser-local storage and displays a mock Account Center when signed out. Mock account actions do not write to the cloud.
+
+**Production builds do not automatically ignore this switch.** Explicitly disable it for deployment. Validate real OAuth and database access using registered callbacks and server configuration.
+
+### Production
+
+The current deployment uses Tencent Cloud, PostgreSQL, Next.js standalone, PM2, and an Nginx HTTPS proxy. Configure the server-only `/etc/feynman-reader.env` using [.env.example](.env.example), then build and deploy through `deploy.sh`. Key settings:
 
 ```env
-NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
+TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.deline.top/api/auth/tokendance/callback
+FEYNMAN_COOKIE_SECURE=true
+FEYNMAN_WATCHA_OAUTH_ENABLED=true
+FEYNMAN_TOKENDANCE_ENABLED=true
+FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=false
+NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=false
 ```
 
-Preview mode uses mock account data and disables cloud writes. Production builds ignore this switch. Validate real OAuth, session cookies, and PostgreSQL reads and writes only after deployment through the production domain. Keep the Client Secret, database password, and generated secrets in the server environment file; never expose them to browser code or GitHub.
+Deployment synchronizes the public build flags; rebuild after changes. The website and OAuth callback use `reader.deline.top`, while the registered TokenDance attribution header `X-App-URL` remains `https://www.deline.top`. These serve different purposes.
 
-AI and sign-in channels follow deployment flags. After ICP approval, production uses `FEYNMAN_WATCHA_OAUTH_ENABLED=true`, `FEYNMAN_TOKENDANCE_ENABLED=true`, and `FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=false`. Run a full deployment after changing these build-time flags. Keep credentials and connection strings outside Git.
+Follow the [version and recovery guide](docs/operations/releases-and-rollback.md) for immutable tags, source checksums, and deployment records. Application rollback and database recovery are separate operations; existing learning data must not be overwritten merely to restore an application version.
 
-### Administrator dashboard
+## Data, Costs, and Limits
 
-Every deployment applies the administrator security and encrypted change archive migrations and verifies administrator bindings. The sole administrator is bound through server-only `FEYNMAN_ADMIN_USER_ID` and `FEYNMAN_ADMIN_PROVIDER_SUBJECT`; missing bindings deny access. Initial TOTP enrollment still requires one server-local `npm run bootstrap:admin` invocation. The `/admin` page requires the ordinary account session plus a six-digit TOTP code. Administrator sessions are separate, short-lived, revocable, and audited.
+- Personal records are scoped to accounts in PostgreSQL. IndexedDB remains for legacy migration and some local preview behavior. Account Center includes import, export, and a recycle bin.
+- Saved account API keys are encrypted on the server; their plaintext is not returned to the browser or included in learning data exports. AI requests require consent to transfer relevant content.
+- Book documents support PDF, DOCX, TXT, Markdown, and JSON: up to 20 MB, 1,000 PDF pages, and one million parsed characters. Excel, legacy DOC, and image OCR are unsupported.
+- Model costs vary with input, output, and route. Consult [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731); temporary offers are not permanent pricing promises.
+- Review suggestion cards are implemented. Voice transcription, OCR, fixed D1/D7/D21 schedules, and automatic reminders are not. The learning flow uses six sequential phases.
 
-System administration includes aggregate metrics, user profiles, detailed browsing across 19 data tables, controlled editing/deletion, account disable/enable, and conflict-aware recovery. Passwords, API keys, TOTP secrets, and encrypted change snapshots are excluded from generic details. See [administrator security notes](docs/admin-dashboard.md) and [data administration](docs/operations/admin-data-browser.md).
+## Stack and Documentation
 
-## Privacy, Cost, and Model Limits
+| Layer | Implementation |
+| --- | --- |
+| UI | Next.js 16, React, TypeScript, Tailwind CSS |
+| AI | TokenDance OpenAI-compatible gateway, DeepSeek V4 Flash |
+| Data | PostgreSQL, account sessions, server-side key encryption |
+| Documents | PDF.js, Mammoth, text parsing |
+| Validation | Jest, Playwright, TypeScript, ESLint |
 
-Signed-out visitors can inspect only the system sample. Legacy browser data from earlier releases can be imported after Watcha sign-in, after which personal records are stored in the account-scoped PostgreSQL database. API keys are encrypted server-side, excluded from exports, and never displayed in full.
+- [Changelog](CHANGELOG.md) and [version and recovery guide](docs/operations/releases-and-rollback.md)
+- [Contributing](CONTRIBUTING.md) and [security reporting](SECURITY.md)
+- [Privacy policy](https://reader.deline.top/privacy/)
+- [Historical product and submission materials](docs/product/submission/README.md): early design context; this README and release notes describe current behavior.
 
-According to TokenDance's official clarification, `v4flash0731` offers limited-time savings of up to about 20% on the Volcengine Ark route at peak hours, and users can set route preferences in TokenDance. Actual prices, eligible routes, periods, and offer dates follow [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731) and subsequent notices. Model charges vary with input size and usage. AI analysis, scores, and suggestions are learning aids and are not guaranteed to be factually correct; verify important claims against the original book and your own judgment.
-
-## Development Checks
+Development checks:
 
 ```bash
 npx tsc --noEmit
 npm run lint
 npm test -- --runInBand
 npm run build
-npm audit --omit=dev --audit-level=high
 git diff --check
 ```
 
-## Documentation
+## Maintenance and Contributions
 
-- [Product materials](docs/product/submission/README.md)
-- [Privacy policy](https://reader.deline.top/privacy/)
-- [Changelog](CHANGELOG.md)
-- [Version and recovery guide](docs/operations/releases-and-rollback.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+Maintained by [HachikoJ](https://github.com/HachikoJ). Current AI development collaboration: **OpenAI Codex**, assisting with implementation, debugging, testing, and documentation. Feedback and improvements are welcome through [Issues](https://github.com/HachikoJ/Feynman-Reader/issues) and pull requests.
 
-## Project Status
+GitHub's automatic [Contributors](https://github.com/HachikoJ/Feynman-Reader/graphs/contributors) view derives from commit history and co-author trailers. It may include historical collaboration and is not a list of current maintainers.
 
-This is an actively maintained public product. Voice input, OCR, and automated review scheduling are not part of the current release. Account-scoped storage requires a configured PostgreSQL database and Watcha OAuth credentials on the server.
+## License and Contact
 
-## License
+[MIT License](LICENSE). Retain the original copyright and license notices when using, modifying, or distributing the project.
 
-[MIT License](LICENSE)
+- GitHub: [HachikoJ](https://github.com/HachikoJ)
+- Email: `946106011@qq.com`
+- WeChat: `hostrow` (mention `费曼读书`)
+- [Community and support QR codes](README.md#联系与交流)
 
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=HachikoJ/Feynman-Reader&type=Date)](https://star-history.com/#HachikoJ/Feynman-Reader&Date)
 
-## Contact
-
-- GitHub: [HachikoJ](https://github.com/HachikoJ)
-- Email: 946106011@qq.com
+[Back to top](#top)
