@@ -42,20 +42,20 @@
 }
 
 [data-theme="dark"] {
-  --bg-primary: #151823;
-  --bg-secondary: #232838;
-  --bg-card: rgba(30, 35, 50, 0.9);
-  --text-primary: #f8faff;
-  --text-secondary: #b3bdd2;
-  --accent: #7695ff;
-  --accent-secondary: #ff857d;
-  --success: #55d9b5;
-  --warning: #ffe07a;
-  --error: #ff857d;
-  --border: #394257;
-  --surface-glass: rgba(30, 35, 50, 0.74);
-  --surface-glass-strong: rgba(30, 35, 50, 0.94);
-  --brand-shadow: 0 20px 52px rgba(0, 0, 0, 0.28);
+  --bg-primary: #11161f;
+  --bg-secondary: #1a222d;
+  --bg-card: rgba(31, 40, 52, 0.94);
+  --text-primary: #edf2f7;
+  --text-secondary: #b8c3d1;
+  --accent: #86a2ff;
+  --accent-secondary: #ff938b;
+  --success: #63d9b9;
+  --warning: #f6d878;
+  --error: #ff938b;
+  --border: #3a4658;
+  --surface-glass: rgba(27, 35, 47, 0.88);
+  --surface-glass-strong: rgba(31, 40, 52, 0.97);
+  --brand-shadow: 0 20px 52px rgba(0, 0, 0, 0.36);
 }
 
 [data-theme="cyber"] {
@@ -102,7 +102,7 @@ canvas {
   border: 1px solid color-mix(in srgb, var(--accent) 11%, var(--border));
   border-radius: 8px;
   padding: 20px;
-  box-shadow: 0 1px 0 color-mix(in srgb, white 72%, transparent) inset, 0 10px 28px color-mix(in srgb, var(--accent) 5%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--text-primary) 10%, transparent) inset, 0 10px 28px color-mix(in srgb, var(--accent) 5%, transparent);
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
@@ -134,7 +134,7 @@ canvas {
 
 .bookshelf-toolbar {
   border-color: color-mix(in srgb, #315efb 15%, var(--border));
-  background: color-mix(in srgb, #f9fbff 82%, var(--bg-card));
+  background: color-mix(in srgb, var(--bg-secondary) 72%, var(--bg-card));
 }
 
 .bookshelf-room {
@@ -290,6 +290,17 @@ canvas {
     linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, #172554), color-mix(in srgb, var(--bg-primary) 92%, #0c4a6e));
 }
 
+[data-theme="dark"] .bookshelf-toolbar,
+[data-theme="cyber"] .bookshelf-toolbar {
+  background: color-mix(in srgb, var(--bg-secondary) 78%, var(--bg-card));
+}
+
+[data-theme="dark"] .bookshelf-book-cover,
+[data-theme="cyber"] .bookshelf-book-cover {
+  border-color: color-mix(in srgb, var(--text-primary) 22%, var(--border));
+  box-shadow: -3px 0 0 color-mix(in srgb, var(--accent) 22%, var(--bg-card)), 0 10px 22px rgba(0, 0, 0, 0.34);
+}
+
 @media (min-width: 640px) {
   .bookshelf-room {
     --shelf-column-gap: 16px;
@@ -317,6 +328,25 @@ canvas {
     width: calc(100% - 4px);
   }
 }
+
+@media (max-width: 639px) {
+  [data-theme="dark"] .bookshelf-room,
+  [data-theme="cyber"] .bookshelf-room {
+    background:
+      radial-gradient(ellipse 58% 26px at 50% 0, color-mix(in srgb, var(--accent) 16%, transparent), transparent 78%),
+      radial-gradient(ellipse 25% 52% at 25% 5%, color-mix(in srgb, var(--warning) 9%, transparent), transparent 78%),
+      radial-gradient(ellipse 25% 52% at 75% 5%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 78%),
+      linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 18%, transparent 82%, color-mix(in srgb, var(--accent-secondary) 7%, transparent)),
+      linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 92%, var(--bg-secondary)), var(--bg-primary));
+  }
+}
+
+/* The app uses data-theme rather than Tailwind's media-based dark variant. */
+[data-theme="dark"] .text-amber-700, [data-theme="cyber"] .text-amber-700 { color: #f6d878; }
+[data-theme="dark"] .text-emerald-700, [data-theme="cyber"] .text-emerald-700 { color: #63d9b9; }
+[data-theme="dark"] .text-red-700, [data-theme="cyber"] .text-red-700 { color: #ff938b; }
+[data-theme="dark"] .text-sky-800, [data-theme="cyber"] .text-sky-800 { color: #9bc3ff; }
+[data-theme="dark"] .text-gray-600, [data-theme="cyber"] .text-gray-600 { color: var(--text-secondary); }
 
 @media (prefers-reduced-motion: reduce) {
   .bookshelf-book,
@@ -400,6 +430,66 @@ canvas {
   border-color: var(--accent);
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 7%, var(--bg-card));
+}
+
+.bookshelf-review {
+  --review-bg: #fff9eb;
+  --review-border: #dbc58e;
+  --review-label: #805600;
+  --review-cover: #ffffff;
+  --review-hover: #f4e8c9;
+  --review-action-bg: #315efb;
+  --review-action-hover: #274bd1;
+  --review-action-text: #ffffff;
+  background: var(--review-bg);
+  border-color: var(--review-border);
+}
+
+[data-theme="dark"] .bookshelf-review,
+[data-theme="cyber"] .bookshelf-review {
+  --review-bg: #242a32;
+  --review-border: #626872;
+  --review-label: #f0cf80;
+  --review-cover: #343c47;
+  --review-hover: #3c4551;
+  --review-action-bg: #86a2ff;
+  --review-action-hover: #a5baff;
+  --review-action-text: #11161f;
+}
+
+.bookshelf-review-label {
+  color: var(--review-label);
+}
+
+.bookshelf-review-cover {
+  background: var(--review-cover);
+  color: var(--review-label);
+}
+
+.bookshelf-review .btn-primary {
+  background: var(--review-action-bg);
+  color: var(--review-action-text);
+}
+
+.bookshelf-review .btn-primary:hover:not(:disabled) {
+  background: var(--review-action-hover);
+}
+
+.bookshelf-review .btn-secondary {
+  background: var(--review-cover);
+  border-color: var(--review-border);
+  color: var(--text-primary);
+}
+
+.bookshelf-review .btn-secondary:hover:not(:disabled) {
+  background: var(--review-hover);
+  border-color: var(--review-label);
+  color: var(--text-primary);
+}
+
+.bookshelf-review button:focus-visible {
+  outline: 2px solid var(--review-label);
+  outline-offset: 3px;
 }
 
 .input-field {

@@ -142,6 +142,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const [apiKeyInvalid, setApiKeyInvalid] = useState(false)
   const [teachingNote, setTeachingNote] = useState('')
   const [practiceError, setPracticeError] = useState<string | null>(null)
+  const [practiceStatus, setPracticeStatus] = useState<'idle' | 'evaluating' | 'saving' | 'saved'>('idle')
+  const [pendingPracticeEvaluation, setPendingPracticeEvaluation] = useState<ReturnType<typeof parsePracticeEvaluation> | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [savingProgress, setSavingProgress] = useState(false)
   const [noteRecords, setNoteRecords] = useState<NoteRecord[]>(initialBook.noteRecords || [])
@@ -164,6 +166,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const currentBookIdRef = useRef(book.id)
   const missingApiKey = apiKey.trim().length === 0
   const needsAiConfiguration = missingApiKey || aiConsentRequired || apiKeyInvalid
+  const practiceBusy = practiceStatus === 'evaluating' || practiceStatus === 'saving'
   const analysisRunning = loading || analyzingInBackground || analysisTask?.status === 'running'
 
   const handleQuoteSelected = async (text: string) => {
@@ -537,7 +540,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     }
     practiceSubmissionRef.current = true
     setPracticeError(null)
-    setLoading(true)
+    setPendingPracticeEvaluation(null)
+    setPracticeStatus('evaluating')
     
     try {
       const prompt = generateReviewPrompt(book.name, teachingNote, lang)
@@ -575,9 +579,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         return
       }
 
+      setPendingPracticeEvaluation(result)
+      setPracticeStatus('saving')
       try {
         // addPracticeRecord 会自动检查并更新状态
-        addPracticeRecord(book.id, {
+        const savedRecord = addPracticeRecord(book.id, {
           sessionId,
           content: teachingNote,
           aiReview: result.review,
@@ -588,13 +594,16 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
         // 重新获取更新后的 book 数据
         const updatedBook = getBook(book.id)
-        if (updatedBook) {
-          setBook(updatedBook)
+        if (!updatedBook?.practiceRecords?.some(record => record.id === savedRecord.id)) {
+          throw new Error('Saved practice record is missing')
         }
+        setBook(updatedBook)
+        setPendingPracticeEvaluation(null)
+        setPracticeStatus('saved')
 
         setShowPracticeHistory(true)
         setTimeout(() => {
-          practiceHistoryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          practiceHistoryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }, 100)
 
         setTeachingNote('')
@@ -606,9 +615,14 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           ? '评分已完成，但保存记录失败。请稍后重试。'
           : 'The evaluation completed, but the record could not be saved. Please try again later.')
       }
+    } catch (error) {
+      logger.error('Practice submission failed:', error)
+      setPracticeError(lang === 'zh'
+        ? '评估未能完成，教学内容已保留，请重试。'
+        : 'Evaluation could not be completed. Your teaching content was kept; please retry.')
     } finally {
       practiceSubmissionRef.current = false
-      setLoading(false)
+      setPracticeStatus(current => current === 'saved' ? current : 'idle')
     }
   }
 
@@ -1230,23 +1244,32 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               </div>
             </div>
 
-            {loading ? (
-              <LoadingQuotes lang={lang} quotes={quotes} />
-            ) : (
               <>
                 <h3 className="font-semibold mb-1">{t(lang, 'practice.teach')}</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-3">{t(lang, 'practice.teachDesc')}</p>
 
                 <textarea
                   value={teachingNote}
+                  readOnly={practiceBusy}
                   onChange={e => {
                     setTeachingNote(e.target.value)
                     setPracticeError(null)
+                    if (practiceStatus === 'saved') setPracticeStatus('idle')
                   }}
                   maxLength={MAX_AI_ANSWER_LENGTH}
                   placeholder={t(lang, 'practice.teachPlaceholder')}
                   className="input-field min-h-[250px] resize-y mb-2"
                 />
+
+                {practiceStatus !== 'idle' && (
+                  <p role="status" className="mb-3 text-sm text-[var(--text-secondary)]">
+                    {practiceStatus === 'evaluating'
+                      ? (lang === 'zh' ? '正在评估教学内容，请稍候…' : 'Evaluating your teaching content…')
+                      : practiceStatus === 'saving'
+                        ? (lang === 'zh' ? '评估已完成，正在保存实践记录…' : 'Evaluation complete. Saving the practice record…')
+                        : (lang === 'zh' ? '评估完成，已保存到实践记录。' : 'Evaluation complete and saved to practice history.')}
+                  </p>
+                )}
 
                 {practiceError && (
                   <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
@@ -1266,14 +1289,23 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                   </span>
                   <button
                     onClick={handleSubmitPractice}
-                    disabled={loading || teachingNote.length < 200}
+                    disabled={practiceBusy || teachingNote.length < 200}
                     className="btn-primary"
                   >
-                    {t(lang, 'practice.getReview')}
+                    {practiceBusy ? (lang === 'zh' ? '处理中…' : 'Processing…') : t(lang, 'practice.getReview')}
                   </button>
                 </div>
+                {pendingPracticeEvaluation && (
+                  <section aria-label={lang === 'zh' ? '本次评估结果' : 'Current evaluation'} className="mt-4 border-t border-[var(--border)] pt-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="font-semibold">{lang === 'zh' ? '本次评估结果' : 'Current evaluation'}</h3>
+                      <CopyContentButton content={pendingPracticeEvaluation.review} lang={lang} />
+                    </div>
+                    <p className="mb-3 font-semibold">{t(lang, 'practice.overall')}: {pendingPracticeEvaluation.scores.overall}</p>
+                    <MarkdownRenderer content={pendingPracticeEvaluation.review} />
+                  </section>
+                )}
               </>
-            )}
           </div>
 
           {/* 实践记录 - 移到教学模拟下方，默认折叠 */}
@@ -1335,19 +1367,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                           </div>
                         ))}
                       </div>
-                      <details>
+                      <details open={practiceStatus === 'saved' && record.id === practiceRecords[practiceRecords.length - 1]?.id ? true : undefined}>
                         <summary className="cursor-pointer text-sm text-[var(--accent)]">
                           {lang === 'zh' ? '查看详情' : 'View details'}
                         </summary>
                         <div className="mt-3 space-y-4 text-sm">
-                          <div>
-                            <p className="text-xs text-[var(--text-secondary)] mb-2">
-                              {lang === 'zh' ? '教学输出：' : 'Teaching Output:'}
-                            </p>
-                            <div className="bg-[var(--bg-card)] rounded p-3">
-                              <MarkdownRenderer content={record.content} />
-                            </div>
-                          </div>
                           <div>
                             <p className="text-xs text-[var(--text-secondary)] mb-2">
                               {lang === 'zh' ? 'AI 点评：' : 'AI Review:'}
@@ -1355,6 +1379,14 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                             <div className="bg-[var(--bg-card)] rounded p-3">
                               <MarkdownRenderer content={record.aiReview} onQuoteSelected={handleQuoteSelected} />
                               <SourceEvidence content={record.aiReview} documentContent={book.documentContent} lang={lang} />
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs text-[var(--text-secondary)] mb-2">
+                              {lang === 'zh' ? '教学输出：' : 'Teaching Output:'}
+                            </p>
+                            <div className="bg-[var(--bg-card)] rounded p-3">
+                              <MarkdownRenderer content={record.content} />
                             </div>
                           </div>
                         </div>

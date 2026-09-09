@@ -5,6 +5,12 @@ const nextConfig = {
   // 账号、数据同步和 OAuth 回调需要 Next.js 服务端运行时。
   output: 'standalone',
   trailingSlash: true,
+  async headers() {
+    return ['/admin/:path*', '/api/admin/:path*'].map(source => ({ source, headers: [
+      { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+      { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+    ] }))
+  },
 
   // 启用严格模式
   reactStrictMode: true,

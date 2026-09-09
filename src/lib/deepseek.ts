@@ -4,7 +4,7 @@ import { secureSystemPrompt, secureUserMessage } from './promptSecurity'
 import { addAIUsageRecord, getSettings } from './store'
 import { buildDocumentContext, DEFAULT_DOCUMENT_CONTEXT_CHARS } from './documentContext'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY, AIRequestContext, aiRequestManager } from './aiRequestManager'
-import { getTokendanceRecoveryAction, TOKENDANCE_GATEWAY_URL, TOKENDANCE_APP_URL, tokendanceRecoveryError } from './tokendance'
+import { getTokendanceRecoveryAction, TOKENDANCE_GATEWAY_URL, TOKENDANCE_REQUEST_APP_URL, tokendanceRecoveryError } from './tokendance'
 import { isDeepSeekOfficialEnabled, isOfficialDeepSeekProvider, isTokenDanceEnabled, type ConfiguredAIProvider } from './aiProviderPolicy'
 
 // TokenDance currently exposes the 0731 build, while the official DeepSeek
@@ -468,7 +468,7 @@ export async function createDeepSeekClient(apiKey: string, provider?: 'tokendanc
   const serverProxyBaseUrl = useServerProxy ? browserAiProxyBaseUrl(window.location.origin) : ''
   const defaultHeaders = useTokendance
     ? {
-        'X-App-URL': TOKENDANCE_APP_URL,
+        'X-App-URL': TOKENDANCE_REQUEST_APP_URL,
         ...(useServerProxy ? { 'X-Feynman-AI-Provider': resolvedProvider } : {}),
       }
     : (useServerProxy ? { 'X-Feynman-AI-Provider': resolvedProvider } : undefined)

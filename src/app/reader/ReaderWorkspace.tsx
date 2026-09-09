@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { AlertTriangle, CircleHelp, Cloud, ExternalLink, Menu, RefreshCw, UserRound, X } from 'lucide-react'
@@ -28,6 +28,7 @@ import TokenDanceMigrationNotice, {
   TOKENDANCE_MIGRATION_NOTICE_KEY,
   TOKENDANCE_MIGRATION_NOTICE_VERSION
 } from '@/components/TokenDanceMigrationNotice'
+import TokenDanceLogo from '@/components/TokenDanceLogo'
 import AppIcon from '@/components/AppIcon'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import UndoRedoControls, { useUndoRedoShortcuts } from '@/components/UndoRedoControls'
@@ -46,8 +47,18 @@ import AppDialogHost from '@/components/AppDialogHost'
 import { APP_ROUTES } from '@/lib/appRoutes'
 import { accountLoginHref, isLocalAuthBypassEnabled, isWatchaOAuthEnabled } from '@/lib/accountClient'
 import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
+import { SAMPLE_BOOK_ID } from '@/lib/sampleBook'
 
 type View = 'bookshelf' | 'reading' | 'settings'
+
+async function loadBookForReading(id: string): Promise<Book> {
+  const cachedBook = getBooks().find(book => book.id === id)
+  if (cachedBook && (cachedBook.isSample || id === SAMPLE_BOOK_ID) && !cachedBook._summaryOnly) return cachedBook
+  const loadedBook = await reloadBookFromPersistence(id)
+  if (!loadedBook) throw new Error('未能读取这本书的完整学习数据，请重新读取。')
+  if (loadedBook._summaryOnly) throw new Error('书籍详情尚未完整加载，请重新读取。')
+  return loadedBook
+}
 
 const loadReadingView = () => import('@/components/ReadingView')
 const ReadingView = dynamic(loadReadingView, {
@@ -60,7 +71,6 @@ const AssistantWorkspace = dynamic(() => import('@/components/AssistantWorkspace
   loading: () => null
 })
 
-const TOKENDANCE_LOGO_URL = 'https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg'
 const TOKENDANCE_PRICING_URL = 'https://tokendance.space/models/deepseek-v4-flash-0731'
 const ACCOUNT_CLOUD_NOTICE_KEY = 'feynman-account-cloud-notice-v1'
 
@@ -164,9 +174,12 @@ function ReaderWorkspaceContent() {
     quotesInitialized: false
   })
   const [selectedBook, setSelectedBook] = useState<Book | null>(null)
+  const [bookLoadError, setBookLoadError] = useState<{ id: string; message: string } | null>(null)
+  const [loadingBookId, setLoadingBookId] = useState<string | null>(null)
+  const bookLoadAttempt = useRef(0)
   const [showApiKeyAlert, setShowApiKeyAlert] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const [initializationError, setInitializationError] = useState(false)
+  const [initializationError, setInitializationError] = useState<string | null>(null)
   const [initializationAttempt, setInitializationAttempt] = useState(0)
   const [storageWriteError, setStorageWriteError] = useState<PersistenceErrorInfo | null>(null)
   const [bookshelfKey, setBookshelfKey] = useState(0) // 用于强制刷新书架
@@ -233,11 +246,13 @@ function ReaderWorkspaceContent() {
       try {
         await initializeStore({ authenticated: hasSignedInAccount })
       } catch (error) {
-        logger.error('IndexedDB initialization failed:', error)
+        logger.error('Learning data initialization failed:', error)
         if (!cancelled) {
           // AuthGuard renders the login screen for an expired/missing session;
           // do not replace it with a misleading local-storage error.
-          setInitializationError(!(error instanceof Error && error.message.includes('登录状态')))
+          setInitializationError(error instanceof Error && error.message.includes('登录状态')
+            ? null
+            : error instanceof Error ? error.message : '读取学习数据时发生未知错误。')
           setMounted(true)
         }
         return
@@ -250,11 +265,17 @@ function ReaderWorkspaceContent() {
       document.documentElement.setAttribute('data-theme', saved.theme)
       const books = getBooks()
       if (requestedView === 'reading' && requestedBookId) {
-        const requestedBook = books.find(book => book.id === requestedBookId)
-        if (requestedBook) {
-          const loadedBook = await reloadBookFromPersistence(requestedBook.id).catch(() => requestedBook)
-          setSelectedBook(loadedBook || requestedBook)
+        try {
+          const loadedBook = await loadBookForReading(requestedBookId)
+          if (cancelled) return
+          setBookLoadError(null)
+          setSelectedBook(loadedBook)
           setView('reading')
+        } catch (error) {
+          if (cancelled) return
+          setBookLoadError({ id: requestedBookId, message: error instanceof Error ? error.message : '读取书籍详情失败。' })
+          setSelectedBook(null)
+          setView('bookshelf')
         }
       }
       const userHasHistory = hasUserHistory(books)
@@ -304,13 +325,26 @@ function ReaderWorkspaceContent() {
     }
   }
 
-  const handleSelectBook = async (book: Book) => {
+  const handleOpenBook = async (id: string) => {
+    const attempt = ++bookLoadAttempt.current
     setShowApiKeyAlert(false)
-    const loadedBook = await reloadBookFromPersistence(book.id).catch(() => book)
-    setSelectedBook(loadedBook || book)
-    setView('reading')
-    window.history.replaceState({}, '', `/?view=reading&bookId=${encodeURIComponent(book.id)}`)
+    setBookLoadError(null)
+    setLoadingBookId(id)
+    try {
+      const loadedBook = await loadBookForReading(id)
+      if (attempt !== bookLoadAttempt.current) return
+      setSelectedBook(loadedBook)
+      setView('reading')
+      window.history.replaceState({}, '', `/?view=reading&bookId=${encodeURIComponent(id)}`)
+    } catch (error) {
+      if (attempt !== bookLoadAttempt.current) return
+      setBookLoadError({ id, message: error instanceof Error ? error.message : '读取书籍详情失败。' })
+    } finally {
+      if (attempt === bookLoadAttempt.current) setLoadingBookId(null)
+    }
   }
+
+  const handleSelectBook = (book: Book) => handleOpenBook(book.id)
 
   const handleOpenApiSettings = () => {
     setShowApiKeyAlert(false)
@@ -402,8 +436,9 @@ function ReaderWorkspaceContent() {
           <p className="mb-6 text-sm leading-6 text-[var(--text-secondary)]">
             为避免把空数据误当成真实书架，应用已暂停加载。请检查网络和登录状态后重试；如有尚未迁移的本机历史数据，请不要清除浏览器网站数据。
           </p>
+          <p className="mb-6 break-words text-sm text-[var(--text-secondary)]">具体原因：{initializationError}</p>
           <button type="button" onClick={() => {
-            setInitializationError(false)
+            setInitializationError(null)
             setMounted(false)
             setInitializationAttempt(attempt => attempt + 1)
           }} className="btn-primary inline-flex items-center gap-2">
@@ -545,6 +580,19 @@ function ReaderWorkspaceContent() {
 
         {/* Main Content */}
         <main className="max-w-6xl mx-auto min-w-0 px-4 py-6 sm:py-8">
+          {bookLoadError && (
+            <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
+              <div className="min-w-0 flex-1 break-words">
+                <p className="font-medium">{lang === 'zh' ? '书籍详情暂时无法读取' : 'Book details could not be loaded'}</p>
+                <p className="mt-1">{bookLoadError.message}</p>
+              </div>
+              <button type="button" className="btn-secondary inline-flex shrink-0 items-center gap-2 text-sm" onClick={() => void handleOpenBook(bookLoadError.id)}>
+                <RefreshCw size={16} aria-hidden="true" />
+                {lang === 'zh' ? '重新读取' : 'Retry'}
+              </button>
+            </div>
+          )}
+          {loadingBookId && <p role="status" className="mb-4 text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '正在读取书籍详情...' : 'Loading book details...'}</p>}
           {view === 'bookshelf' && !selectedBook && (
             <Bookshelf key={bookshelfKey} lang={lang} onSelectBook={handleSelectBook} onOpenSettings={handleOpenApiSettings} />
           )}
@@ -581,7 +629,7 @@ function ReaderWorkspaceContent() {
 
         {/* Footer */}
         <footer className="mt-12 border-t border-[var(--border)]">
-          <div className="max-w-6xl mx-auto px-4 py-6">
+          <div className="max-w-6xl mx-auto px-4 pt-6 pb-24 sm:pb-6">
             {/* TokenDance 是本产品的特别支持方，独立成带以建立明确的品牌层级。 */}
             <section aria-labelledby="tokendance-support-title" className="brand-offer tokendance-surface px-4 py-5 sm:px-5">
               <div className="grid min-w-0 items-center gap-5 md:grid-cols-[200px_minmax(0,1fr)_auto]">
@@ -589,7 +637,7 @@ function ReaderWorkspaceContent() {
                   <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">
                     {lang === 'zh' ? '特别支持' : 'Special support'}
                   </p>
-                  <img src={TOKENDANCE_LOGO_URL} alt="TokenDance" className="h-9 w-auto max-w-[180px] object-contain" />
+                  <TokenDanceLogo className="h-9 w-auto max-w-[180px] object-contain" />
                 </div>
                 <div className="min-w-0">
                   <h3 id="tokendance-support-title" className="font-semibold text-[var(--text-primary)]">
@@ -628,9 +676,17 @@ function ReaderWorkspaceContent() {
                 </p>
               </div>
 
-              <p className="min-w-0 text-center text-xs text-[var(--text-secondary)] sm:text-right">
-                © 2026 {lang === 'zh' ? '费曼读书助手 · 保留所有权利' : 'Feynman Reader · All Rights Reserved'}
-              </p>
+              <div className="min-w-0 text-center text-xs text-[var(--text-secondary)] sm:justify-self-end sm:text-right">
+                <p className="leading-5">© 2026 {lang === 'zh' ? '费曼读书助手 · 保留所有权利' : 'Feynman Reader · All Rights Reserved'}</p>
+                <a
+                  href="https://beian.miit.gov.cn/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex min-h-0 items-center leading-5 hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  粤ICP备2025449309号-2
+                </a>
+              </div>
             </div>
           </div>
         </footer>

@@ -3,15 +3,15 @@ import { decryptApiKey } from '@/lib/server/apiKeyVault'
 import {
   adminSessionCookieHeader,
   adminSessionTokenFromRequest,
-  adminIdentityMatches,
   clearAdminSessionCookieHeader,
+  clearLegacyAdminSessionCookieHeader,
   createAdminSessionToken,
   hasSameAdminOrigin,
   hashAdminSessionToken,
+  requireAdminIdentity,
   requireAdminSession,
 } from '@/lib/server/adminAuth'
 import { verifyTotpCode } from '@/lib/server/adminTotp'
-import { sessionUserId } from '@/lib/server/sessionUser'
 import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 
 export const runtime = 'nodejs'
@@ -33,39 +33,43 @@ export async function GET(request: Request): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  if (!hasSameAdminOrigin(request)) return NextResponse.json({ error: '请求来源无效。' }, { status: 403 })
+  const isHtmlForm = request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() === 'application/x-www-form-urlencoded'
+  const fail = (status: number, error: string, code: string): NextResponse => isHtmlForm
+    ? new NextResponse(null, { status: 303, headers: { Location: `/admin/?authError=${code}`, 'Cache-Control': 'no-store' } })
+    : NextResponse.json({ error }, { status, headers: { 'Cache-Control': 'no-store' } })
+  if (!hasSameAdminOrigin(request)) return fail(403, '请求来源无效。', 'origin')
   const contentLength = Number(request.headers.get('content-length') || 0)
-  if (contentLength > 4096) return NextResponse.json({ error: '请求内容过大。' }, { status: 413 })
+  if (contentLength > 4096) return fail(413, '请求内容过大。', 'too_large')
   try {
-    const userId = await sessionUserId(request)
-    if (!userId) return NextResponse.json({ error: '请先登录账号。' }, { status: 401 })
+    const identity = await requireAdminIdentity(request)
+    if (!identity.ok) return fail(identity.status, identity.error, identity.status === 401 ? 'login' : identity.status === 503 ? 'unavailable' : 'forbidden')
+    const { userId } = identity
     const store = getPersistence()
-    if (!store.findAdminRole || !store.getAdminTotpCredential || !store.createAdminSession) {
-      return NextResponse.json({ error: '管理员服务尚未配置完成。' }, { status: 503 })
+    if (!store.getAdminTotpCredential || !store.createAdminSession) {
+      return fail(503, '管理员服务尚未配置完成。', 'unavailable')
     }
-    const user = await store.findUserById(userId)
-    if (!user) return NextResponse.json({ error: '账号当前不可用。' }, { status: 403 })
-    const role = await store.findAdminRole(userId)
-    if (!role || !adminIdentityMatches(role, user) || role.revokedAt || role.role !== 'super_admin') return NextResponse.json({ error: '无权访问该页面。' }, { status: 403 })
     const credential = await store.getAdminTotpCredential(userId)
-    if (!credential?.enabled) return NextResponse.json({ error: '管理员二次认证尚未启用。' }, { status: 403 })
+    if (!credential?.enabled) return fail(403, '管理员二次认证尚未启用。', 'mfa_unavailable')
     if (credential.lockedUntil && Date.parse(credential.lockedUntil) > Date.now()) {
-      return NextResponse.json({ error: '验证码尝试次数过多，请稍后再试。' }, { status: 429 })
+      return fail(429, '验证码尝试次数过多，请稍后再试。', 'locked')
     }
     const rawBody = await request.text()
-    if (rawBody.length > 4096) return NextResponse.json({ error: '请求内容过大。' }, { status: 413 })
+    if (Buffer.byteLength(rawBody, 'utf8') > 4096) return fail(413, '请求内容过大。', 'too_large')
     let body: { code?: unknown }
-    try { body = JSON.parse(rawBody) as { code?: unknown } } catch { return NextResponse.json({ error: '请求格式无效。' }, { status: 400 }) }
+    try {
+      body = isHtmlForm ? { code: new URLSearchParams(rawBody).get('code') } : JSON.parse(rawBody) as { code?: unknown }
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(400, '请求格式无效。', 'invalid_request')
+    } catch { return fail(400, '请求格式无效。', 'invalid_request') }
     const code = typeof body.code === 'string' ? body.code.trim() : ''
     let secret: string
-    try { secret = decryptApiKey(credential.secret) } catch { return NextResponse.json({ error: '管理员二次认证配置无效。' }, { status: 503 }) }
+    try { secret = decryptApiKey(credential.secret) } catch { return fail(503, '管理员二次认证配置无效。', 'mfa_unavailable') }
     if (!verifyTotpCode(secret, code)) {
       if (store.recordAdminTotpFailure) {
         const nextAttempts = credential.failedAttempts + 1
         const lockedUntil = nextAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : null
         await store.recordAdminTotpFailure(userId, lockedUntil)
       }
-      return NextResponse.json({ error: '验证码无效。' }, { status: 401 })
+      return fail(401, '验证码无效。', 'invalid_code')
     }
     if (store.resetAdminTotpFailures) await store.resetAdminTotpFailures(userId)
     if (store.markAdminTotpUsed) await store.markAdminTotpUsed(userId)
@@ -81,20 +85,28 @@ export async function POST(request: Request): Promise<NextResponse> {
       revokedAt: null,
     })
     if (store.writeAdminAuditLog) await store.writeAdminAuditLog({ adminUserId: userId, action: 'admin_session_created' })
-    const response = NextResponse.json({ ok: true, expiresAt: issued.expiresAt.toISOString() })
-    response.headers.set('Set-Cookie', adminSessionCookieHeader(issued.token, issued.expiresAt, request))
+    const response = isHtmlForm
+      ? new NextResponse(null, { status: 303, headers: { Location: '/admin/', 'Cache-Control': 'no-store' } })
+      : NextResponse.json({ ok: true, expiresAt: issued.expiresAt.toISOString() }, { headers: { 'Cache-Control': 'no-store' } })
+    response.headers.append('Set-Cookie', clearLegacyAdminSessionCookieHeader(request))
+    response.headers.append('Set-Cookie', adminSessionCookieHeader(issued.token, issued.expiresAt, request))
     return response
   } catch (error) {
-    return unavailable(error) || NextResponse.json({ error: '管理员认证失败。' }, { status: 500 })
+    return isPersistenceUnavailable(error)
+      ? fail(503, '账号服务数据库尚未配置或管理员迁移未完成。', 'unavailable')
+      : fail(500, '管理员认证失败。', 'failed')
   }
 }
 
 export async function DELETE(request: Request): Promise<NextResponse> {
   if (!hasSameAdminOrigin(request)) return NextResponse.json({ error: '请求来源无效。' }, { status: 403 })
   const response = new NextResponse(null, { status: 204 })
-  response.headers.set('Set-Cookie', clearAdminSessionCookieHeader(request))
+  response.headers.append('Set-Cookie', clearAdminSessionCookieHeader(request))
+  response.headers.append('Set-Cookie', clearLegacyAdminSessionCookieHeader(request))
   try {
-    const userId = await sessionUserId(request)
+    const identity = await requireAdminIdentity(request)
+    if (!identity.ok) return response
+    const { userId } = identity
     const token = adminSessionTokenFromRequest(request)
     const store = getPersistence()
     if (token && store.revokeAdminSession) await store.revokeAdminSession(hashAdminSessionToken(token))

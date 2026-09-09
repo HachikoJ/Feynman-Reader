@@ -23,7 +23,7 @@ import {
   MAX_TAG_LENGTH
 } from './dataLimits'
 import { AIUsageRecord, MAX_AI_USAGE_RECORDS } from './aiUsage'
-import { getBookRelationIdentity, type BookList, type BookRelation, type BookRelationType } from './bookRelations'
+import type { BookList, BookRelation, BookRelationType } from './bookRelations'
 import { migrateToTokenDanceAfterSunset } from './aiProviderPolicy'
 
 export const BACKUP_DATA_VERSION = 5
@@ -553,13 +553,11 @@ export function normalizeBookRelations(value: unknown, validBookIds?: Set<string
     }).filter(relation => !validBookIds || (validBookIds.has(relation.fromBookId) && validBookIds.has(relation.toBookId)))
 
     const ids = new Set<string>()
-    const relationKeys = new Set<string>()
+    // Cloud imports merge by record ID. Equivalent relationships may have
+    // distinct IDs and notes; preserve them instead of blocking the whole shelf.
     normalized.forEach(relation => {
       if (ids.has(relation.id)) fail('书籍关系', `存在重复 ID：${relation.id}`)
       ids.add(relation.id)
-      const relationKey = getBookRelationIdentity(relation.fromBookId, relation.toBookId, relation.type)
-      if (relationKeys.has(relationKey)) fail('书籍关系', '存在重复关系')
-      relationKeys.add(relationKey)
     })
     return { valid: true, data: normalized }
   } catch (error) {

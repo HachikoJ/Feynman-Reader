@@ -3,6 +3,7 @@
 import { ArrowRight, Cloud, CreditCard, ExternalLink, KeyRound, UserRound } from 'lucide-react'
 import { Language } from '@/lib/i18n'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
+import TokenDanceLogo from './TokenDanceLogo'
 
 interface Props {
   lang: Language
@@ -13,16 +14,15 @@ export const TOKENDANCE_WELCOME_KEY = 'feynman-tokendance-welcome'
 export const TOKENDANCE_WELCOME_VERSION = '2'
 
 const pricingUrl = 'https://tokendance.space/models/deepseek-v4-flash-0731'
-const logoUrl = 'https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg'
 
 export default function TokenDanceWelcome({ lang, onContinue }: Props) {
   const content = lang === 'zh'
     ? {
         eyebrow: '新账号与云端能力已上线',
-        title: '先登录账号，再配置 AI',
-        description: `你可以直接浏览系统示例。添加自己的书、保存学习记录或使用 AI 前，请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录账号；登录后再为当前账号配置 TokenDance API Key。`,
+        title: isWatchaOAuthEnabled() ? '先使用【观猹】登录，再配置 AI' : '先登录账号，再配置 AI',
+        description: `添加自己的书、保存学习记录或使用 AI 前，请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录；登录后再为当前账号配置 TokenDance API Key。`,
         features: [
-          { icon: UserRound, title: isWatchaOAuthEnabled() ? '观猹登录' : '账号登录', text: '确认账号身份和数据归属，用于登录费曼读书助手' },
+          { icon: UserRound, title: isWatchaOAuthEnabled() ? '【观猹】登录' : '账号登录', text: '确认账号身份和数据归属，用于登录费曼读书助手' },
           { icon: Cloud, title: '账号云端', text: '书籍、学习记录、金句、助手会话和长期记忆按账号保存' },
           { icon: KeyRound, title: 'TokenDance AI', text: 'API Key 和数据传输同意用于生成分析、推荐及助手回复' },
           { icon: CreditCard, title: '余额与计费', text: '在 TokenDance 查询余额、充值并管理路由；费用由用户自己的 Key 承担' }
@@ -60,7 +60,7 @@ export default function TokenDanceWelcome({ lang, onContinue }: Props) {
       >
         <div className="brand-dialog-header border-b border-[var(--border)] px-5 py-5 sm:px-8 sm:py-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <img src={logoUrl} alt="TokenDance" className="h-8 w-auto max-w-[180px] object-contain object-left sm:h-10" />
+            <TokenDanceLogo className="h-8 w-auto max-w-[180px] object-contain object-left sm:h-10" />
             <span className="rounded-full border border-[color-mix(in_srgb,var(--text-primary)_24%,var(--border))] bg-[color-mix(in_srgb,var(--bg-card)_90%,var(--text-primary)_10%)] px-3 py-1 text-xs font-semibold text-[var(--text-primary)]">
               {content.eyebrow}
             </span>

@@ -60,6 +60,7 @@ import {
 } from '@/lib/store'
 import { deleteApiKey as deleteAccountApiKey, isLocalAuthBypassEnabled, saveApiKey as saveAccountApiKey } from '@/lib/accountClient'
 import { logger } from '@/lib/logger'
+import TokenDanceLogo from './TokenDanceLogo'
 import { Language, t } from '@/lib/i18n'
 import { privacyPolicyContent } from '@/lib/privacyPolicy'
 import { defaultQuotesZh, defaultQuotesEn, localizePresetQuotes } from './LoadingQuotes'
@@ -1258,7 +1259,7 @@ export default function Settings({
             <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 {activeProvider === 'tokendance' ? (
-                  <img src="https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg" alt="TokenDance" className="h-7 w-auto max-w-[150px] object-contain" />
+                  <TokenDanceLogo className="h-7 w-auto max-w-[150px] object-contain" />
                 ) : (
                   <span className="font-semibold">{lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API'}</span>
                 )}
@@ -1301,7 +1302,7 @@ export default function Settings({
                 onClick={() => updateSetting('aiProvider', provider)}
                 className={`rounded-lg border p-3 text-left transition ${activeProvider === provider ? (provider === 'tokendance' ? 'tokendance-panel' : 'border-[var(--accent)] bg-[var(--accent)]/10') : 'border-[var(--border)] hover:bg-[var(--bg-secondary)]'}`}
               >
-                {provider === 'tokendance' && <img src="https://tokendance.space/TokenDance%E5%93%81%E7%89%8C%E5%9B%BE%E6%A0%87-%E9%80%8F%E6%98%8E%E5%BA%95.svg" alt="TokenDance" className="mb-2 h-7 w-auto max-w-[150px] object-contain object-left" />}
+                {provider === 'tokendance' && <TokenDanceLogo className="mb-2 h-7 w-auto max-w-[150px] object-contain object-left" />}
                 <span className="flex flex-wrap items-center gap-2 font-medium">
                   {provider === 'tokendance' ? 'TokenDance / TokenPay' : (lang === 'zh' ? 'DeepSeek 官方 API' : 'DeepSeek Official API')}
                   {provider === 'tokendance' && (

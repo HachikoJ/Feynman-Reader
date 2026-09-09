@@ -34,10 +34,15 @@ export function createAdminSessionToken(now = Date.now(), ttlSeconds = ADMIN_SES
 
 export function adminSessionCookieHeader(token: string, expiresAt: Date, request?: Request): string {
   const secure = shouldUseSecureCookies(request) ? '; Secure' : ''
-  return `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/api/admin; HttpOnly${secure}; SameSite=Strict; Max-Age=${Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000))}`
+  return `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly${secure}; SameSite=Strict; Max-Age=${Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000))}`
 }
 
 export function clearAdminSessionCookieHeader(request?: Request): string {
+  const secure = shouldUseSecureCookies(request) ? '; Secure' : ''
+  return `${ADMIN_SESSION_COOKIE}=; Path=/; HttpOnly${secure}; SameSite=Strict; Max-Age=0`
+}
+
+export function clearLegacyAdminSessionCookieHeader(request?: Request): string {
   const secure = shouldUseSecureCookies(request) ? '; Secure' : ''
   return `${ADMIN_SESSION_COOKIE}=; Path=/api/admin; HttpOnly${secure}; SameSite=Strict; Max-Age=0`
 }
@@ -82,32 +87,54 @@ export type AdminAuthResult =
   | { ok: true; userId: string; session: import('./persistence').AdminSessionRecord }
   | { ok: false; status: 401 | 403 | 503; error: string }
 
+export type AdminIdentityResult =
+  | { ok: true; userId: string }
+  | { ok: false; status: 401 | 403 | 503; error: string }
+
 /** Display names are not identities; only the provider subject can bind an administrator. */
 export function adminIdentityMatches(role: Pick<AdminRole, 'userId' | 'tokendanceSubject'>, user: Pick<AuthUser, 'id' | 'tokendanceSubject'>): boolean {
-  return role.userId === user.id
+  const adminUserId = process.env.FEYNMAN_ADMIN_USER_ID?.trim().toLowerCase()
+  const adminSubject = process.env.FEYNMAN_ADMIN_PROVIDER_SUBJECT?.trim()
+  return Boolean(adminUserId && adminSubject)
+    && user.id === adminUserId
+    && user.tokendanceSubject === adminSubject
+    && role.userId === user.id
     && typeof role.tokendanceSubject === 'string'
     && role.tokendanceSubject.length > 0
     && role.tokendanceSubject === user.tokendanceSubject
 }
 
-/** Authorize from both the ordinary account session and the independent MFA session. */
-export async function requireAdminSession(request: Request): Promise<AdminAuthResult> {
+/** Resolve the sole administrator before rendering even the MFA entry page. */
+export async function requireAdminIdentity(request: Request): Promise<AdminIdentityResult> {
   const userId = await sessionUserId(request)
   if (!userId) return { ok: false, status: 401, error: '请先登录账号。' }
   const store = getPersistence()
-  if (!store.findAdminRole || !store.findAdminSession || !store.getAdminTotpCredential) {
+  if (!store.findAdminRole) {
     return { ok: false, status: 503, error: '管理员服务尚未配置完成。' }
   }
   const user = await store.findUserById(userId)
   if (!user) return { ok: false, status: 403, error: '账号当前不可用。' }
   const role = await store.findAdminRole(userId)
   if (!role || !adminIdentityMatches(role, user) || role.revokedAt || role.role !== 'super_admin') return { ok: false, status: 403, error: '无权访问该页面。' }
+  return { ok: true, userId }
+}
+
+/** Authorize from both the ordinary account session and the independent MFA session. */
+export async function requireAdminSession(request: Request): Promise<AdminAuthResult> {
+  const identity = await requireAdminIdentity(request)
+  if (!identity.ok) return identity
+  const { userId } = identity
+  const store = getPersistence()
+  if (!store.findAdminSession || !store.getAdminTotpCredential) {
+    return { ok: false, status: 503, error: '管理员服务尚未配置完成。' }
+  }
   const credential = await store.getAdminTotpCredential(userId)
   if (!credential?.enabled) return { ok: false, status: 403, error: '管理员二次认证尚未启用。' }
   const token = adminSessionTokenFromRequest(request)
   if (!token) return { ok: false, status: 403, error: '请先完成管理员二次认证。' }
   const session = await store.findAdminSession(hashAdminSessionToken(token))
-  if (!session || session.userId !== userId || session.revokedAt || Date.parse(session.expiresAt) <= Date.now()) {
+  const expiresAt = session ? Date.parse(session.expiresAt) : NaN
+  if (!session || session.userId !== userId || session.revokedAt || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     return { ok: false, status: 403, error: '管理员会话已失效，请重新认证。' }
   }
   return { ok: true, userId, session }

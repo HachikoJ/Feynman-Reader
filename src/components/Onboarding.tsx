@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -36,7 +36,7 @@ interface OnboardingTip {
 
 interface OnboardingStep {
   title: string
-  description: string
+  description: ReactNode
   icon: LucideIcon
   iconTone: TipTone
   tips: OnboardingTip[]
@@ -46,7 +46,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
   zh: [
     {
       title: '先看一本完整示例',
-      description: '无需登录或配置 TokenDance，即可浏览《追风筝的人》系统示例，先了解完整学习流程。',
+      description: '浏览《追风筝的人》系统示例，了解完整学习流程。',
       icon: BookOpen,
       iconTone: 'accent',
       tips: [
@@ -57,7 +57,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
     },
     {
       title: '登录后，学习数据自动上云',
-      description: `添加自己的书、使用 AI 和保存学习记录前，请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。账号用于确认数据归属。`,
+      description: <>添加自己的书、使用 AI 和保存学习记录前，请先<strong className="font-bold text-[var(--accent)]">{isWatchaOAuthEnabled() ? '使用【观猹】登录' : '登录账号'}</strong>。账号用于确认数据归属。</>,
       icon: Cloud,
       iconTone: 'accent',
       tips: [
@@ -79,7 +79,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
     },
     {
       title: '需要 AI 时，配置 TokenDance',
-      description: `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再为当前账号配置 TokenDance API Key。生成分析、评估、推荐或使用费曼小助手前，还需同意相关数据传输。`,
+      description: <>请先<strong className="font-bold text-[var(--text-primary)]">{isWatchaOAuthEnabled() ? '使用【观猹】登录' : '登录账号'}</strong>，再为当前账号配置 TokenDance API Key。生成分析、评估、推荐或使用费曼小助手前，还需同意相关数据传输。</>,
       icon: Sparkles,
       iconTone: 'sky',
       tips: [
@@ -93,7 +93,7 @@ const onboardingSteps: Record<Language, OnboardingStep[]> = {
   en: [
     {
       title: 'Start with a complete example',
-      description: 'Browse The Kite Runner system sample without signing in or configuring TokenDance, and learn the complete workflow first.',
+      description: 'Browse The Kite Runner system sample and learn the complete workflow.',
       icon: BookOpen,
       iconTone: 'accent',
       tips: [
@@ -192,12 +192,6 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
   }, [onComplete])
 
   const steps = [...(onboardingSteps[lang] || onboardingSteps.zh)].filter((_, index) => tokenDanceEnabled || index !== 3)
-  if (!tokenDanceEnabled && steps[0]) {
-    steps[0] = {
-      ...steps[0],
-      description: lang === 'zh' ? '无需登录或配置 AI，即可浏览《追风筝的人》系统示例，先了解完整学习流程。' : 'Browse The Kite Runner system sample without signing in or configuring AI, and learn the complete workflow first.'
-    }
-  }
   if (accountAiConfigured && tokenDanceEnabled) {
     steps[steps.length - 1] = lang === 'zh'
       ? {
@@ -235,7 +229,7 @@ export default function Onboarding({ lang, aiConfigured, onComplete, onConfigure
       if (!accountAiConfigured && tokenDanceEnabled) {
         if (!hasSignedInAccount) {
           requestLogin(lang === 'zh'
-            ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录。登录成功后，再为当前账号配置 TokenDance API Key。`
+            ? `请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录。登录成功后，再为当前账号配置 TokenDance API Key。`
             : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} first. After sign-in, configure a TokenDance API key for the current account.`)
         } else {
           onConfigureApi?.()

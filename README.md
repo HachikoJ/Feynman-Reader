@@ -17,6 +17,8 @@
 
 **产品访问：** [https://reader.deline.top/](https://reader.deline.top/)
 
+当前版本：[v0.2.0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.0)。源码标签、发布附件与恢复方法见 [版本发布与恢复](docs/operations/releases-and-rollback.md)。
+
 > [!IMPORTANT]
 > **这是一个登录后使用账号云端的学习产品。** 未登录时可以浏览系统示例；添加书籍、AI 分析和保存学习记录前，需要先使用观猹登录。登录后，书籍、笔记、金句、助手会话和长期记忆会保存到账号对应的 PostgreSQL 云端数据库。IndexedDB 只用于老用户一次性历史迁移。TokenDance API Key 由服务端加密保存，不会显示明文，也不会进入备份文件。
 
@@ -68,6 +70,12 @@
 </p>
 
 书架展示在读/已读状态、阶段进度、综合得分、标签筛选和阅读分析。示例数据使用《追风筝的人》，完整呈现深度阅读流程。
+
+<details>
+<summary>暗色模式：复习卡片与 TokenDance 标志</summary>
+<img src="docs/product/screenshots/05-bookshelf-dark-desktop.png" alt="暗色桌面书架，复习卡片使用清晰的文字与按钮，TokenDance 使用官方暗色标志" width="100%">
+<img src="docs/product/screenshots/06-bookshelf-dark-mobile.png" alt="暗色手机书架及随背景切换的 TokenDance 标志" width="420">
+</details>
 
 ### 账号云端
 
@@ -159,8 +167,10 @@ flowchart TD
 
 ## 如何运行
 
+环境：Node.js 20.9 以上（生产使用 Node.js 22）及 npm。
+
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -187,14 +197,16 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=true
 ```env
 TOKENDANCE_OAUTH_REDIRECT_URI=https://reader.deline.top/api/auth/tokendance/callback
 FEYNMAN_COOKIE_SECURE=true
-FEYNMAN_WATCHA_OAUTH_ENABLED=false
-FEYNMAN_TOKENDANCE_ENABLED=false
-FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=true
+FEYNMAN_WATCHA_OAUTH_ENABLED=true
+FEYNMAN_TOKENDANCE_ENABLED=true
+FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=false
 ```
 
-如果使用远程 PostgreSQL，按编号执行适用的 schema 迁移；如果迁移到同一台服务器的本机 PostgreSQL，执行仓库提供的 `scripts/migrate-to-local-postgres.sh`，它会自动完成备份、停写导出、恢复、表计数校验、环境切换、健康检查和回收站定时清理。常规部署会幂等执行 `010_account_merge.sql`。备案期间使用上面三项审核期组合；备案通过并恢复域名后，改为 `FEYNMAN_WATCHA_OAUTH_ENABLED=true`、`FEYNMAN_TOKENDANCE_ENABLED=true`、`FEYNMAN_DEEPSEEK_OFFICIAL_ENABLED=false`，再完整运行 `deploy.sh`，即可切换为仅观猹登录、仅 TokenDance AI，并开放原账号迁移。密钥和连接串不放入 GitHub。
+如果使用远程 PostgreSQL，按编号执行适用的 schema 迁移；如果迁移到同一台服务器的本机 PostgreSQL，执行仓库提供的 `scripts/migrate-to-local-postgres.sh`，它会完成备份、停写导出、恢复、表计数校验、环境切换、健康检查和回收站定时清理。常规部署会幂等执行账号合并、管理员安全与操作存档迁移。以上是备案通过后的生产开关组合；编译期开关变化需要完整运行 `deploy.sh`。密钥和连接串不放入 GitHub。
 
 每次部署会自动执行 `011_admin_security.sql` 并校验观猹主体唯一索引、管理员角色绑定和账号状态，不需要手动打开数据库工具执行 SQL。首次为 Wilson 的观猹账号绑定 TOTP 时，仍需在服务器本地执行一次 `npm run bootstrap:admin`；初始化步骤和安全边界见 [管理员看板文档](docs/admin-dashboard.md)。管理员权限不由前端字段、URL 参数或公开环境变量决定。
+
+系统管理保留统计看板，并提供用户资料、19 张数据表的详情与受控编辑、删除、停用和恢复操作。唯一管理员的 UUID 与观猹主体由服务端 `FEYNMAN_ADMIN_USER_ID`、`FEYNMAN_ADMIN_PROVIDER_SUBJECT` 双绑定；缺失配置时拒绝访问。密码、API Key、认证器密钥与加密存档不会作为普通数据详情返回。完整操作范围见 [系统管理说明](docs/operations/admin-data-browser.md)。
 
 AI 渠道由部署环境开关控制：备案期间可暂时隐藏 TokenDance 并保留官方 DeepSeek；备案完成后可同时恢复观猹登录和 TokenDance，并关闭官方 DeepSeek。已有 TokenDance 代码、配置和数据不会因临时隐藏而删除。根据 TokenDance 官方确认，`v4flash0731` 峰时火山方舟端口提供限时优惠，最高约可省 20%，用户也可以在 TokenDance 界面设置路由偏好。实际价格、适用线路、时段和活动期限以 [TokenDance 官方实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)及后续通知为准。
 
@@ -213,6 +225,7 @@ AI 渠道由部署环境开关控制：备案期间可暂时隐藏 TokenDance �
 - [产品说明](docs/product/submission/Product_Guide_ZH.md)：建议体验路径、真实 Safari 截图索引和功能边界。
 - [增长方案](docs/product/submission/Growth_Plan_ZH.md)：增长策略、定价、Token 成本控制与 PMF 验证。
 - [更新记录](CHANGELOG.md)：当前版本的账号云端、迁移与安全变更。
+- [版本发布与恢复](docs/operations/releases-and-rollback.md)：固定标签、源码包校验、部署版本识别与恢复边界。
 
 ## 后续规划
 

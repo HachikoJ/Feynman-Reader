@@ -942,14 +942,14 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
           )}
         </div>
         {reviewBook && (
-          <section className="min-w-0 rounded-lg border border-amber-300/70 bg-amber-50/70 px-3 py-2 shadow-sm dark:border-amber-400/30 dark:bg-amber-400/10" aria-labelledby="today-review-title">
+          <section className="bookshelf-review min-w-0 rounded-lg border px-3 py-2 shadow-sm" aria-labelledby="today-review-title">
             <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
-              <button type="button" onClick={() => onSelectBook(reviewBook)} className="relative flex h-14 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white/80 text-amber-600 shadow-sm dark:bg-white/10 dark:text-amber-300" aria-label={lang === 'zh' ? `打开《${reviewBook.name}》` : `Open ${reviewBook.name}`}>
+              <button type="button" onClick={() => onSelectBook(reviewBook)} className="bookshelf-review-cover relative flex h-14 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md shadow-sm" aria-label={lang === 'zh' ? `打开《${reviewBook.name}》` : `Open ${reviewBook.name}`}>
                 {getSafeImageSrc(reviewBook.cover) ? <img src={getSafeImageSrc(reviewBook.cover)!} alt="" className="h-full w-full object-cover" /> : <AppIcon name="bookOpen" size={20} aria-hidden="true" />}
               </button>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-                  <span className="motion-safe:animate-pulse h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
+                <div className="bookshelf-review-label flex items-center gap-1.5 text-xs font-semibold">
+                  <span className="motion-safe:animate-pulse h-2 w-2 shrink-0 rounded-full bg-current" aria-hidden="true" />
                   <span className="truncate">{lang === 'zh' ? '今天该复习了 · 费曼复习提醒' : 'Time to review · Feynman review'}</span>
                 </div>
                 <h2 id="today-review-title" className="truncate text-sm font-semibold leading-5 text-[var(--text-primary)]">{reviewPrompt || (lang === 'zh' ? `继续《${reviewBook.name}》的理解练习` : `Continue learning ${reviewBook.name}`)}</h2>
@@ -957,7 +957,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               </div>
               <div className="col-span-2 grid grid-cols-2 gap-1.5 sm:col-span-1 sm:flex sm:shrink-0 sm:items-center">
                 <button type="button" onClick={() => onSelectBook(reviewBook)} className="btn-primary min-h-10 shrink-0 whitespace-nowrap px-2.5 text-xs"><AppIcon name="arrowRight" size={15} aria-hidden="true" /><span>{reviewBook.isSample ? (lang === 'zh' ? '查看示例' : 'Explore') : (lang === 'zh' ? '开始复习' : 'Review')}</span></button>
-                <button type="button" onClick={() => openAssistantWithPrompt(lang === 'zh' ? `请根据《${reviewBook.name}》的学习记录，为我安排今天的费曼复习：先指出最值得复述的记录，再给出 5 分钟练习步骤。` : `Based on my learning history for ${reviewBook.name}, plan today's Feynman review: choose the best item to explain again and give me a five-minute practice plan.`)} className="btn-secondary min-h-10 shrink-0 gap-1.5 whitespace-nowrap border-amber-300/70 px-2.5 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-300/30 dark:text-amber-200 dark:hover:bg-amber-400/20" aria-label={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'} title={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'}><AppIcon name="sparkles" size={15} /><span>{lang === 'zh' ? '小助手安排' : 'Ask Assistant'}</span></button>
+                <button type="button" onClick={() => openAssistantWithPrompt(lang === 'zh' ? `请根据《${reviewBook.name}》的学习记录，为我安排今天的费曼复习：先指出最值得复述的记录，再给出 5 分钟练习步骤。` : `Based on my learning history for ${reviewBook.name}, plan today's Feynman review: choose the best item to explain again and give me a five-minute practice plan.`)} className="btn-secondary min-h-10 shrink-0 gap-1.5 whitespace-nowrap px-2.5 text-xs" aria-label={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'} title={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'}><AppIcon name="sparkles" size={15} /><span>{lang === 'zh' ? '小助手安排' : 'Ask Assistant'}</span></button>
               </div>
             </div>
           </section>

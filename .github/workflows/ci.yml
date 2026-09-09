@@ -28,6 +28,20 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Verify release version
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict')
+          const version = require('./package.json').version
+          const lock = require('./package-lock.json')
+          assert.equal(lock.version, version, 'Lockfile version must match package.json')
+          assert.equal(lock.packages[''].version, version, 'Root package version must match')
+          const ref = process.env.GITHUB_REF || ''
+          if (ref.startsWith('refs/tags/')) {
+            assert.equal(ref.slice('refs/tags/'.length), `v${version}`, 'Release tag must match package version')
+          }
+          NODE
+
       - name: Check TypeScript
         run: npx tsc --noEmit
 

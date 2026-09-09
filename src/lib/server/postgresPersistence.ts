@@ -368,7 +368,12 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
            and child_namespace.nspname = 'public'
            and child.relname <> 'app_users'`,
       )
-      const unhandled = references.rows.map(row => row.table_name).filter(table => !handledTables.has(table))
+      // Administrator security tables are server-owned records. They are
+      // bound to the provider subject and must never be copied during a
+      // user's legacy-data migration.
+      const unhandled = references.rows
+        .map(row => row.table_name)
+        .filter(table => !table.startsWith('admin_') && !handledTables.has(table))
       if (unhandled.length) throw new Error(`账号迁移尚未覆盖数据表：${unhandled.join('、')}`)
 
       const count = async (text: string, values: unknown[]): Promise<number> => {
@@ -682,6 +687,22 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const createdAt = Number(book.createdAt)
     const updatedAt = Number(book.updatedAt)
     if (!Number.isFinite(createdAt) || !Number.isFinite(updatedAt)) throw new Error('书籍时间格式无效。')
+    if (book._summaryOnly === true) {
+      // Shelf edits carry empty detail placeholders. Only metadata may be
+      // updated from a summary; analysis, notes and practice stay authoritative.
+      const metadata = {
+        name, author: book.author, cover: book.cover, description: book.description,
+        tags: book.tags, updatedAt,
+      }
+      await this.pool.query(
+        `update public.user_books set name = $3, author = $4,
+           data = (data - '_summaryOnly') || $5::jsonb, updated_at = to_timestamp($6 / 1000.0)
+         where user_id = $1 and book_id = $2 and deleted_at is null
+           and to_timestamp($6 / 1000.0) >= updated_at`,
+        [userId, id, name, typeof book.author === 'string' ? book.author : null, JSON.stringify(metadata), updatedAt],
+      )
+      return
+    }
     await this.pool.query(
       `insert into public.user_books
          (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at, purge_at)
@@ -689,7 +710,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
        on conflict (user_id, book_id) do update set
          name = excluded.name, author = excluded.author, status = excluded.status,
          current_phase = excluded.current_phase, best_score = excluded.best_score,
-         data = public.user_books.data || '{}'::jsonb || excluded.data,
+         data = (public.user_books.data - '_summaryOnly') || excluded.data,
          updated_at = excluded.updated_at, deleted_at = null, purge_at = null
        where excluded.updated_at >= public.user_books.updated_at`,
       [
@@ -709,7 +730,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
 
   async getBook(userId: string, bookId: string): Promise<unknown | null> {
     const row = await this.one<{ data: unknown }>(
-      'select data from public.user_books where user_id = $1 and book_id = $2 and deleted_at is null',
+      "select data - '_summaryOnly' as data from public.user_books where user_id = $1 and book_id = $2 and deleted_at is null",
       [userId, bookId],
     )
     return row?.data || null
@@ -719,7 +740,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
     const includeAssistantData = format === 'full'
     const booksPromise = includeAssistantData
       ? this.pool.query<{ data: Record<string, unknown> }>(
-          'select data from public.user_books where user_id = $1 and deleted_at is null order by updated_at asc',
+          "select data - '_summaryOnly' as data from public.user_books where user_id = $1 and deleted_at is null order by updated_at asc",
           [userId],
         )
       : this.pool.query<{
@@ -1020,6 +1041,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
         [userId, JSON.stringify(settings), settingsAt.getTime()],
       )
       for (const book of books) {
+        if (book._summaryOnly) continue
         await client.query(
           `insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at, purge_at)
            values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), now(), null, null)
@@ -1090,7 +1112,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       await client.query('commit')
       return {
         status: 'completed', migrationVersion, syncVersion: Number(result.rows[0]?.sync_version || 0),
-        booksImported: books.length, aiUsageImported: usageRecords.length,
+        booksImported: books.filter(book => !book._summaryOnly).length, aiUsageImported: usageRecords.length,
         listsImported: lists.length, relationsImported: relations.length,
         assistantSessionsImported: assistantSessions.length,
         assistantMemoriesImported: assistantMemories.length,
@@ -1249,6 +1271,9 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
       await client.query(`insert into public.user_settings (user_id, data, version, updated_at) values ($1, $2::jsonb, 1, now())
         on conflict (user_id) do update set data = excluded.data, version = public.user_settings.version + 1, updated_at = now()`, [userId, JSON.stringify(settings)])
       for (const book of books) {
+        // Core snapshots include summaries so relations and usage can reference
+        // every book. They must never replace the stored full book JSON.
+        if (book._summaryOnly) continue
         await client.query(`insert into public.user_books (user_id, book_id, name, author, status, current_phase, best_score, data, created_at, updated_at, imported_at, deleted_at)
           values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0), now(), null)
           on conflict (user_id, book_id) do update set name=excluded.name, author=excluded.author, status=excluded.status,
@@ -1300,7 +1325,7 @@ export class PostgresPersistenceAdapter implements PersistenceAdapter {
         sync_version=public.user_data_state.sync_version + 1, last_import_at=now(), last_sync_at=now(), updated_at=now()`, [userId, data.version])
       await client.query('commit')
       return {
-        booksImported: books.length,
+        booksImported: books.filter(book => !book._summaryOnly).length,
         aiUsageImported: usageRecords.length,
         listsImported: lists.length,
         relationsImported: relations.length,

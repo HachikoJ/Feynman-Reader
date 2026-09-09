@@ -4,7 +4,8 @@ export const TOKENDANCE_BASE_URL = 'https://tokendance.space'
 export const TOKENDANCE_GATEWAY_URL = `${TOKENDANCE_BASE_URL}/gateway/v1`
 // Keep the App URL registered during the TokenDance application review for
 // attribution. It is independent from the OAuth callback URL below.
-export const TOKENDANCE_APP_URL = 'https://deline.top'
+export const TOKENDANCE_APP_URL = 'https://www.deline.top'
+export const TOKENDANCE_REQUEST_APP_URL = TOKENDANCE_APP_URL
 export const TOKENDANCE_CALLBACK_ORIGIN = 'https://reader.deline.top'
 export type TokendanceRecoveryAction = 'top_up_balance' | 'reauthorize_api_key' | 'api_key_quota'
 export const TOKENDANCE_RECOVERY_PREFIX = 'TOKENDANCE_RECOVERY:'
@@ -101,7 +102,7 @@ export async function exchangeTokendanceCode(code: string, state: string | null)
 
   const response = await fetch(`${TOKENDANCE_BASE_URL}/portal/api/v1/auth/keys`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-App-URL': TOKENDANCE_REQUEST_APP_URL },
     body: JSON.stringify({ code, code_verifier: verifier, code_challenge_method: 'S256' })
   })
   if (!response.ok) throw new Error(`Tokendance OAuth exchange failed (${response.status}).`)
@@ -117,6 +118,7 @@ async function tokendanceRequest<T>(path: string, apiKey: string, init: RequestI
     ...init,
     headers: {
       Authorization: `Bearer ${apiKey}`,
+      'X-App-URL': TOKENDANCE_REQUEST_APP_URL,
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...init.headers
     }
@@ -197,7 +199,7 @@ export async function getTokendancePaymentSession(apiKey: string, statusUrl: str
     return validateTokendancePaymentSession(await accountTokendanceRequest<TokendancePaymentSession>('PATCH', { statusUrl: validatedStatusUrl.toString() }))
   }
 
-  const response = await fetch(validatedStatusUrl.toString(), { headers: { Authorization: `Bearer ${apiKey}` } })
+  const response = await fetch(validatedStatusUrl.toString(), { headers: { Authorization: `Bearer ${apiKey}`, 'X-App-URL': TOKENDANCE_REQUEST_APP_URL } })
   if (!response.ok) throw new Error(`Tokendance payment status failed (${response.status}).`)
   const data = await response.json() as { session?: TokendancePaymentSession }
   return validateTokendancePaymentSession(data.session || data as unknown as TokendancePaymentSession)

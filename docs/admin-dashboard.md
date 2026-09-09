@@ -6,6 +6,8 @@
 
 先完成 `011_admin_security.sql` 迁移，再在服务器本地执行一次初始化。目标账号必须已经存在、处于可登录状态并绑定观猹主体：
 
+在受保护的服务器环境文件中设置 `FEYNMAN_ADMIN_USER_ID` 与 `FEYNMAN_ADMIN_PROVIDER_SUBJECT`，分别对应目标账号的 UUID 和已绑定观猹主体。不能使用昵称作为身份，不能将真实值写入 Git；任一配置缺失都会拒绝管理访问。已有管理员升级时只补齐同一绑定，不重新生成 TOTP。
+
 ```bash
 set -a
 . /etc/feynman-reader.env
@@ -26,7 +28,7 @@ unset ADMIN_USER_ID DATABASE_URL FEYNMAN_API_KEY_ENCRYPTION_KEY
 
 先使用普通账号登录，再访问 `/admin`，输入认证器的 6 位动态验证码。管理员会话使用独立的 HttpOnly、Secure、SameSite=Strict Cookie，最长 8 小时；退出后服务端会撤销该会话。
 
-看板只返回用户数、书籍状态、阶段分布、AI 用量、行为事件和存储容量等聚合指标，不返回邮箱、手机号、密码哈希、API Key、完整书籍正文、附件、原始聊天或完整 AI 回复。管理员访问会写入最小化审计日志。
+看板返回用户数、书籍状态、阶段分布、AI 用量、行为事件和存储容量等聚合指标。数据管理页允许唯一管理员按用户浏览完整业务记录、编辑、删除和恢复允许操作的数据；密码哈希、API Key 和认证器密钥始终不返回。访问与变更写入审计日志，变更快照加密存档，详见 [系统管理数据说明](operations/admin-data-browser.md)。
 
 ## 运行边界
 

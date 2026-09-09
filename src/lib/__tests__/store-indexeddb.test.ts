@@ -55,6 +55,7 @@ import {
   type Book
 } from '../store'
 import { MAX_DOCUMENT_TEXT_LENGTH } from '../dataLimits'
+import type { BookRelation } from '../bookRelations'
 
 const mockInitDB = db.initDB as jest.MockedFunction<typeof db.initDB>
 const mockGetSettings = db.getSettings as jest.MockedFunction<typeof db.getSettings>
@@ -69,6 +70,57 @@ const mockSaveBook = db.saveBook as jest.MockedFunction<typeof db.saveBook>
 const mockSaveExistingBook = db.saveExistingBook as jest.MockedFunction<typeof db.saveExistingBook>
 const mockRestoreDeletedBook = db.restoreDeletedBook as jest.MockedFunction<typeof db.restoreDeletedBook>
 const mockDeleteExistingBookById = db.deleteExistingBookById as jest.MockedFunction<typeof db.deleteExistingBookById>
+
+describe('startup relationship recovery', () => {
+  it('blocks learning writes to a summary until full book details are loaded', async () => {
+    Object.defineProperty(global, 'window', { value: {}, configurable: true })
+    resetStoreCache()
+    const book: Book = {
+      id: 'summary-book', name: 'Summary', status: 'reading', currentPhase: 1, bestScore: 0,
+      noteRecords: [], responses: {}, practiceRecords: [], qaPracticeRecords: [],
+      createdAt: 1, updatedAt: 1, _summaryOnly: true,
+    }
+    saveBooks([book])
+    expect(() => updateBook(book.id, { responses: { background: 'New analysis' } }))
+      .toThrow('书籍详情尚未读取')
+    expect(getBooks()[0].responses).toEqual({})
+    await flushPendingStoreWrites()
+    resetStoreCache()
+    jest.clearAllMocks()
+  })
+
+  it('retries a failed load, preserves equivalent records, and still prevents adding duplicates', async () => {
+    Object.defineProperty(global, 'window', { value: {}, configurable: true })
+    resetStoreCache()
+    const books: Book[] = ['book-1', 'book-2'].map(id => ({
+      id, name: id, status: 'unread', currentPhase: 0, bestScore: 0,
+      noteRecords: [], responses: {}, practiceRecords: [], qaPracticeRecords: [],
+      createdAt: 1, updatedAt: 1,
+    }))
+    const relations: BookRelation[] = ['relation-1', 'relation-2'].map((id, index) => ({
+      id, fromBookId: 'book-1', toBookId: 'book-2', type: 'series',
+      note: `Note ${index}`, createdAt: index + 1,
+    }))
+    mockInitDB.mockResolvedValue(undefined)
+    mockGetSettings.mockResolvedValue({
+      apiKey: '', language: 'zh', theme: 'light', hideApiKeyAlert: false, quotes: [],
+    })
+    mockGetBooks.mockResolvedValue(books)
+    mockGetAIUsageRecords.mockResolvedValue([])
+    mockGetBookOrganization.mockRejectedValueOnce(new Error('Temporary read failure'))
+      .mockResolvedValue({ lists: [], relations })
+
+    await expect(initializeStore()).rejects.toThrow('Temporary read failure')
+    await initializeStore()
+    expect(getBooks()).toEqual(books)
+    expect(getBookRelations()).toEqual(relations)
+    expect(() => addBookRelation('book-2', 'book-1', 'series')).toThrow('BOOK_RELATION_EXISTS')
+    expect(JSON.parse(exportAllData()).bookRelations).toEqual(relations)
+    await flushPendingStoreWrites()
+    resetStoreCache()
+    jest.clearAllMocks()
+  })
+})
 
 describe('IndexedDB-backed store cache', () => {
   beforeAll(() => {

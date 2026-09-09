@@ -65,11 +65,19 @@ try {
       or r.role not in ('super_admin', 'admin', 'analyst')`)
   assert(Number(invalidRoles.rows[0]?.count || 0) === 0, '管理员角色与账号主体不一致，或包含无效角色。')
 
-  const activeRoles = await client.query(`select count(*)::int as count
+  const activeRoles = await client.query(`select r.user_id, r.tokendance_subject, r.role
     from public.admin_roles r
     join public.app_users u on u.id = r.user_id
     where r.revoked_at is null and u.login_disabled_at is null`)
-  process.stdout.write(`管理员安全校验通过。已绑定的有效管理员角色：${Number(activeRoles.rows[0]?.count || 0)}。\n`)
+  if (activeRoles.rows.length > 0) {
+    const adminUserId = process.env.FEYNMAN_ADMIN_USER_ID?.trim().toLowerCase()
+    const adminSubject = process.env.FEYNMAN_ADMIN_PROVIDER_SUBJECT?.trim()
+    assert(adminUserId && adminSubject, '已有管理员必须配置服务端账号 UUID 与观猹主体双绑定。')
+    assert(activeRoles.rows.length === 1 && activeRoles.rows[0].role === 'super_admin', '必须且只能存在一个有效超级管理员。')
+    const role = activeRoles.rows[0]
+    assert(role.user_id === adminUserId && role.tokendance_subject === adminSubject, '有效超级管理员与服务端身份配置不匹配。')
+  }
+  process.stdout.write(`管理员安全校验通过。已绑定的有效管理员角色：${activeRoles.rows.length}。\n`)
 } finally {
   await client.end().catch(() => undefined)
 }

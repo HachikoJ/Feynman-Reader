@@ -21,7 +21,19 @@ fi
 
 cd "$PROJECT_DIR"
 
-RELEASE_ID="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short=12 HEAD)"
+APP_VERSION="$(node -p 'require("./package.json").version')"
+SOURCE_REV="$(git rev-parse HEAD 2>/dev/null || true)"
+SOURCE_DIRTY=false
+if [[ -n "$SOURCE_REV" && -n "$(git status --porcelain 2>/dev/null)" ]]; then
+  SOURCE_DIRTY=true
+fi
+SOURCE_REV="${SOURCE_REV:-${FEYNMAN_READER_SOURCE_REV:-}}"
+if [[ ! "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ -n "$SOURCE_REV" && ! "$SOURCE_REV" =~ ^[a-f0-9]{40}$ ]]; then
+  echo "部署失败：版本号或源码提交号格式无效。" >&2
+  exit 1
+fi
+RELEASE_ID="$(date -u +%Y%m%d%H%M%S)-v${APP_VERSION}-${SOURCE_REV:0:12}"
+[[ -n "$SOURCE_REV" ]] || RELEASE_ID="${RELEASE_ID}manual"
 RELEASE_DIR="$RELEASES_DIR/$RELEASE_ID"
 NEXT_LINK="/var/www/.feynman-reader-next-${RELEASE_ID}-$$"
 CONFIG_BACKUP_DIR="$DEPLOY_ROOT/config-backup-$RELEASE_ID"
@@ -32,7 +44,10 @@ CONFIGS_INSTALLED=0
 
 reload_application() {
   if [[ -f "$WEB_ROOT/server.js" ]]; then
-    FEYNMAN_READER_WEB_ROOT="$WEB_ROOT" pm2 startOrReload "$PROJECT_DIR/ecosystem.config.cjs" --update-env
+    # PM2's daemon can retain an older environment across reloads. Recreate the
+    # process so secrets and provider flags loaded from ENV_FILE are applied.
+    pm2 delete feynman-reader 2>/dev/null || true
+    FEYNMAN_READER_WEB_ROOT="$WEB_ROOT" pm2 start "$PROJECT_DIR/ecosystem.config.cjs" --update-env
     pm2 save --force >/dev/null
   else
     pm2 delete feynman-reader 2>/dev/null || true
@@ -139,6 +154,9 @@ npm run migrate:account-merge
 echo "2b. 应用管理员安全数据库迁移..."
 npm run migrate:admin
 
+echo "2b-1. 应用管理员数据操作存档迁移..."
+node scripts/apply-admin-data-migration.mjs
+
 echo "2c. 自动校验管理员唯一身份约束..."
 npm run verify:admin
 
@@ -162,7 +180,7 @@ fi
 install -d -m 755 "$RELEASE_DIR"
 
 if [[ -d "$WEB_ROOT/.next/static" ]]; then
-  old_chunk="$(find "$WEB_ROOT/.next/static" -type f -name '*.js' -mtime "-$CHUNK_RETENTION_DAYS" -print -quit)"
+  old_chunk="$(find "$WEB_ROOT/.next/static" -type f -name '*.js' ! -path '*/chunks/app/admin/*' -mtime "-$CHUNK_RETENTION_DAYS" -print -quit)"
   if [[ -n "$old_chunk" ]]; then
     OLD_CHUNK_URL="/_next/static/${old_chunk#"$WEB_ROOT/.next/static/"}"
   fi
@@ -174,6 +192,11 @@ rsync -a "$PROJECT_DIR/.next/standalone/" "$RELEASE_DIR/"
 install -d -m 755 "$RELEASE_DIR/.next/static" "$RELEASE_DIR/public"
 rsync -a "$PROJECT_DIR/.next/static/" "$RELEASE_DIR/.next/static/"
 rsync -a "$PROJECT_DIR/public/" "$RELEASE_DIR/public/"
+node - "$RELEASE_DIR/release.json" "$APP_VERSION" "$SOURCE_REV" "$RELEASE_ID" "$SOURCE_DIRTY" <<'NODE'
+const fs = require('node:fs')
+const [file, version, sourceCommit, releaseId, sourceDirty] = process.argv.slice(2)
+fs.writeFileSync(file, JSON.stringify({ version, sourceCommit: sourceCommit || null, sourceDirty: sourceDirty === 'true', releaseId, deployedAt: new Date().toISOString() }, null, 2) + '\n', { mode: 0o644 })
+NODE
 find "$RELEASE_DIR/.next/static" -type f -mtime "+$CHUNK_RETENTION_DAYS" -delete 2>/dev/null || true
 if find "$RELEASE_DIR" -name '.DS_Store' -print -quit | grep -q .; then
   echo "部署失败：发布目录中仍存在 .DS_Store" >&2
@@ -236,7 +259,7 @@ for retired_path in "/reader" "/reader/?view=settings&tokendance_callback=1" "/f
   fi
 done
 
-new_chunk="$(find "$PROJECT_DIR/.next/static" -type f -name '*.js' -print -quit)"
+new_chunk="$(find "$PROJECT_DIR/.next/static" -type f -name '*.js' ! -path '*/chunks/app/admin/*' -print -quit)"
 if [[ -z "$new_chunk" ]]; then
   echo "部署失败：构建产物中没有可验证的 JavaScript Chunk" >&2
   exit 1

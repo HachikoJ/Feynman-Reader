@@ -1,0 +1,25 @@
+.logo {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  aspect-ratio: 1270 / 440;
+  vertical-align: middle;
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: inherit;
+}
+
+.light { display: block; }
+.dark { display: none; }
+
+:global(html[data-theme='dark']) .light,
+:global(html[data-theme='cyber']) .light { display: none; }
+
+:global(html[data-theme='dark']) .dark,
+:global(html[data-theme='cyber']) .dark { display: block; }

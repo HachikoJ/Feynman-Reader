@@ -27,7 +27,7 @@ describe('TokenDanceWelcome', () => {
     render(<TokenDanceWelcome lang="zh" onContinue={jest.fn()} />)
 
     expect(screen.getByRole('img', { name: 'TokenDance' })).toBeInTheDocument()
-    expect(screen.getByText('观猹登录')).toBeInTheDocument()
+    expect(screen.getByText('【观猹】登录')).toBeInTheDocument()
     expect(screen.getByText('账号云端')).toBeInTheDocument()
     expect(screen.getByText('TokenDance AI')).toBeInTheDocument()
     expect(screen.getByText(/DeepSeek V4 Flash 峰时最高约省 20%/)).toBeInTheDocument()

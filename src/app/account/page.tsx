@@ -682,6 +682,7 @@ export default function AccountPage() {
   );
   const [migrationBusy, setMigrationBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [adminAvailable, setAdminAvailable] = useState(false);
 
   useEffect(() => {
     const search = new URLSearchParams(window.location.search);
@@ -817,6 +818,24 @@ export default function AccountPage() {
       cancelled = true;
     };
   }, [activityRangeEnd, localPreview, user]);
+
+  useEffect(() => {
+    if (!user || localPreview) {
+      setAdminAvailable(false);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/admin/session", { credentials: "include", cache: "no-store" })
+      .then(async response => {
+        const detail = await response.json().catch(() => ({})) as { error?: string };
+        const available = detail.error === "请先完成管理员二次认证。" || detail.error === "管理员二次认证尚未启用。" || response.ok;
+        if (!cancelled) setAdminAvailable(available);
+      })
+      .catch(() => {
+        if (!cancelled) setAdminAvailable(false);
+      });
+    return () => { cancelled = true; };
+  }, [localPreview, user]);
 
   const runBusy = async (action: () => Promise<void>): Promise<void> => {
     if (busy) return;
@@ -2272,15 +2291,23 @@ export default function AccountPage() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleLogout()}
-            disabled={busy}
-            className="btn-secondary inline-flex min-h-10 items-center gap-2"
-          >
-            <LogOut size={16} aria-hidden="true" />
-            {localPreview ? "退出预览" : "退出登录"}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {adminAvailable && (
+              <a href="/admin/" className="btn-secondary inline-flex min-h-10 items-center gap-2 px-3 text-sm">
+                <LayoutDashboard size={16} aria-hidden="true" />
+                系统管理
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              disabled={busy}
+              className="btn-secondary inline-flex min-h-10 items-center gap-2 px-3 text-sm"
+            >
+              <LogOut size={16} aria-hidden="true" />
+              {localPreview ? "退出预览" : "退出登录"}
+            </button>
+          </div>
         </header>
         {localPreview && (
           <div

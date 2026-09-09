@@ -1117,6 +1117,9 @@ export function updateBook(id: string, updates: Partial<Book>): void {
     logger.error('❌ updateBook: 找不到书籍', id)
     throw new Error(`BOOK_NOT_FOUND:${id}`)
   }
+  if (existingBook._summaryOnly && Object.keys(updates).some(key =>
+    !['name', 'author', 'cover', 'description', 'tags'].includes(key)
+  )) throw new Error('书籍详情尚未读取，请重新打开书籍后重试。')
 
   logger.debug('🔄 updateBook:', { id, updates, oldStatus: existingBook.status })
   const updatedBook = normalizeBookLearningState({ ...existingBook, ...updates, updatedAt: Date.now() })
@@ -1176,6 +1179,7 @@ export function getBook(id: string): Book | undefined {
 
 export async function reloadBookFromPersistence(id: string): Promise<Book | undefined> {
   if (cloudMode) {
+    await cloudWriteQueue
     const response = await fetch(`/api/account/books/${encodeURIComponent(id)}/`, { credentials: 'include', cache: 'no-store' })
     if (!response.ok) throw new Error('无法读取云端书籍。')
     const payload = await response.json() as { book?: unknown }
@@ -1193,6 +1197,9 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
     if (!normalized.valid) throw new Error(normalized.error)
     const [remoteBook] = normalized.data.books
     if (!remoteBook || remoteBook.id === SAMPLE_BOOK_ID || remoteBook.isSample) return undefined
+    if (remoteBook._summaryOnly) throw new Error('云端尚未返回完整书籍详情，请重试。')
+    const cachedBook = booksCache.find(book => book.id === id)
+    if (cachedBook && !cachedBook._summaryOnly && cachedBook.updatedAt > remoteBook.updatedAt) return cachedBook
     const normalizedBook = normalizeBookLearningState(remoteBook)
     booksCache = booksCache.some(book => book.id === id)
       ? booksCache.map(book => book.id === id ? normalizedBook : book)
@@ -1261,6 +1268,7 @@ export async function reloadBookOrganizationFromPersistence(): Promise<BookOrgan
 function replaceBookInCache(book: Book): void {
   const existingBook = booksCache.find(existing => existing.id === book.id)
   if (!existingBook) throw new Error(`BOOK_NOT_FOUND:${book.id}`)
+  if (existingBook._summaryOnly) throw new Error('书籍详情尚未读取，请重新打开书籍后重试。')
   const normalizedBook = normalizeBookLearningState(book)
   booksCache = booksCache.map(existing => existing.id === book.id ? normalizedBook : existing)
   persistExistingBook(normalizedBook, existingBook.updatedAt)

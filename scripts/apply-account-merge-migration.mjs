@@ -39,7 +39,17 @@ try {
     }
     process.stdout.write('账号合并数据库迁移已就绪。\n')
   }
-  await client.query(apiKeyProviderSql)
+  try {
+    await client.query(apiKeyProviderSql)
+  } catch (error) {
+    const url = new URL(connectionString)
+    const isLocal = ['127.0.0.1', 'localhost', '::1'].includes(url.hostname)
+    if (!(error && typeof error === 'object' && 'code' in error && error.code === '42501' && isLocal && process.getuid?.() === 0)) throw error
+    const database = decodeURIComponent(url.pathname.slice(1))
+    if (!/^[A-Za-z0-9_-]+$/.test(database)) throw new Error('本地数据库名称格式无效。')
+    const result = spawnSync('sudo', ['-u', 'postgres', 'psql', '-v', 'ON_ERROR_STOP=1', '--dbname', database, '--file', resolve(projectRoot, 'supabase/migrations/012_api_key_providers.sql')], { stdio: 'inherit' })
+    if (result.status !== 0) throw new Error('PostgreSQL 管理身份执行 API Key 渠道迁移失败。')
+  }
   process.stdout.write('API Key 渠道数据库迁移已就绪。\n')
 } finally {
   await client.end()

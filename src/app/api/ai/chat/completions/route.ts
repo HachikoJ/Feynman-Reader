@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { decryptApiKey } from '@/lib/server/apiKeyVault'
 import { getPersistence } from '@/lib/server/persistence'
 import { sessionUserId } from '@/lib/server/sessionUser'
-import { TOKENDANCE_APP_URL, TOKENDANCE_GATEWAY_URL } from '@/lib/tokendance'
+import { TOKENDANCE_GATEWAY_URL, TOKENDANCE_REQUEST_APP_URL } from '@/lib/tokendance'
 import { isDeepSeekOfficialEnabled, isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 
 export const runtime = 'nodejs'
@@ -68,7 +68,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const client = new OpenAI({
       baseURL: requestedProvider === 'deepseek' ? 'https://api.deepseek.com' : TOKENDANCE_GATEWAY_URL,
       apiKey: secret,
-      ...(requestedProvider === 'tokendance' ? { defaultHeaders: { 'X-App-URL': TOKENDANCE_APP_URL } } : {}),
+      ...(requestedProvider === 'tokendance' ? { defaultHeaders: { 'X-App-URL': TOKENDANCE_REQUEST_APP_URL } } : {}),
       maxRetries: 0,
     })
     let completion: OpenAI.Chat.Completions.ChatCompletion

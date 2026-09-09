@@ -5,7 +5,7 @@ export default [
   ...nextConfig,
   ...typescriptConfig,
   {
-    ignores: ['coverage/**', 'public/pdf.worker.min.mjs', '.next/**', 'out/**', 'next-env.d.ts'],
+    ignores: ['coverage/**', 'public/pdf.worker.min.mjs', '.next/**', 'out/**', 'output/**', '.playwright-cli/**', 'next-env.d.ts'],
   },
   {
     files: ['**/*.{js,jsx,mjs,ts,tsx,mts,cts}'],
