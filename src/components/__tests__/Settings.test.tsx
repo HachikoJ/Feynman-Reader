@@ -54,11 +54,13 @@ jest.mock('@/lib/deepseek', () => ({
 }))
 
 jest.mock('@/lib/tokendance', () => ({
+  clearTokendanceOAuthState: jest.fn(),
   createTokendanceAuthorizationUrl: jest.fn(),
   exchangeTokendanceCode: jest.fn(),
   fetchTokendanceBalance: jest.fn(),
   createTokendancePaymentSession: jest.fn(),
-  getTokendancePaymentSession: jest.fn(() => new Promise(() => {}))
+  getTokendancePaymentSession: jest.fn(() => new Promise(() => {})),
+  isTokendanceOAuthCancellation: jest.fn((value: string | null | undefined) => value === 'access_denied')
 }))
 
 jest.mock('@/lib/accountClient', () => ({
@@ -97,6 +99,7 @@ import type { AppSettings } from '@/lib/store'
 const getSettingsMock = store.getSettings as jest.MockedFunction<typeof store.getSettings>
 const saveSettingsMock = store.saveSettings as jest.MockedFunction<typeof store.saveSettings>
 const createTokendancePaymentSessionMock = tokendance.createTokendancePaymentSession as jest.MockedFunction<typeof tokendance.createTokendancePaymentSession>
+const clearTokendanceOAuthStateMock = tokendance.clearTokendanceOAuthState as jest.MockedFunction<typeof tokendance.clearTokendanceOAuthState>
 const saveAccountApiKeyMock = accountClient.saveApiKey as jest.MockedFunction<typeof accountClient.saveApiKey>
 const deleteAccountApiKeyMock = accountClient.deleteApiKey as jest.MockedFunction<typeof accountClient.deleteApiKey>
 const savedApiKey = ['test', 'api', 'key', 'for', 'settings'].join('-')
@@ -149,6 +152,17 @@ describe('Settings AI privacy controls', () => {
     expect(screen.getByRole('button', { name: '验证并启用 AI' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '保存设置' })).toBeDisabled()
     expect(saveAccountApiKeyMock).not.toHaveBeenCalled()
+  })
+
+  it('shows a readable status when TokenDance authorization is cancelled', async () => {
+    getSettingsMock.mockReturnValue({ ...savedSettings, apiKey: '', aiDataConsent: false, aiProvider: 'tokendance' })
+    window.history.replaceState({}, '', '/?view=settings&tokendance_callback=1&error=access_denied&state=fixture-state')
+    renderSettings()
+
+    expect(await screen.findByText('已取消 TokenDance 授权，API Key 未发生变化。准备好后可以重新点击“授权 TokenDance”。')).toBeInTheDocument()
+    expect(tokendance.exchangeTokendanceCode).not.toHaveBeenCalled()
+    expect(clearTokendanceOAuthStateMock).toHaveBeenCalledTimes(1)
+    expect(window.location.search).toBe('?view=settings')
   })
 
   it('keeps consent selected while OAuth is pending and exchanges each callback once', async () => {

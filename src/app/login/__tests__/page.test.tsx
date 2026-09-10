@@ -46,4 +46,14 @@ describe('login page authentication transition', () => {
     expect(screen.queryByRole('button', { name: '登录' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '注册账号' })).not.toBeInTheDocument()
   })
+
+  it('shows a readable status when Watcha login is cancelled', async () => {
+    process.env.NEXT_PUBLIC_FEYNMAN_WATCHA_OAUTH_ENABLED = 'true'
+    process.env.NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS = 'false'
+    window.history.replaceState({}, '', '/login?auth=cancelled&returnTo=%2F')
+    render(<LoginPage />)
+    expect(await screen.findByText('已取消登录')).toBeInTheDocument()
+    expect(screen.getByText('你没有完成【观猹】授权，账号信息未发生变化。准备好后可以重新点击登录。')).toBeInTheDocument()
+    expect(window.location.search).toBe('?returnTo=%2F')
+  })
 })

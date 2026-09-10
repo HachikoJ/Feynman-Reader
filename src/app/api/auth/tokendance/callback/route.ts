@@ -9,15 +9,47 @@ function isUniqueViolation(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === '23505')
 }
 
+function isOAuthCancellation(error: string): boolean {
+  const normalized = error.trim().toLowerCase()
+  return normalized === 'access_denied'
+    || normalized === 'user_cancelled'
+    || normalized === 'user_canceled'
+    || normalized === 'cancelled'
+    || normalized === 'canceled'
+    || normalized.includes('cancel')
+}
+
+function redirectAfterOAuthError(
+  origin: string,
+  returnTo: string | null,
+  status: 'cancelled' | 'error',
+  request: Request
+): NextResponse {
+  const destination = new URL('/login', origin)
+  if (returnTo) destination.searchParams.set('returnTo', returnTo)
+  destination.searchParams.set('auth', status)
+  const response = NextResponse.redirect(destination)
+  response.headers.set('Cache-Control', 'no-store')
+  response.headers.append('Set-Cookie', oauthPkceCookieHeader('', 0, request))
+  return response
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   if (!isWatchaOAuthEnabled()) return NextResponse.json({ error: '观猹登录暂时关闭，请使用用户名和密码登录。' }, { status: 503 })
   const url = new URL(request.url)
+  const callback = getTokendanceCallbackUrl(request)
   const code = url.searchParams.get('code')?.trim()
   const state = url.searchParams.get('state')?.trim()
   const parsedState = state ? readOAuthState(state) : null
-  if (url.searchParams.get('error')) return NextResponse.json({ error: '用户取消了观猹登录授权。' }, { status: 400 })
+  const oauthError = url.searchParams.get('error')?.trim()
+  const oauthErrorDescription = url.searchParams.get('error_description')?.trim()
+  const oauthErrorValue = oauthError || oauthErrorDescription
+  if (oauthErrorValue) {
+    const stateMatchesCallback = parsedState?.callback === callback
+    const returnTo = stateMatchesCallback ? parsedState?.returnTo || null : null
+    return redirectAfterOAuthError(new URL(callback).origin, returnTo, isOAuthCancellation(oauthErrorValue) ? 'cancelled' : 'error', request)
+  }
   if (!code || !state || !parsedState) return NextResponse.json({ error: '登录状态无效或已过期。' }, { status: 400 })
-  const callback = getTokendanceCallbackUrl(request)
   if (parsedState.callback !== callback) return NextResponse.json({ error: '登录回调地址不匹配。' }, { status: 400 })
   const clientId = process.env.TOKENDANCE_OAUTH_CLIENT_ID?.trim()
   const clientSecret = process.env.TOKENDANCE_OAUTH_CLIENT_SECRET?.trim()

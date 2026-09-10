@@ -57,6 +57,23 @@ describe('Watcha login avatar synchronization', () => {
     }))
   }
 
+  it('redirects a cancelled login to a readable login page', async () => {
+    const response = await GET(new Request(`${callback}?error=access_denied&state=test-state`, {
+      headers: { cookie: 'feynman_watcha_pkce=test-nonce.test-verifier' },
+    }))
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get('location')).toBe('https://reader.deline.top/login?returnTo=%2F&auth=cancelled')
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+  })
+
+  it('does not expose JSON when the provider omits OAuth state on cancellation', async () => {
+    const response = await GET(new Request(`${callback}?error=access_denied`))
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get('location')).toBe('https://reader.deline.top/login?auth=cancelled')
+  })
+
   it.each(['avatar_url', 'avatarUrl', 'avatar'])('synchronizes the provided %s image before creating the login session', async field => {
     const response = await login({ [field]: 'https://example.test/watcha-user.png' })
     expect(response.status).toBe(307)

@@ -71,7 +71,7 @@ import { validateApiKey } from '@/lib/validation'
 import { DEEPSEEK_API_KEY_INVALID, validateDeepSeekApiKey } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { showAppConfirm } from '@/lib/appDialog'
-import { createTokendanceAuthorizationUrl, exchangeTokendanceCode, fetchTokendanceBalance, createTokendancePaymentSession, getTokendancePaymentSession, type TokendanceBalance, type TokendancePaymentSession } from '@/lib/tokendance'
+import { clearTokendanceOAuthState, createTokendanceAuthorizationUrl, exchangeTokendanceCode, fetchTokendanceBalance, createTokendancePaymentSession, getTokendancePaymentSession, isTokendanceOAuthCancellation, type TokendanceBalance, type TokendancePaymentSession } from '@/lib/tokendance'
 import { deepSeekSunsetMessage, isDeepSeekOfficialEnabled, isTokenDanceEnabled, tokenDanceUnavailableMessage } from '@/lib/aiProviderPolicy'
 import { DEEPSEEK_OFFICIAL_CHANNEL_SUNSET } from '@/lib/deepseek'
 import { isAIConfigurationComplete } from '@/lib/startupPrompt'
@@ -129,6 +129,7 @@ export default function Settings({
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [apiKeyConsentError, setApiKeyConsentError] = useState<string | null>(null)
   const [apiActionStatus, setApiActionStatus] = useState<string | null>(null)
+  const [tokendanceOAuthNotice, setTokendanceOAuthNotice] = useState<string | null>(null)
   const [tokendanceBalance, setTokendanceBalance] = useState<TokendanceBalance | null>(null)
   const [loadingTokendanceBalance, setLoadingTokendanceBalance] = useState(false)
   const [tokendancePayment, setTokendancePayment] = useState<TokendancePaymentSession | null>(null)
@@ -285,8 +286,31 @@ export default function Settings({
   useEffect(() => {
     if (typeof window === 'undefined' || !settingsLoaded) return
     const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    if (!code || params.get('tokendance_callback') !== '1') return
+    if (params.get('tokendance_callback') !== '1') return
+    const code = params.get('code')?.trim()
+    const oauthError = params.get('error')?.trim()
+    const oauthErrorDescription = params.get('error_description')?.trim()
+    const oauthErrorValue = oauthError || oauthErrorDescription
+    const removeCallbackParams = () => {
+      const destination = new URL(window.location.href)
+      for (const parameter of ['code', 'state', 'tokendance_callback', 'error', 'error_description', 'error_uri']) destination.searchParams.delete(parameter)
+      destination.searchParams.set('view', 'settings')
+      window.history.replaceState({}, '', `${destination.pathname}${destination.search}${destination.hash}`)
+    }
+    if (oauthErrorValue || !code) {
+      const callbackId = JSON.stringify(['oauth-result', oauthErrorValue || 'missing-code', params.get('state')])
+      if (handledTokendanceCallbackRef.current === callbackId) return
+      handledTokendanceCallbackRef.current = callbackId
+      clearTokendanceOAuthState()
+      setTokendanceOAuthLoading(false)
+      setApiKeyConsentError(null)
+      setApiActionStatus(null)
+      setTokendanceOAuthNotice(isTokendanceOAuthCancellation(oauthErrorValue)
+        ? (settings.language === 'zh' ? '已取消 TokenDance 授权，API Key 未发生变化。准备好后可以重新点击“授权 TokenDance”。' : 'TokenDance authorization was cancelled. Your API key was not changed. Select Authorize TokenDance when you are ready to try again.')
+        : (settings.language === 'zh' ? 'TokenDance 授权未完成，API Key 未发生变化，请重新尝试。' : 'TokenDance authorization did not complete. Your API key was not changed. Try again.'))
+      removeCallbackParams()
+      return
+    }
     if (checkingAccount) return
     if (!hasSignedInAccount) {
       requestLogin(settings.language === 'zh'
@@ -313,6 +337,7 @@ export default function Settings({
         onSettingsChange(persisted)
         setSaved(false)
         setApiKeyConsentError(null)
+        setTokendanceOAuthNotice(null)
         setApiActionStatus(persisted.language === 'zh' ? 'TokenDance 授权已保存。确认数据传输后，点击“验证并启用 AI”。' : 'TokenDance authorization saved. Confirm data transfer, then select Verify and enable AI.')
         const destination = new URL(window.location.href)
         for (const parameter of ['code', 'state', 'tokendance_callback']) destination.searchParams.delete(parameter)
@@ -601,6 +626,8 @@ export default function Settings({
     }
     if (!requireAccountForApi()) return
     try {
+      setTokendanceOAuthNotice(null)
+      setApiKeyConsentError(null)
       setTokendanceOAuthLoading(true)
       window.location.href = await createTokendanceAuthorizationUrl()
     } catch (error) {
@@ -668,6 +695,7 @@ export default function Settings({
     if (key === 'apiKey' || key === 'aiDataConsent') {
       setApiKeyConsentError(null)
       setApiActionStatus(null)
+      setTokendanceOAuthNotice(null)
       setSaved(false)
     }
     if (key === 'theme') {
@@ -1222,6 +1250,12 @@ export default function Settings({
       {quickSettingError && (
         <div role="alert" className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-300">
           {quickSettingError}
+        </div>
+      )}
+      {tokendanceOAuthNotice && (
+        <div role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+          <CircleX size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>{tokendanceOAuthNotice}</span>
         </div>
       )}
 

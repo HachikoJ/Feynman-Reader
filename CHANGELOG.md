@@ -2,6 +2,15 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.2.7] - 2026-09-10
+
+### Fixed
+
+- Replace raw JSON shown after cancelling Watcha/TokenDance login with a readable login status page; preserve the requested return destination and clear the pending PKCE cookie.
+- Show a clear, non-error status after cancelling TokenDance AI Key authorization, clear the pending browser authorization state, and remove callback parameters from the settings URL without changing the saved API Key.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.2.7.md).
+
 ## [0.2.6] - 2026-09-10
 
 ### Changed
@@ -114,3 +123,4 @@ First tagged release. Earlier development is preserved in Git history; no earlie
 
 [0.2.0]: https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.0
 [0.2.1]: https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.1
+[0.2.7]: https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.7

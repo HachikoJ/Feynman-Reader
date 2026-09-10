@@ -2,13 +2,14 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, ExternalLink, LogIn, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
+import { ArrowLeft, CircleX, ExternalLink, LogIn, RefreshCw, ShieldCheck, UserRound } from 'lucide-react'
 import { getAccount, isLocalAuthBypassEnabled, isWatchaOAuthEnabled, tokendanceLoginHref, type AccountUser } from '@/lib/accountClient'
 import WatchaLogo from '@/components/WatchaLogo'
 
 export default function LoginPage() {
   const localOnlyMode = isLocalAuthBypassEnabled()
   const watchaEnabled = isWatchaOAuthEnabled()
+  const [oauthStatus, setOauthStatus] = useState<'cancelled' | 'error' | null>(null)
   const [user, setUser] = useState<AccountUser | null>(null)
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -17,6 +18,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = new URL(window.location.href)
+    const status = url.searchParams.get('auth')
+    if (status !== 'cancelled' && status !== 'error') return
+    setOauthStatus(status)
+    url.searchParams.delete('auth')
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [])
 
   useEffect(() => {
     if (localOnlyMode) {
@@ -58,6 +69,24 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold">登录费曼读书助手</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{localOnlyMode ? '当前使用本地数据模式。' : watchaEnabled ? '使用【观猹】登录，开始自己的阅读与练习，继续整理书架、笔记和学习记录。' : '使用用户名和密码注册或登录，开始自己的阅读与练习。'}</p>
+          {oauthStatus === 'cancelled' && (
+            <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4" role="status">
+              <div className="flex items-center gap-2 font-medium text-amber-700">
+                <CircleX size={18} aria-hidden="true" />
+                <span>已取消登录</span>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">你没有完成【观猹】授权，账号信息未发生变化。准备好后可以重新点击登录。</p>
+            </div>
+          )}
+          {oauthStatus === 'error' && (
+            <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4" role="alert">
+              <div className="flex items-center gap-2 font-medium text-amber-700">
+                <CircleX size={18} aria-hidden="true" />
+                <span>登录未完成</span>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">观猹登录暂未完成，请重新尝试；如果问题持续，请稍后再试。</p>
+            </div>
+          )}
           {checking ? (
             <div className="mt-6 flex min-h-11 items-center justify-center text-sm text-[var(--text-secondary)]" role="status">
               <RefreshCw size={16} className="mr-2 animate-spin" aria-hidden="true" />正在检查登录状态

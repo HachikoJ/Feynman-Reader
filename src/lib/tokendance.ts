@@ -12,6 +12,24 @@ export const TOKENDANCE_RECOVERY_PREFIX = 'TOKENDANCE_RECOVERY:'
 
 const verifierKey = 'feynman-tokendance-pkce-verifier'
 const stateKey = 'feynman-tokendance-oauth-state'
+
+/** Remove a pending browser authorization after the provider returns without a code. */
+export function clearTokendanceOAuthState(): void {
+  if (typeof sessionStorage === 'undefined') return
+  sessionStorage.removeItem(verifierKey)
+  sessionStorage.removeItem(stateKey)
+}
+
+export function isTokendanceOAuthCancellation(error: string | null | undefined): boolean {
+  const normalized = error?.trim().toLowerCase()
+  return normalized === 'access_denied'
+    || normalized === 'user_cancelled'
+    || normalized === 'user_canceled'
+    || normalized === 'cancelled'
+    || normalized === 'canceled'
+    || Boolean(normalized?.includes('cancel'))
+}
+
 const SERVER_MANAGED_API_KEY = 'server-managed'
 
 async function accountTokendanceRequest<T>(method: 'GET' | 'POST' | 'PATCH', body?: unknown): Promise<T> {
@@ -110,8 +128,7 @@ export async function exchangeTokendanceCode(code: string, state: string | null)
   if (!response.ok) throw new Error(`Tokendance OAuth exchange failed (${response.status}).`)
   const data = await response.json() as { key?: unknown }
   if (typeof data.key !== 'string' || data.key.length < 20) throw new Error('Tokendance did not return a valid API key.')
-  sessionStorage.removeItem(verifierKey)
-  sessionStorage.removeItem(stateKey)
+  clearTokendanceOAuthState()
   return data.key
 }
 
