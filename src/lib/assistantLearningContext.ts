@@ -1,14 +1,22 @@
 import type { Book, NoteRecord, PersonaQuestion, PracticeRecord, QAPracticeRecord } from './store'
+import {
+  isAssistantSourcePhaseId,
+  normalizeAssistantSource,
+  normalizeAssistantSources,
+  type AssistantSource,
+  type AssistantSourceTarget
+} from './assistantSources'
 
 export type LearningRecordKind = 'note' | 'phase' | 'practice' | 'question' | 'answer'
 
-interface LearningRecordEntry {
+export interface LearningRecordEntry {
   bookId: string
   bookName: string
   kind: LearningRecordKind
   label: string
   content: string
   createdAt: number
+  source: AssistantSource
 }
 
 export interface LearningRecordMatch extends LearningRecordEntry {
@@ -23,24 +31,60 @@ function trim(value: string, max: number): string {
   return normalized.length <= max ? normalized : `${normalized.slice(0, max)}…`
 }
 
-function entry(book: Book, kind: LearningRecordKind, label: string, content: string, createdAt: number): LearningRecordEntry {
-  return { bookId: book.id, bookName: book.name, kind, label, content: content.trim(), createdAt }
+function entry(
+  book: Book,
+  kind: Exclude<LearningRecordKind, 'answer'>,
+  label: string,
+  content: string,
+  createdAt: number,
+  target: Pick<AssistantSourceTarget, 'recordId' | 'phaseId' | 'questionIndex'>
+): LearningRecordEntry | null {
+  const normalizedContent = content.trim()
+  const source = normalizeAssistantSource({
+    kind,
+    bookId: book.id,
+    ...target,
+    label,
+    title: `${book.name} · ${label}`,
+    excerpt: normalizedContent,
+    createdAt
+  })
+  if (!source) return null
+  return { bookId: book.id, bookName: book.name, kind, label, content: normalizedContent, createdAt, source }
 }
 
 function questionEntries(book: Book, record: QAPracticeRecord): LearningRecordEntry[] {
-  return record.questions.flatMap((question: PersonaQuestion) => {
+  return record.questions.flatMap((question: PersonaQuestion, questionIndex) => {
     const attempts = (question.attempts || []).map((attempt, index) => `第 ${index + 1} 次回答（${new Date(attempt.answeredAt).toLocaleDateString('zh-CN')}）：${attempt.userAnswer}\nAI 点评：${attempt.aiReview}\n得分：${attempt.score}/100`).join('\n')
     const latest = question.userAnswer || question.aiReview
       ? `当前回答：${question.userAnswer || '未回答'}\n当前点评：${question.aiReview || '暂无点评'}\n当前得分：${question.score ?? '未评分'}`
       : ''
-    return [entry(book, 'question', `${question.personaName} 的角色提问`, `问题：${question.question}\n${latest}${attempts ? `\n历史尝试：\n${attempts}` : ''}`, question.answeredAt || record.updatedAt)]
+    const value = entry(
+      book,
+      'question',
+      `${question.personaName} 的角色提问`,
+      `问题：${question.question}\n${latest}${attempts ? `\n历史尝试：\n${attempts}` : ''}`,
+      question.answeredAt || record.updatedAt,
+      { recordId: record.id, questionIndex }
+    )
+    return value ? [value] : []
   })
 }
 
 function allEntries(book: Book): LearningRecordEntry[] {
-  const notes = (book.noteRecords || []).map((note: NoteRecord) => entry(book, 'note', note.type === 'teaching' ? '教学笔记' : '读书笔记', `笔记：${note.content}${note.aiReview ? `\nAI 点评：${note.aiReview}` : ''}${note.phaseId ? `\n关联阶段：${note.phaseId}` : ''}`, note.createdAt))
-  const phases = Object.entries(book.responses || {}).map(([phase, content]) => entry(book, 'phase', `阶段分析：${phase}`, content, book.updatedAt))
-  const practices = (book.practiceRecords || []).map((record: PracticeRecord) => entry(book, 'practice', '费曼实践记录', `用户复述：\n${record.content}\n\nAI 点评：\n${record.aiReview}\n\n评分：准确度 ${record.scores.accuracy}，完整度 ${record.scores.completeness}，清晰度 ${record.scores.clarity}，综合 ${record.scores.overall}；${record.passed ? '已通过' : '待改进'}`, record.createdAt))
+  const notes = (book.noteRecords || []).flatMap((note: NoteRecord) => {
+    const value = entry(book, 'note', note.type === 'teaching' ? '教学笔记' : '读书笔记', `笔记：${note.content}${note.aiReview ? `\nAI 点评：${note.aiReview}` : ''}${note.phaseId ? `\n关联阶段：${note.phaseId}` : ''}`, note.createdAt, { recordId: note.id })
+    return value ? [value] : []
+  })
+  const phases = Object.entries(book.responses || {}).flatMap(([phase, content]) => {
+    if (!isAssistantSourcePhaseId(phase)) return []
+    const value = entry(book, 'phase', `阶段分析：${phase}`, content, book.updatedAt, { phaseId: phase })
+    return value ? [value] : []
+  })
+  const practices = (book.practiceRecords || []).flatMap((record: PracticeRecord) => {
+    const value = entry(book, 'practice', '费曼实践记录', `用户复述：\n${record.content}\n\nAI 点评：\n${record.aiReview}\n\n评分：准确度 ${record.scores.accuracy}，完整度 ${record.scores.completeness}，清晰度 ${record.scores.clarity}，综合 ${record.scores.overall}；${record.passed ? '已通过' : '待改进'}`, record.createdAt, { recordId: record.id })
+    return value ? [value] : []
+  })
   const questions = (book.qaPracticeRecords || []).flatMap(record => questionEntries(book, record))
   return [...notes, ...phases, ...practices, ...questions].filter(item => item.content)
 }
@@ -83,7 +127,16 @@ function compactMatch(match: LearningRecordMatch): string {
   return `【${match.bookName}｜${match.label}】\n${match.content}`
 }
 
-export function buildAssistantLearningContext(query: string, books: Book[], mentionedBook?: Book | null): string {
+export interface AssistantLearningContextResult {
+  context: string
+  sources: AssistantSource[]
+}
+
+export function buildAssistantLearningContextWithSources(
+  query: string,
+  books: Book[],
+  mentionedBook?: Book | null
+): AssistantLearningContextResult {
   const matches = searchLearningRecords(query, books, mentionedBook)
   const contextualMatches = mentionedBook && matches.length === 0
     ? allEntries(mentionedBook).map(item => ({ ...item, score: 1 })).sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_MATCHES)
@@ -91,7 +144,23 @@ export function buildAssistantLearningContext(query: string, books: Book[], ment
   const overview = mentionedBook
     ? `书籍：${mentionedBook.name}\n作者：${mentionedBook.author || '未知'}\n简介：${mentionedBook.description || '暂无'}\n学习阶段：${mentionedBook.currentPhase}/6，综合分：${mentionedBook.bestScore || 0}`
     : ''
-  if (!contextualMatches.length) return overview
+  const bookSource = mentionedBook
+    ? normalizeAssistantSource({
+      kind: 'book',
+      bookId: mentionedBook.id,
+      label: '书籍',
+      title: mentionedBook.name,
+      excerpt: [mentionedBook.author, mentionedBook.description].filter(Boolean).join(' · '),
+      createdAt: mentionedBook.updatedAt
+    })
+    : null
+  const recordSources = normalizeAssistantSources(contextualMatches.map(match => match.source))
+    .slice(0, bookSource ? 5 : 6)
+  const sources = normalizeAssistantSources([
+    ...recordSources,
+    ...(bookSource ? [bookSource] : [])
+  ])
+  if (!contextualMatches.length) return { context: overview, sources }
   let remaining = MAX_CONTEXT_CHARS - overview.length
   const details: string[] = []
   for (const match of contextualMatches) {
@@ -100,7 +169,14 @@ export function buildAssistantLearningContext(query: string, books: Book[], ment
     details.push(value)
     remaining -= value.length
   }
-  return [overview, details.length ? `相关原始学习记录（按当前问题匹配，保留原回答与点评）：\n${details.join('\n\n')}` : ''].filter(Boolean).join('\n\n')
+  return {
+    context: [overview, details.length ? `相关原始学习记录（按当前问题匹配，保留原回答与点评）：\n${details.join('\n\n')}` : ''].filter(Boolean).join('\n\n'),
+    sources
+  }
+}
+
+export function buildAssistantLearningContext(query: string, books: Book[], mentionedBook?: Book | null): string {
+  return buildAssistantLearningContextWithSources(query, books, mentionedBook).context
 }
 
 export function buildFeynmanNudge(books: Book[], lang: 'zh' | 'en'): string {

@@ -18,6 +18,7 @@ import { MAX_AI_ANSWER_LENGTH } from '@/lib/dataLimits'
 import AppIcon, { AppIconName } from './AppIcon'
 import CopyContentButton from './CopyContentButton'
 import { useAccountAccess } from './AuthGuard'
+import type { AssistantSourceTarget } from '@/lib/assistantSources'
 
 interface Props {
   book: Book
@@ -29,6 +30,7 @@ interface Props {
   showHistory?: boolean
   onShowHistoryChange?: (show: boolean) => void
   historyRef?: React.RefObject<HTMLDivElement>
+  sourceTarget?: AssistantSourceTarget | null
   onOpenSettings?: () => void
   onQuoteSelected?: (text: string) => Promise<void> | void
 }
@@ -153,7 +155,7 @@ function getFirstUnpassedQuestionIndex(record: QAPracticeRecord | null): number 
   return index >= 0 ? index : null
 }
 
-export default function QAPractice({ book, apiKey, needsAiConfiguration = false, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef, onOpenSettings, onQuoteSelected }: Props) {
+export default function QAPractice({ book, apiKey, needsAiConfiguration = false, lang, quotes = [], onBookUpdate, showHistory: externalShowHistory, onShowHistoryChange, historyRef, sourceTarget, onOpenSettings, onQuoteSelected }: Props) {
   const { isAuthenticated, requestLogin } = useAccountAccess()
   const [currentRecord, setCurrentRecord] = useState<QAPracticeRecord | null>(null)
   const [qaRecords, setQaRecords] = useState<QAPracticeRecord[]>([])
@@ -189,6 +191,20 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
       : {})
     setErrorMessage(null)
   }, [book.id])
+
+  useEffect(() => {
+    if (sourceTarget?.kind !== 'question' || sourceTarget.bookId !== book.id) return
+    setShowHistory(true)
+    const record = currentRecord
+    if (
+      record &&
+      sourceTarget.recordId === record.id &&
+      sourceTarget.questionIndex !== undefined &&
+      sourceTarget.questionIndex < record.questions.length
+    ) {
+      setExpandedQuestionIndex(sourceTarget.questionIndex)
+    }
+  }, [book.id, currentRecord, setShowHistory, sourceTarget])
 
   const bestTeachingRecord = getBestPassedTeachingRecord(book.practiceRecords)
   const bestTeachingContent = bestTeachingRecord?.content
@@ -658,7 +674,11 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
               const isExpanded = expandedQuestionIndex === idx
 
               return (
-              <div key={idx} className="overflow-hidden rounded-xl bg-[var(--bg-secondary)]">
+              <div
+                key={idx}
+                className="overflow-hidden rounded-xl bg-[var(--bg-secondary)]"
+                data-reading-source-question-index={idx}
+              >
                 <button
                   type="button"
                   onClick={() => setExpandedQuestionIndex(isExpanded ? null : idx)}
@@ -789,7 +809,12 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
           {showHistory && (
             <div className="mt-4 space-y-4 animate-fade-in">
               {qaRecords.slice().reverse().map(record => (
-                <div key={record.id} className="bg-[var(--bg-secondary)] rounded-xl p-4">
+                <div
+                  key={record.id}
+                  className="bg-[var(--bg-secondary)] rounded-xl p-4"
+                  data-reading-source-kind="question"
+                  data-reading-source-id={record.id}
+                >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <span className="text-sm">
@@ -822,7 +847,11 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                   </div>
                   <div className="space-y-3">
                     {record.questions.map((q, idx) => (
-                      <div key={idx} className={`rounded p-3 text-sm ${q.score !== undefined && !q.passed ? 'border border-yellow-500/30 bg-yellow-500/10' : 'bg-[var(--bg-card)]'}`}>
+                      <div
+                        key={idx}
+                        className={`rounded p-3 text-sm ${q.score !== undefined && !q.passed ? 'border border-yellow-500/30 bg-yellow-500/10' : 'bg-[var(--bg-card)]'}`}
+                        data-reading-source-question-index={idx}
+                      >
                         <div className="flex items-center gap-2 mb-2">
                           <span className="font-medium">{q.personaName}</span>
                           {q.passed && <AppIcon name="success" tone="green" size={15} />}

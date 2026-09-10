@@ -4,6 +4,10 @@ Notable changes to Feynman Reader are recorded here.
 
 ## [0.2.7] - 2026-09-10
 
+### Added
+
+- Show matched books, notes, learning phases, Feynman practice records, and role Q&A records as bounded reference tags in assistant replies. Selecting a tag opens the corresponding book, switches to the relevant tab, expands the target record, and scrolls to it with a short highlight.
+
 ### Fixed
 
 - Replace raw JSON shown after cancelling Watcha/TokenDance login with a readable login status page; preserve the requested return destination and clear the pending PKCE cookie.

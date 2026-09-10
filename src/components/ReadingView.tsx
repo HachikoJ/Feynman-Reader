@@ -32,12 +32,14 @@ import BookListManager from './BookListManager'
 import { BookLearningAnalytics } from './Charts'
 import { useAccountAccess } from './AuthGuard'
 import { READING_STEP_HISTORY_KEY } from '@/lib/appRoutes'
+import type { AssistantSourceTarget } from '@/lib/assistantSources'
 
 interface Props {
   book: Book
   apiKey: string
   lang: Language
   quotes?: { text: string; author: string }[]
+  sourceTarget?: AssistantSourceTarget | null
   onBack: () => void
   onOpenSettings: () => void
   onQuoteAdded?: (settings: AppSettings) => void
@@ -132,7 +134,7 @@ function aiTaskErrorMessage(error: unknown, lang: Language): string | null {
   return null
 }
 
-export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], onBack, onOpenSettings, onQuoteAdded }: Props) {
+export default function ReadingView({ book: initialBook, apiKey, lang, quotes = [], sourceTarget, onBack, onOpenSettings, onQuoteAdded }: Props) {
   const { isAuthenticated, requestLogin } = useAccountAccess()
   const [book, setBook] = useState(initialBook)
   const [activeTab, setActiveTab] = useState<TabType>('phase')
@@ -256,6 +258,83 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const phaseContentRef = useRef<HTMLDivElement>(null)
   const practiceHistoryRef = useRef<HTMLDivElement>(null)
   const qaHistoryRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!sourceTarget || sourceTarget.bookId !== book.id) return
+
+    if (sourceTarget.kind === 'book' || sourceTarget.kind === 'phase') setActiveTab('phase')
+    if (sourceTarget.kind === 'note') setActiveTab('notes')
+    if (sourceTarget.kind === 'practice' || sourceTarget.kind === 'question') setActiveTab('practice')
+
+    if (sourceTarget.kind === 'phase' && sourceTarget.phaseId) {
+      const phaseIndex = LEARNING_PHASES.findIndex(phase => phase.id === sourceTarget.phaseId)
+      if (phaseIndex >= 0 && responses[sourceTarget.phaseId]) setCurrentPhase(phaseIndex)
+    }
+    if (sourceTarget.kind === 'practice') setShowPracticeHistory(true)
+    if (sourceTarget.kind === 'question') setQaShowHistory(true)
+
+    let cancelled = false
+    let retryTimer: number | null = null
+    let highlightTimer: number | null = null
+    let attempts = 0
+
+    const findTarget = (): HTMLElement | null => {
+      const elements = Array.from(document.querySelectorAll<HTMLElement>('[data-reading-source-kind]'))
+      return elements.find(element => {
+        if (element.dataset.readingSourceKind !== sourceTarget.kind) return false
+        const sourceId = element.dataset.readingSourceId
+        if (sourceTarget.kind === 'book') return sourceId === sourceTarget.bookId
+        if (sourceTarget.kind === 'phase') return sourceId === sourceTarget.phaseId
+        return sourceId === sourceTarget.recordId
+      }) || null
+    }
+
+    const findQuestionTarget = (recordTarget: HTMLElement): HTMLElement => {
+      if (sourceTarget.kind !== 'question' || sourceTarget.questionIndex === undefined) return recordTarget
+      const questions = Array.from(recordTarget.querySelectorAll<HTMLElement>('[data-reading-source-question-index]'))
+      return questions.find(element => Number(element.dataset.readingSourceQuestionIndex) === sourceTarget.questionIndex) || recordTarget
+    }
+
+    const fallbackTarget = (): HTMLElement | null => {
+      if (sourceTarget.kind === 'question') return qaHistoryRef.current
+      if (sourceTarget.kind === 'practice') return practiceHistoryRef.current
+      if (sourceTarget.kind === 'phase') return phaseProgressRef.current
+      return document.querySelector<HTMLElement>('[data-reading-source-kind="book"]')
+    }
+
+    const locate = () => {
+      if (cancelled) return
+      const exactTarget = findTarget()
+      const target = exactTarget ? findQuestionTarget(exactTarget) : null
+      if (!target && !exactTarget && attempts < 10) {
+        attempts += 1
+        retryTimer = window.setTimeout(locate, 50)
+        return
+      }
+
+      const resolvedTarget = target || fallbackTarget()
+      if (!resolvedTarget) return
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+      resolvedTarget.scrollIntoView({
+        behavior: reducedMotion ? 'auto' : 'smooth',
+        block: 'center'
+      })
+      resolvedTarget.classList.remove('reading-source-highlight')
+      void resolvedTarget.offsetWidth
+      resolvedTarget.classList.add('reading-source-highlight')
+      highlightTimer = window.setTimeout(() => {
+        resolvedTarget.classList.remove('reading-source-highlight')
+      }, reducedMotion ? 1200 : 2200)
+    }
+
+    const animationFrame = window.requestAnimationFrame(locate)
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(animationFrame)
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
+      if (highlightTimer !== null) window.clearTimeout(highlightTimer)
+    }
+  }, [book.id, responses, sourceTarget])
 
   useEffect(() => {
     let cancelled = false
@@ -847,7 +926,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const practiceComplete = book.bestScore >= 60
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto" data-reading-source-kind="book" data-reading-source-id={book.id}>
       {/* Header */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
@@ -1043,7 +1122,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
               {/* Phase Content */}
               {phase && responses[phase.id] && (
-                <div ref={phaseContentRef} className="card scroll-mt-24">
+                <div
+                  ref={phaseContentRef}
+                  className="card scroll-mt-24"
+                  data-reading-source-kind="phase"
+                  data-reading-source-id={phase.id}
+                >
                   <div className="flex items-center gap-3 mb-2">
                     <AppIcon name={phaseIconNames[phase.id]} tone={phaseIconTones[phase.id]} size={28} />
                     <div>
@@ -1408,7 +1492,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               {showPracticeHistory && (
                 <div className="mt-4 space-y-4 animate-fade-in">
                   {practiceRecords.slice().reverse().map(record => (
-                    <div key={record.id} className="bg-[var(--bg-secondary)] rounded-xl p-4">
+                    <div
+                      key={record.id}
+                      className="bg-[var(--bg-secondary)] rounded-xl p-4"
+                      data-reading-source-kind="practice"
+                      data-reading-source-id={record.id}
+                    >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <span className={`text-2xl font-bold ${record.passed ? 'text-green-400' : 'text-yellow-400'}`}>
@@ -1440,7 +1529,11 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                           </div>
                         ))}
                       </div>
-                      <details open={practiceStatus === 'saved' && record.id === practiceRecords[practiceRecords.length - 1]?.id ? true : undefined}>
+                      <details open={practiceStatus === 'saved' && record.id === practiceRecords[practiceRecords.length - 1]?.id
+                        ? true
+                        : sourceTarget?.kind === 'practice' && sourceTarget.bookId === book.id && sourceTarget.recordId === record.id
+                          ? true
+                          : undefined}>
                         <summary className="cursor-pointer text-sm text-[var(--accent)]">
                           {lang === 'zh' ? '查看详情' : 'View details'}
                         </summary>
@@ -1482,6 +1575,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             showHistory={qaShowHistory}
             onShowHistoryChange={setQaShowHistory}
             historyRef={qaHistoryRef}
+            sourceTarget={sourceTarget}
             onOpenSettings={onOpenSettings}
             onQuoteSelected={handleQuoteSelected}
           />
@@ -1525,7 +1619,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             ) : (
               <div className="space-y-3">
                 {noteRecords.slice().reverse().map(note => (
-                  <div key={note.id} className="bg-[var(--bg-secondary)] rounded-xl p-4">
+                  <div
+                    key={note.id}
+                    className="bg-[var(--bg-secondary)] rounded-xl p-4"
+                    data-reading-source-kind="note"
+                    data-reading-source-id={note.id}
+                  >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         {note.phaseId && (

@@ -51,27 +51,47 @@ import { APP_ROUTES, READING_STEP_HISTORY_KEY } from '@/lib/appRoutes'
 import { accountLoginHref, isLocalAuthBypassEnabled, isWatchaOAuthEnabled } from '@/lib/accountClient'
 import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 import { SAMPLE_BOOK_ID } from '@/lib/sampleBook'
+import {
+  assistantSourceHref,
+  assistantSourceTargetFromSearchParams,
+  type AssistantSource,
+  type AssistantSourceTarget
+} from '@/lib/assistantSources'
 
 type View = 'bookshelf' | 'reading' | 'settings'
+type WorkspaceRoute = {
+  view: View
+  bookId?: string
+  sourceTarget?: AssistantSourceTarget | null
+}
 
 const WORKSPACE_HISTORY_KEY = '__feynmanReaderWorkspace'
 type WorkspaceHistoryState = {
   [WORKSPACE_HISTORY_KEY]?: true
   view: View
   bookId?: string
+  sourceTarget?: AssistantSourceTarget | null
 }
 
-function workspaceHref(view: View, bookId?: string): string {
-  if (view === 'reading' && bookId) return `/?view=reading&bookId=${encodeURIComponent(bookId)}`
+function workspaceHref(view: View, bookId?: string, sourceTarget?: AssistantSourceTarget | null): string {
+  if (view === 'reading' && bookId) {
+    return sourceTarget
+      ? assistantSourceHref({ ...sourceTarget, bookId })
+      : `/?view=reading&bookId=${encodeURIComponent(bookId)}`
+  }
   if (view === 'settings') return '/?view=settings'
   return '/'
 }
 
-function workspaceRouteFromLocation(location: Location): { view: View; bookId?: string } {
+function workspaceRouteFromLocation(location: Location): WorkspaceRoute {
   const params = new URLSearchParams(location.search)
   const requestedView = params.get('view')
   if (requestedView === 'reading' && params.get('bookId')) {
-    return { view: 'reading', bookId: params.get('bookId') || undefined }
+    return {
+      view: 'reading',
+      bookId: params.get('bookId') || undefined,
+      sourceTarget: assistantSourceTargetFromSearchParams(params)
+    }
   }
   if (requestedView === 'settings') return { view: 'settings' }
   return { view: 'bookshelf' }
@@ -208,6 +228,7 @@ function ReaderWorkspaceContent() {
   const [focusApiConfigurationRequest, setFocusApiConfigurationRequest] = useState(0)
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
   const [assistantReady, setAssistantReady] = useState(false)
+  const [sourceTarget, setSourceTarget] = useState<AssistantSourceTarget | null>(null)
   const currentViewRef = useRef<View>('bookshelf')
   const currentBookIdRef = useRef<string | null>(null)
 
@@ -357,8 +378,17 @@ function ReaderWorkspaceContent() {
     }
   }
 
-  const applyWorkspaceRoute = (route: { view: View; bookId?: string }) => {
+  const applyWorkspaceRoute = (route: WorkspaceRoute) => {
+    setSourceTarget(route.sourceTarget || null)
     if (route.view === 'reading' && route.bookId) {
+      if (
+        currentViewRef.current === 'reading' &&
+        currentBookIdRef.current === route.bookId &&
+        selectedBook?.id === route.bookId
+      ) {
+        setView('reading')
+        return
+      }
       const attempt = ++bookLoadAttempt.current
       setBookLoadError(null)
       setLoadingBookId(route.bookId)
@@ -391,11 +421,16 @@ function ReaderWorkspaceContent() {
     }
   }
 
-  const pushWorkspaceRoute = (route: { view: View; bookId?: string }) => {
-    const nextHref = workspaceHref(route.view, route.bookId)
+  const pushWorkspaceRoute = (route: WorkspaceRoute) => {
+    const nextHref = workspaceHref(route.view, route.bookId, route.sourceTarget)
     const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`
     if (currentHref !== nextHref) {
-      const nextState: WorkspaceHistoryState = { ...window.history.state, [WORKSPACE_HISTORY_KEY]: true, ...route }
+      const nextState: WorkspaceHistoryState = {
+        ...window.history.state,
+        [WORKSPACE_HISTORY_KEY]: true,
+        ...route,
+        sourceTarget: route.sourceTarget || null
+      }
       window.history.pushState(nextState, '', nextHref)
     }
     applyWorkspaceRoute(route)
@@ -403,6 +438,7 @@ function ReaderWorkspaceContent() {
 
   const handleOpenBook = async (id: string) => {
     const attempt = ++bookLoadAttempt.current
+    setSourceTarget(null)
     setShowApiKeyAlert(false)
     setBookLoadError(null)
     setLoadingBookId(id)
@@ -418,6 +454,7 @@ function ReaderWorkspaceContent() {
         delete nextState[READING_STEP_HISTORY_KEY]
         delete nextState.readingTab
         delete nextState.readingPhase
+        delete nextState.sourceTarget
         window.history.pushState({ ...nextState, [WORKSPACE_HISTORY_KEY]: true, view: 'reading', bookId: id }, '', nextHref)
       }
     } catch (error) {
@@ -429,6 +466,22 @@ function ReaderWorkspaceContent() {
   }
 
   const handleSelectBook = (book: Book) => handleOpenBook(book.id)
+
+  const handleOpenAssistantSource = (source: AssistantSource) => {
+    setShowApiKeyAlert(false)
+    setShowHeaderMenu(false)
+    pushWorkspaceRoute({
+      view: 'reading',
+      bookId: source.bookId,
+      sourceTarget: {
+        kind: source.kind,
+        bookId: source.bookId,
+        ...(source.recordId ? { recordId: source.recordId } : {}),
+        ...(source.phaseId ? { phaseId: source.phaseId } : {}),
+        ...(source.questionIndex !== undefined ? { questionIndex: source.questionIndex } : {})
+      }
+    })
+  }
 
   const handleOpenApiSettings = () => {
     setShowApiKeyAlert(false)
@@ -472,14 +525,21 @@ function ReaderWorkspaceContent() {
     if (typeof window === 'undefined') return
 
     const initialRoute = workspaceRouteFromLocation(window.location)
+    setSourceTarget(initialRoute.sourceTarget || null)
     window.history.replaceState(
-      { ...window.history.state, [WORKSPACE_HISTORY_KEY]: true, ...initialRoute },
+      {
+        ...window.history.state,
+        [WORKSPACE_HISTORY_KEY]: true,
+        ...initialRoute,
+        sourceTarget: initialRoute.sourceTarget || null
+      },
       '',
       window.location.href
     )
 
     const handlePopState = () => {
       const route = workspaceRouteFromLocation(window.location)
+      setSourceTarget(route.sourceTarget || null)
       if (
         route.view === 'reading' &&
         route.bookId &&
@@ -499,7 +559,7 @@ function ReaderWorkspaceContent() {
   const currentWorkspaceHref = view === 'settings'
     ? '/?view=settings'
     : view === 'reading' && selectedBook
-      ? `/?view=reading&bookId=${encodeURIComponent(selectedBook.id)}`
+      ? workspaceHref('reading', selectedBook.id, sourceTarget)
       : '/'
   const activeStartupPrompt = getActiveStartupPrompt({
     showTokenDanceWelcome,
@@ -563,7 +623,7 @@ function ReaderWorkspaceContent() {
         <div className="min-h-screen">
           <AppDialogHost lang={lang} />
           <AITaskStatus lang={lang} />
-          {assistantReady && <AssistantWorkspace lang={lang} settings={settings} books={assistantBooks} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} />}
+          {assistantReady && <AssistantWorkspace lang={lang} settings={settings} books={assistantBooks} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} onOpenSource={handleOpenAssistantSource} />}
           {storageWriteError && (
             <div role="alert" className={`sticky top-0 z-50 border-b px-4 py-3 text-sm ${storageWriteError.code === 'local' ? 'border-amber-500/50 bg-amber-950 text-amber-100' : 'border-red-500/50 bg-red-950 text-red-100'}`}>
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
@@ -703,6 +763,7 @@ function ReaderWorkspaceContent() {
               apiKey={settings.apiKey}
               lang={lang}
               quotes={settings.quotes}
+              sourceTarget={sourceTarget}
               onBack={() => {
                 pushWorkspaceRoute({ view: 'bookshelf' }) // 强制刷新书架以显示最新数据
               }}

@@ -284,3 +284,134 @@ describe('ReadingView navigation position', () => {
     }))
   })
 })
+
+describe('ReadingView assistant source targets', () => {
+  const sourceBook: Book = {
+    ...book,
+    status: 'finished',
+    currentPhase: 6,
+    responses: {
+      background: '背景阶段内容',
+      overview: '概览阶段内容'
+    },
+    noteRecords: [{
+      id: 'note-target',
+      type: 'note',
+      content: '需要定位的读书笔记',
+      createdAt: 2
+    }],
+    practiceRecords: [{
+      id: 'practice-target',
+      bookId: 'book-1',
+      content: '需要定位的费曼实践',
+      aiReview: '需要定位的实践点评',
+      scores: { accuracy: 80, completeness: 80, clarity: 80, overall: 80 },
+      passed: true,
+      createdAt: 3
+    }],
+    qaPracticeRecords: [{
+      id: 'qa-target',
+      bookId: 'book-1',
+      questions: [
+        {
+          persona: 'elementary',
+          personaName: '小学生',
+          question: '第一个角色问题',
+          userAnswer: '第一条回答',
+          aiReview: '第一条点评',
+          score: 70,
+          passed: true,
+          answeredAt: 4,
+          reviewedAt: 4
+        },
+        {
+          persona: 'professional',
+          personaName: '专业人士',
+          question: '需要定位的角色问题',
+          userAnswer: '第二条回答',
+          aiReview: '第二条点评',
+          score: 70,
+          passed: true,
+          answeredAt: 5,
+          reviewedAt: 5
+        }
+      ],
+      allPassed: true,
+      createdAt: 4,
+      updatedAt: 5
+    }]
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    Object.defineProperty(window, 'scrollTo', { value: jest.fn(), writable: true })
+    HTMLElement.prototype.scrollIntoView = jest.fn()
+    jest.spyOn(store, 'getBook').mockImplementation(() => sourceBook)
+    jest.spyOn(store, 'getQAPracticeRecords').mockReturnValue(sourceBook.qaPracticeRecords || [])
+  })
+
+  afterEach(() => jest.restoreAllMocks())
+
+  function renderWithSource(sourceTarget: NonNullable<React.ComponentProps<typeof ReadingView>['sourceTarget']>) {
+    return render(
+      <ReadingView
+        book={sourceBook}
+        apiKey=""
+        lang="zh"
+        sourceTarget={sourceTarget}
+        onBack={jest.fn()}
+        onOpenSettings={jest.fn()}
+      />
+    )
+  }
+
+  it('opens the notes tab and highlights the referenced note', async () => {
+    renderWithSource({ kind: 'note', bookId: 'book-1', recordId: 'note-target' })
+
+    const note = await screen.findByText('需要定位的读书笔记')
+    const card = note.closest('[data-reading-source-kind="note"]')
+    await waitFor(() => expect(card).toHaveClass('reading-source-highlight'))
+    expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'center'
+    })
+  })
+
+  it('opens practice history and expands the referenced practice record', async () => {
+    renderWithSource({ kind: 'practice', bookId: 'book-1', recordId: 'practice-target' })
+
+    const review = await screen.findByText('需要定位的实践点评')
+    const card = review.closest('[data-reading-source-kind="practice"]')
+    expect(review.closest('details')).toHaveAttribute('open')
+    await waitFor(() => expect(card).toHaveClass('reading-source-highlight'))
+  })
+
+  it('switches to the referenced learning phase and highlights its content', async () => {
+    renderWithSource({ kind: 'phase', bookId: 'book-1', phaseId: 'overview' })
+
+    await screen.findByRole('heading', { name: '全书概览' })
+    const section = document.querySelector(
+      '[data-reading-source-kind="phase"][data-reading-source-id="overview"]'
+    )
+    await waitFor(() => expect(section).toHaveClass('reading-source-highlight'))
+  })
+
+  it('opens Q&A history and highlights the referenced historical question', async () => {
+    const { container } = renderWithSource({
+      kind: 'question',
+      bookId: 'book-1',
+      recordId: 'qa-target',
+      questionIndex: 1
+    })
+
+    const target = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>(
+        '[data-reading-source-kind="question"] [data-reading-source-question-index="1"]'
+      )
+      expect(element).not.toBeNull()
+      return element!
+    })
+    await waitFor(() => expect(target).toHaveClass('reading-source-highlight'))
+    expect(target).toHaveTextContent('需要定位的角色问题')
+  })
+})

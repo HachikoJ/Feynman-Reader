@@ -74,6 +74,26 @@ describe('Watcha login avatar synchronization', () => {
     expect(response.headers.get('location')).toBe('https://reader.deline.top/login?auth=cancelled')
   })
 
+  it('uses error_description when a provider returns access_denied without error', async () => {
+    const response = await GET(new Request(`${callback}?error_description=access_denied&state=test-state`, {
+      headers: { cookie: 'feynman_watcha_pkce=test-nonce.test-verifier' },
+    }))
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get('location')).toBe('https://reader.deline.top/login?returnTo=%2F&auth=cancelled')
+    expect(response.headers.get('content-type') || '').not.toContain('application/json')
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+  })
+
+  it('redirects to a readable login error when no authorization code or error is returned', async () => {
+    const response = await GET(new Request(callback))
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get('location')).toBe('https://reader.deline.top/login?auth=error')
+    expect(response.headers.get('content-type') || '').not.toContain('application/json')
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0')
+  })
+
   it.each(['avatar_url', 'avatarUrl', 'avatar'])('synchronizes the provided %s image before creating the login session', async field => {
     const response = await login({ [field]: 'https://example.test/watcha-user.png' })
     expect(response.status).toBe(307)

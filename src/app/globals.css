@@ -1721,6 +1721,106 @@ canvas {
   border-left-width: 3px;
 }
 
+.assistant-source-list {
+  min-width: 0;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.assistant-source-heading {
+  margin: 0 0 0.45rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.assistant-source-items {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.assistant-source-link {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-card));
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.assistant-source-link:hover,
+.assistant-source-link:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+  outline: none;
+}
+
+.assistant-source-kind {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.assistant-source-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes reading-source-highlight {
+  0%,
+  100% {
+    outline-color: transparent;
+  }
+  25%,
+  70% {
+    outline-color: color-mix(in srgb, var(--accent) 72%, transparent);
+  }
+}
+
+.reading-source-highlight {
+  border-radius: inherit;
+  outline: 3px solid transparent;
+  outline-offset: 3px;
+  animation: reading-source-highlight 2.2s ease-out;
+}
+
+@media (max-width: 639px) {
+  .assistant-source-link {
+    width: 100%;
+  }
+
+  .assistant-source-title {
+    flex: 1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-source-highlight {
+    outline-color: color-mix(in srgb, var(--accent) 72%, transparent);
+    animation: none;
+  }
+}
+
 /* 数字列表样式增强 */
 .markdown-content ol {
   counter-reset: item;

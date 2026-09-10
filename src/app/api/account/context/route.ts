@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { normalizeImportData } from '@/lib/backupValidation'
-import { buildAssistantLearningContext } from '@/lib/assistantLearningContext'
+import { buildAssistantLearningContextWithSources } from '@/lib/assistantLearningContext'
+import { normalizeAssistantSource, normalizeAssistantSources } from '@/lib/assistantSources'
 import { sessionUserId } from '@/lib/server/sessionUser'
 import { getPersistence, isPersistenceUnavailable } from '@/lib/server/persistence'
 
@@ -31,16 +32,30 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: '检索问题格式无效。' }, { status: 400 })
     }
     const store = getPersistence()
-    if (!store.exportUserData) return NextResponse.json({ context: '' }, { headers: { 'Cache-Control': 'no-store' } })
+    if (!store.exportUserData) {
+      return NextResponse.json({ context: '', sources: [] }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     const raw = await store.exportUserData(userId)
     const normalized = normalizeImportData(raw)
-    if (!normalized.valid) return NextResponse.json({ context: '' }, { headers: { 'Cache-Control': 'no-store' } })
+    if (!normalized.valid) {
+      return NextResponse.json({ context: '', sources: [] }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     const selectedBook = typeof payload.bookId === 'string' ? normalized.data.books.find(book => book.id === payload.bookId) : undefined
     const query = payload.query.trim()
-    let context = buildAssistantLearningContext(query, normalized.data.books, selectedBook || null)
+    const learningContext = buildAssistantLearningContextWithSources(query, normalized.data.books, selectedBook || null)
+    let context = learningContext.context
+    let sources = learningContext.sources
     if (!context) {
       const recentBooks = normalized.data.books.slice().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3)
       context = recentBooks.map(book => `书籍概览：${book.name}\n作者：${book.author || '未知'}\n简介：${book.description || '暂无'}\n学习阶段：${book.currentPhase}/6`).join('\n\n')
+      sources = normalizeAssistantSources(recentBooks.map(book => normalizeAssistantSource({
+        kind: 'book',
+        bookId: book.id,
+        label: '最近学习',
+        title: book.name,
+        excerpt: [book.author, book.description].filter(Boolean).join(' · '),
+        createdAt: book.updatedAt
+      })))
     }
     const rawRecord = raw && typeof raw === 'object' ? raw as { settings?: { quotes?: unknown }; assistantSessions?: unknown } : {}
     const quoteSnippets = Array.isArray(rawRecord.settings?.quotes)
@@ -58,7 +73,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (quoteSnippets.length) context += `\n\n相关金句：\n${quoteSnippets.join('\n')}`
     if (sessionSnippets.length) context += `\n\n相关历史会话：\n${sessionSnippets.join('\n')}`
     context = context.slice(0, MAX_CONTEXT_CHARS)
-    return NextResponse.json({ context }, { headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json({ context, sources }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
     if (isPersistenceUnavailable(error)) return NextResponse.json({ error: '账号服务数据库尚未配置或迁移未完成。' }, { status: 503 })
     return NextResponse.json({ error: '读取个性化上下文失败。' }, { status: 500 })

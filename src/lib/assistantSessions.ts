@@ -1,6 +1,10 @@
 import { initDB, indexedDB } from './db'
 import { createLocalId } from './localId'
 import { getAccount, isLocalAuthBypassEnabled } from './accountClient'
+import {
+  normalizeAssistantSources,
+  type AssistantSource
+} from './assistantSources'
 
 /** A persisted message in the independent AI assistant workspace. */
 export type AssistantMessageRole = 'user' | 'assistant' | 'system'
@@ -9,6 +13,7 @@ export interface AssistantMessage {
   id: string
   role: AssistantMessageRole
   content: string
+  sources?: AssistantSource[]
   createdAt: number
 }
 
@@ -46,6 +51,7 @@ export interface CreateAssistantSessionInput {
 export interface AppendAssistantMessageInput {
   role: AssistantMessageRole
   content: string
+  sources?: AssistantSource[]
   createdAt?: number
 }
 
@@ -86,10 +92,12 @@ function normalizeMessage(value: unknown): AssistantMessage | null {
   }
   const content = candidate.content.trim()
   if (!content) return null
+  const sources = normalizeAssistantSources(candidate.sources)
   return {
     id: candidate.id,
     role: candidate.role,
     content,
+    ...(sources.length ? { sources } : {}),
     createdAt: typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt)
       ? candidate.createdAt
       : Date.now()
@@ -378,10 +386,12 @@ export async function appendAssistantMessage(
     const sessions = await readSessions()
     const existing = sessions.find(session => session.id === id)
     if (!existing) throw new Error(`ASSISTANT_SESSION_NOT_FOUND:${id}`)
+    const sources = normalizeAssistantSources(input.sources)
     const message: AssistantMessage = {
       id: createLocalId(),
       role: input.role,
       content,
+      ...(sources.length ? { sources } : {}),
       createdAt: typeof input.createdAt === 'number' && Number.isFinite(input.createdAt)
         ? input.createdAt
         : Date.now()

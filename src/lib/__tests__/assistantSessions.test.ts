@@ -62,6 +62,96 @@ describe('assistant session persistence', () => {
     expect(initDB).toHaveBeenCalled()
   })
 
+  it('persists normalized learning sources with assistant replies', async () => {
+    const session = await createAssistantSession()
+    mockGet.mockResolvedValueOnce({ key: 'assistant-sessions', sessions: [session] })
+
+    const updated = await appendAssistantMessage(session.id, {
+      role: 'assistant',
+      content: '这条回答参考了你的笔记。',
+      sources: [
+        {
+          id: 'forged',
+          kind: 'note',
+          bookId: ' book-1 ',
+          recordId: ' note-1 ',
+          label: ' 读书笔记 ',
+          title: ' 测试书籍 · 读书笔记 ',
+          excerpt: ' 笔记内容 ',
+          createdAt: 2
+        },
+        {
+          id: 'duplicate',
+          kind: 'note',
+          bookId: 'book-1',
+          recordId: 'note-1',
+          label: '重复来源',
+          title: '重复标题'
+        },
+        {
+          id: 'invalid-phase',
+          kind: 'phase',
+          bookId: 'book-1',
+          phaseId: 'not-a-phase',
+          label: '阶段学习',
+          title: '无效阶段'
+        }
+      ]
+    })
+
+    expect(updated.messages[0]).toMatchObject({
+      role: 'assistant',
+      content: '这条回答参考了你的笔记。',
+      sources: [{
+        id: 'note:book-1:note-1',
+        kind: 'note',
+        bookId: 'book-1',
+        recordId: 'note-1',
+        label: '读书笔记',
+        title: '测试书籍 · 读书笔记',
+        excerpt: '笔记内容',
+        createdAt: 2
+      }]
+    })
+  })
+
+  it('ignores malformed or duplicate persisted sources and keeps legacy messages compatible', async () => {
+    mockGet.mockResolvedValue({
+      key: 'assistant-sessions',
+      sessions: [{
+        id: 'session',
+        title: '来源兼容',
+        createdAt: 1,
+        updatedAt: 2,
+        messages: [
+          { id: 'legacy', role: 'assistant', content: '旧回答', createdAt: 1 },
+          {
+            id: 'sources',
+            role: 'assistant',
+            content: '新回答',
+            createdAt: 2,
+            sources: [
+              { kind: 'book', bookId: 'book-1', label: '书籍', title: '测试书籍' },
+              { kind: 'book', bookId: 'book-1', label: '重复', title: '重复书籍' },
+              { kind: 'question', bookId: 'book-1', recordId: '', questionIndex: 2 },
+              { kind: 'phase', bookId: 'book-1', phaseId: 'legacy' }
+            ]
+          }
+        ]
+      }]
+    })
+
+    const [session] = await getAssistantSessions()
+    expect(session.messages[0]).not.toHaveProperty('sources')
+    expect(session.messages[1].sources).toEqual([
+      expect.objectContaining({
+        id: 'book:book-1',
+        kind: 'book',
+        bookId: 'book-1'
+      })
+    ])
+  })
+
   it('serializes concurrent writes so messages are not lost', async () => {
     const session = await createAssistantSession()
     mockGet
