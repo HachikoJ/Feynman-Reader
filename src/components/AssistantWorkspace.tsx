@@ -104,6 +104,12 @@ export function getAssistantMentionQuery(value: string, cursor: number): { start
   return { start: cursor - match[1].length - 1, query: match[1] }
 }
 
+export function filterAssistantMentionBooks(books: Book[], query: string): Book[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return books
+  return books.filter(book => book.name.toLocaleLowerCase().includes(normalizedQuery))
+}
+
 export function buildAssistantAttachmentContext(attachments: AssistantAttachment[]): string {
   if (!attachments.length) return ''
   let remaining = 16_000
@@ -226,12 +232,10 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
     onQuoteAdded?.(nextSettings)
     await flushPendingStoreWrites()
   }
-  const mentionBooks = useMemo(() => {
-    const query = mentionQuery?.query.trim().toLocaleLowerCase() || ''
-    return books
-      .filter(book => !query || book.name.toLocaleLowerCase().includes(query))
-      .slice(0, 8)
-  }, [books, mentionQuery?.query])
+  const mentionBooks = useMemo(
+    () => filterAssistantMentionBooks(books, mentionQuery?.query || ''),
+    [books, mentionQuery?.query]
+  )
   const detectedBook = findAssistantMentionedBook(draft, books, activeBook)
 
   useEffect(() => {
@@ -366,14 +370,19 @@ export default function AssistantWorkspace({ lang, settings, books, activeBook, 
     setActiveSessionId(session.id)
   }
 
-  const insertBookMention = (book: Book) => {
+  const insertBookMention = (book: Book | undefined) => {
+    if (!book) return
     inputRef.current?.insertBookMention(book.name)
     setMentionIndex(0)
+    setMentionQuery(null)
+    setMentionOpen(false)
   }
 
   const openBookMentions = () => {
     inputRef.current?.openBookMentions()
+    setMentionQuery({ start: 0, query: '' })
     setMentionIndex(0)
+    setMentionOpen(true)
   }
 
   const handleFileUpload = async (file?: File) => {

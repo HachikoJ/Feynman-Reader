@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { AlertTriangle, CircleHelp, ExternalLink, Menu, RefreshCw, UserRound, X } from 'lucide-react'
@@ -12,6 +12,7 @@ import {
   getSettings,
   initializeStore,
   reloadBookFromPersistence,
+  subscribeToBooks,
   subscribeToPersistenceErrors,
   PersistenceErrorInfo
 } from '@/lib/store'
@@ -228,6 +229,7 @@ function ReaderWorkspaceContent() {
   const [focusApiConfigurationRequest, setFocusApiConfigurationRequest] = useState(0)
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
   const [assistantReady, setAssistantReady] = useState(false)
+  const [assistantBooks, setAssistantBooks] = useState<Book[]>(() => getBooks())
   const [sourceTarget, setSourceTarget] = useState<AssistantSourceTarget | null>(null)
   const currentViewRef = useRef<View>('bookshelf')
   const currentBookIdRef = useRef<string | null>(null)
@@ -240,6 +242,11 @@ function ReaderWorkspaceContent() {
     currentViewRef.current = view
     currentBookIdRef.current = selectedBook?.id || null
   }, [selectedBook?.id, view])
+
+  useEffect(() => {
+    setAssistantBooks(getBooks())
+    return subscribeToBooks(() => setAssistantBooks(getBooks()))
+  }, [])
 
   useEffect(() => {
     if (!mounted) return
@@ -555,7 +562,6 @@ function ReaderWorkspaceContent() {
   }, [])
 
   const lang = settings.language
-  const assistantBooks = useMemo(() => getBooks(), [bookshelfKey, selectedBook?.updatedAt])
   const currentWorkspaceHref = view === 'settings'
     ? '/?view=settings'
     : view === 'reading' && selectedBook

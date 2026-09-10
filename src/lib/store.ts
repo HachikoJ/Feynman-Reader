@@ -220,8 +220,24 @@ type PersistenceErrorEntry = { scope: string; error: unknown }
 let persistenceErrors: PersistenceErrorEntry[] = []
 const persistenceErrorListeners = new Set<(error: unknown | null) => void>()
 const aiUsageListeners = new Set<() => void>()
+const booksListeners = new Set<() => void>()
 export type PersistenceErrorCode = 'auth' | 'payload-too-large' | 'network' | 'server' | 'local' | 'unknown'
 export type PersistenceErrorInfo = Error & { scope?: string; code?: PersistenceErrorCode; status?: number; retryable?: boolean }
+
+function notifyBooksChanged(): void {
+  booksListeners.forEach(listener => {
+    try {
+      listener()
+    } catch (error) {
+      logger.error('Books listener failed:', error)
+    }
+  })
+}
+
+function setBooksCache(books: Book[]): void {
+  booksCache = books
+  notifyBooksChanged()
+}
 
 function normalizePersistenceError(scope: string, error: unknown): PersistenceErrorInfo {
   const normalized = (error instanceof Error ? error : new Error(String(error || '数据保存失败。'))) as PersistenceErrorInfo
@@ -447,6 +463,11 @@ export function subscribeToPersistenceErrors(listener: (error: unknown | null) =
   return () => persistenceErrorListeners.delete(listener)
 }
 
+export function subscribeToBooks(listener: () => void): () => void {
+  booksListeners.add(listener)
+  return () => booksListeners.delete(listener)
+}
+
 function cloneForStorage<T>(value: T): T {
   return typeof structuredClone === 'function'
     ? structuredClone(value)
@@ -585,8 +606,8 @@ export async function initializeStore(options: { authenticated?: boolean } = {})
             ? keyPayload.providers[configuredProvider]
             : keyPayload.configured)
           settingsCache = migrateToTokenDanceAfterSunset({ ...DEFAULT_SETTINGS, ...data.settings, apiKey: serverKeyConfigured ? SERVER_MANAGED_API_KEY : '' })
-          booksCache = data.books.filter(book => !book.isSample && book.id !== 'sample-the-kite-runner').map(normalizeBookLearningState)
-          if (booksCache.length === 0) booksCache = [createSampleBook()]
+          setBooksCache(data.books.filter(book => !book.isSample && book.id !== 'sample-the-kite-runner').map(normalizeBookLearningState))
+          if (booksCache.length === 0) setBooksCache([createSampleBook()])
           aiUsageCache = data.aiUsageRecords.slice(-MAX_AI_USAGE_RECORDS)
           const bookIds = new Set(booksCache.map(book => book.id))
           const normalizedLists = normalizeBookLists(data.bookLists, bookIds)
@@ -621,16 +642,16 @@ export async function initializeStore(options: { authenticated?: boolean } = {})
       saveSettings(migratedSettings)
     }
     const loadedBooks = Array.isArray(books) ? books : []
-    booksCache = loadedBooks.map(normalizeBookLearningState)
+    setBooksCache(loadedBooks.map(normalizeBookLearningState))
     const legacySample = booksCache.find(book => book.isSample && book.id === 'sample-the-kite-runner')
     if (legacySample && legacySample.sampleDataVersion !== SAMPLE_BOOK_DATA_VERSION) {
       const refreshedSample = createSampleBook()
-      booksCache = booksCache.map(book => book.id === refreshedSample.id ? refreshedSample : book)
+      setBooksCache(booksCache.map(book => book.id === refreshedSample.id ? refreshedSample : book))
       await saveIndexedDBBook(refreshedSample)
     }
     if (booksCache.length === 0 && process.env.NODE_ENV !== 'test' && typeof localStorage !== 'undefined' && !localStorage.getItem(SAMPLE_BOOK_SEEDED_KEY)) {
       const sampleBook = createSampleBook()
-      booksCache = [sampleBook]
+      setBooksCache([sampleBook])
       localStorage.setItem(SAMPLE_BOOK_SEEDED_KEY, 'true')
       await saveIndexedDBBooks([sampleBook])
     }
@@ -984,7 +1005,7 @@ export function replaceAIUsageRecords(records: AIUsageRecord[]): void {
 }
 
 export function saveBooks(books: Book[]): void {
-  booksCache = books.map(normalizeBookLearningState)
+  setBooksCache(books.map(normalizeBookLearningState))
   const snapshot = cloneForStorage(booksCache)
   if (cloudMode) {
     queueCloudSnapshot()
@@ -1115,7 +1136,7 @@ export function addBook(name: string, author?: string, cover?: string, descripti
     createdAt: now,
     updatedAt: now
   }
-  booksCache = [newBook, ...booksCache]
+  setBooksCache([newBook, ...booksCache])
   persistBook(newBook)
   return newBook
 }
@@ -1164,7 +1185,7 @@ export function updateBook(id: string, updates: Partial<Book>): void {
   const updatedBook = normalizeBookLearningState({
     ...existingBook, ...metadataUpdates, updatedAt: Math.max(Date.now(), existingBook.updatedAt + 1),
   })
-  booksCache = booksCache.map(book => book.id === id ? updatedBook : book)
+  setBooksCache(booksCache.map(book => book.id === id ? updatedBook : book))
   persistExistingBook(updatedBook, existingBook.updatedAt, Object.keys(updates).every(key =>
     ['name', 'author', 'cover', 'description', 'tags'].includes(key)
   ))
@@ -1175,7 +1196,7 @@ export function deleteBook(id: string): void {
   const previousOrganization = { lists: bookListsCache, relations: bookRelationsCache }
   const existingBook = booksCache.find(book => book.id === id)
   if (!existingBook) throw new Error(`BOOK_NOT_FOUND:${id}`)
-  booksCache = booksCache.filter(book => book.id !== id)
+  setBooksCache(booksCache.filter(book => book.id !== id))
   persistBookDeletion(id, existingBook.updatedAt)
   bookListsCache = bookListsCache.map(list => ({
     ...list,
@@ -1192,7 +1213,7 @@ export function restoreBook(book: Book): void {
   if (booksCache.some(existing => existing.id === restoredBook.id)) {
     throw new Error(`BOOK_ALREADY_EXISTS:${restoredBook.id}`)
   }
-  booksCache = [restoredBook, ...booksCache]
+  setBooksCache([restoredBook, ...booksCache])
   persistRestoredBook(restoredBook)
 }
 
@@ -1202,7 +1223,7 @@ export function resetStoreCache(): void {
   cloudSnapshotTimer = null
   cloudSnapshotPending = false
   settingsCache = { ...DEFAULT_SETTINGS }
-  booksCache = []
+  setBooksCache([])
   aiUsageCache = []
   bookListsCache = []
   bookRelationsCache = []
@@ -1247,23 +1268,23 @@ export async function reloadBookFromPersistence(id: string): Promise<Book | unde
     const cachedBook = booksCache.find(book => book.id === id)
     if (cachedBook !== beforeRead) return cachedBook
     const normalizedBook = normalizeBookLearningState(remoteBook)
-    booksCache = booksCache.some(book => book.id === id)
+    setBooksCache(booksCache.some(book => book.id === id)
       ? booksCache.map(book => book.id === id ? normalizedBook : book)
-      : [normalizedBook, ...booksCache]
+      : [normalizedBook, ...booksCache])
     return normalizedBook
   }
   await booksWriteQueue
   const storedBook = await getIndexedDBBook(id)
 
   if (!storedBook) {
-    booksCache = booksCache.filter(book => book.id !== id)
+    setBooksCache(booksCache.filter(book => book.id !== id))
     return undefined
   }
 
   const normalizedBook = normalizeBookLearningState(storedBook)
-  booksCache = booksCache.map(book => book.id === id ? normalizedBook : book)
+  setBooksCache(booksCache.map(book => book.id === id ? normalizedBook : book))
   if (!booksCache.some(book => book.id === id)) {
-    booksCache = [normalizedBook, ...booksCache]
+    setBooksCache([normalizedBook, ...booksCache])
   }
   return normalizedBook
 }
@@ -1277,12 +1298,12 @@ export async function reloadBooksFromPersistence(): Promise<Book[]> {
     const normalized = normalizeImportData(await response.json())
     if (!normalized.valid) throw new Error(normalized.error)
     const remote = normalized.data.books.filter(book => !book.isSample && book.id !== SAMPLE_BOOK_ID).map(normalizeBookLearningState)
-    if (booksCache === beforeRead) booksCache = remote.length > 0 ? remote : [createSampleBook()]
+    if (booksCache === beforeRead) setBooksCache(remote.length > 0 ? remote : [createSampleBook()])
     return getBooks()
   }
   await booksWriteQueue
   const storedBooks = await getIndexedDBBooks()
-  booksCache = (Array.isArray(storedBooks) ? storedBooks : []).map(normalizeBookLearningState)
+  setBooksCache((Array.isArray(storedBooks) ? storedBooks : []).map(normalizeBookLearningState))
   return getBooks()
 }
 
@@ -1323,7 +1344,7 @@ function replaceBookInCache(book: Book): void {
   if (!existingBook) throw new Error(`BOOK_NOT_FOUND:${book.id}`)
   if (existingBook._summaryOnly) throw new Error('书籍详情尚未读取，请重新打开书籍后重试。')
   const normalizedBook = normalizeBookLearningState({ ...book, updatedAt: Math.max(book.updatedAt, existingBook.updatedAt + 1) })
-  booksCache = booksCache.map(existing => existing.id === book.id ? normalizedBook : existing)
+  setBooksCache(booksCache.map(existing => existing.id === book.id ? normalizedBook : existing))
   persistExistingBook(normalizedBook, existingBook.updatedAt)
 }
 

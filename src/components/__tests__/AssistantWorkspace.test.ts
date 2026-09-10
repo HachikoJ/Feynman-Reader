@@ -4,6 +4,7 @@ import {
   buildAssistantAttachmentContext,
   buildAssistantBookContext,
   deriveAssistantSessionTitle,
+  filterAssistantMentionBooks,
   findAssistantMentionedBook,
   getAssistantMentionQuery,
   clampAssistantPosition,
@@ -43,6 +44,14 @@ describe('Feynman Assistant context helpers', () => {
     expect(getAssistantMentionQuery('比较一下 @追风', 8)).toEqual({ start: 5, query: '追风' })
     expect(getAssistantMentionQuery('邮箱 a@b.com', 10)).toBeNull()
     expect(getAssistantMentionQuery('没有引用', 4)).toBeNull()
+  })
+
+  it('keeps every matching book in the @ candidate list', () => {
+    const library = Array.from({ length: 12 }, (_, index) => makeBook(`book-${index + 1}`, `候选书 ${index + 1}`))
+
+    expect(filterAssistantMentionBooks(library, '')).toHaveLength(12)
+    expect(filterAssistantMentionBooks(library, '候')).toHaveLength(12)
+    expect(filterAssistantMentionBooks(library, '候选书 12').map(book => book.name)).toEqual(['候选书 12'])
   })
 
   it('includes learning records but excludes the uploaded full book document', () => {

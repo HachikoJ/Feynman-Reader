@@ -45,6 +45,7 @@ import {
   isQAPracticeRecordComplete,
   applyImportData,
   flushPendingStoreWrites,
+  subscribeToBooks,
   subscribeToPersistenceErrors,
   exportAllData,
   previewImportData,
@@ -231,6 +232,26 @@ describe('IndexedDB-backed store cache', () => {
     expect(getBooks()).toEqual(books)
     expect(mockSaveSettings).toHaveBeenCalledWith(settings)
     expect(mockSaveBooks).toHaveBeenCalledWith(books)
+  })
+
+  it('notifies subscribers whenever the in-memory book list changes', () => {
+    resetStoreCache()
+    const listener = jest.fn()
+    const unsubscribe = subscribeToBooks(listener)
+
+    try {
+      saveBooks([{
+        id: 'subscriber-book', name: 'Subscriber Book', status: 'unread', currentPhase: 0, bestScore: 0,
+        noteRecords: [], responses: {}, practiceRecords: [], qaPracticeRecords: [],
+        createdAt: 1, updatedAt: 1,
+      }])
+      expect(listener).toHaveBeenCalledTimes(1)
+
+      addBook('Second subscriber book')
+      expect(listener).toHaveBeenCalledTimes(2)
+    } finally {
+      unsubscribe()
+    }
   })
 
   it('adds, updates, and deletes one book without rewriting the full library', async () => {
