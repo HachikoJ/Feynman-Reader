@@ -2,6 +2,15 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.2.6] - 2026-09-10
+
+### Changed
+
+- Preserve browser history for bookshelf, reading, and settings navigation. Browser back now returns to the previous workspace view instead of leaving the single-page reader.
+- Preserve reading tabs and learning phases in browser history, including forward/back restoration and protection against stale asynchronous book loads.
+
+No database, authentication or account permission changes. See [release notes](docs/releases/v0.2.6.md).
+
 ## [0.2.5] - 2026-09-09
 
 ### Added

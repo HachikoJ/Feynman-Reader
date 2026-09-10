@@ -47,12 +47,35 @@ import { useServiceWorker } from '@/lib/useServiceWorker'
 import AITaskStatus from '@/components/AITaskStatus'
 import { LoadingState, Skeleton } from '@/components/Skeleton'
 import AppDialogHost from '@/components/AppDialogHost'
-import { APP_ROUTES } from '@/lib/appRoutes'
+import { APP_ROUTES, READING_STEP_HISTORY_KEY } from '@/lib/appRoutes'
 import { accountLoginHref, isLocalAuthBypassEnabled, isWatchaOAuthEnabled } from '@/lib/accountClient'
 import { isTokenDanceEnabled } from '@/lib/aiProviderPolicy'
 import { SAMPLE_BOOK_ID } from '@/lib/sampleBook'
 
 type View = 'bookshelf' | 'reading' | 'settings'
+
+const WORKSPACE_HISTORY_KEY = '__feynmanReaderWorkspace'
+type WorkspaceHistoryState = {
+  [WORKSPACE_HISTORY_KEY]?: true
+  view: View
+  bookId?: string
+}
+
+function workspaceHref(view: View, bookId?: string): string {
+  if (view === 'reading' && bookId) return `/?view=reading&bookId=${encodeURIComponent(bookId)}`
+  if (view === 'settings') return '/?view=settings'
+  return '/'
+}
+
+function workspaceRouteFromLocation(location: Location): { view: View; bookId?: string } {
+  const params = new URLSearchParams(location.search)
+  const requestedView = params.get('view')
+  if (requestedView === 'reading' && params.get('bookId')) {
+    return { view: 'reading', bookId: params.get('bookId') || undefined }
+  }
+  if (requestedView === 'settings') return { view: 'settings' }
+  return { view: 'bookshelf' }
+}
 
 async function loadBookForReading(id: string): Promise<Book> {
   const cachedBook = getBooks().find(book => book.id === id)
@@ -185,10 +208,17 @@ function ReaderWorkspaceContent() {
   const [focusApiConfigurationRequest, setFocusApiConfigurationRequest] = useState(0)
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
   const [assistantReady, setAssistantReady] = useState(false)
+  const currentViewRef = useRef<View>('bookshelf')
+  const currentBookIdRef = useRef<string | null>(null)
 
   // P1 新增：启用撤销/重做快捷键
   useUndoRedoShortcuts(settings.language)
   useServiceWorker()
+
+  useEffect(() => {
+    currentViewRef.current = view
+    currentBookIdRef.current = selectedBook?.id || null
+  }, [selectedBook?.id, view])
 
   useEffect(() => {
     if (!mounted) return
@@ -259,15 +289,22 @@ function ReaderWorkspaceContent() {
       setSettings(saved)
       document.documentElement.setAttribute('data-theme', saved.theme)
       const books = getBooks()
-      if (requestedView === 'reading' && requestedBookId) {
+      const currentRoute = typeof window !== 'undefined' ? workspaceRouteFromLocation(window.location) : null
+      if (
+        requestedView === 'reading' &&
+        requestedBookId &&
+        currentRoute?.view === 'reading' &&
+        currentRoute.bookId === requestedBookId
+      ) {
+        const initialBookAttempt = ++bookLoadAttempt.current
         try {
           const loadedBook = await loadBookForReading(requestedBookId)
-          if (cancelled) return
+          if (cancelled || initialBookAttempt !== bookLoadAttempt.current) return
           setBookLoadError(null)
           setSelectedBook(loadedBook)
           setView('reading')
         } catch (error) {
-          if (cancelled) return
+          if (cancelled || initialBookAttempt !== bookLoadAttempt.current) return
           setBookLoadError({ id: requestedBookId, message: error instanceof Error ? error.message : '读取书籍详情失败。' })
           setSelectedBook(null)
           setView('bookshelf')
@@ -320,6 +357,50 @@ function ReaderWorkspaceContent() {
     }
   }
 
+  const applyWorkspaceRoute = (route: { view: View; bookId?: string }) => {
+    if (route.view === 'reading' && route.bookId) {
+      const attempt = ++bookLoadAttempt.current
+      setBookLoadError(null)
+      setLoadingBookId(route.bookId)
+      void loadBookForReading(route.bookId)
+        .then(loadedBook => {
+          if (attempt !== bookLoadAttempt.current) return
+          setSelectedBook(loadedBook)
+          setView('reading')
+        })
+        .catch(error => {
+          if (attempt !== bookLoadAttempt.current) return
+          setBookLoadError({ id: route.bookId || '', message: error instanceof Error ? error.message : '读取书籍详情失败。' })
+          setSelectedBook(null)
+          setView('bookshelf')
+        })
+        .finally(() => {
+          if (attempt === bookLoadAttempt.current) setLoadingBookId(null)
+        })
+      return
+    }
+
+    ++bookLoadAttempt.current
+    setLoadingBookId(null)
+    setBookLoadError(null)
+    setView(route.view)
+    if (route.view === 'bookshelf') {
+      setSelectedBook(null)
+      setOpenDataManagement(false)
+      setBookshelfKey(previous => previous + 1)
+    }
+  }
+
+  const pushWorkspaceRoute = (route: { view: View; bookId?: string }) => {
+    const nextHref = workspaceHref(route.view, route.bookId)
+    const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    if (currentHref !== nextHref) {
+      const nextState: WorkspaceHistoryState = { ...window.history.state, [WORKSPACE_HISTORY_KEY]: true, ...route }
+      window.history.pushState(nextState, '', nextHref)
+    }
+    applyWorkspaceRoute(route)
+  }
+
   const handleOpenBook = async (id: string) => {
     const attempt = ++bookLoadAttempt.current
     setShowApiKeyAlert(false)
@@ -330,7 +411,15 @@ function ReaderWorkspaceContent() {
       if (attempt !== bookLoadAttempt.current) return
       setSelectedBook(loadedBook)
       setView('reading')
-      window.history.replaceState({}, '', `/?view=reading&bookId=${encodeURIComponent(id)}`)
+      const nextHref = workspaceHref('reading', id)
+      const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`
+      if (currentHref !== nextHref) {
+        const nextState = { ...window.history.state }
+        delete nextState[READING_STEP_HISTORY_KEY]
+        delete nextState.readingTab
+        delete nextState.readingPhase
+        window.history.pushState({ ...nextState, [WORKSPACE_HISTORY_KEY]: true, view: 'reading', bookId: id }, '', nextHref)
+      }
     } catch (error) {
       if (attempt !== bookLoadAttempt.current) return
       setBookLoadError({ id, message: error instanceof Error ? error.message : '读取书籍详情失败。' })
@@ -344,8 +433,7 @@ function ReaderWorkspaceContent() {
   const handleOpenApiSettings = () => {
     setShowApiKeyAlert(false)
     setFocusApiConfigurationRequest(request => request + 1)
-    setView('settings')
-    window.history.replaceState({}, '', '/?view=settings')
+    pushWorkspaceRoute({ view: 'settings' })
   }
 
   const handleOpenOnboarding = () => {
@@ -377,9 +465,34 @@ function ReaderWorkspaceContent() {
   const handleOnboardingConfigureApi = () => {
     setShowApiKeyAlert(false)
     setFocusApiConfigurationRequest(request => request + 1)
-    setView('settings')
-    window.history.replaceState({}, '', '/?view=settings')
+    pushWorkspaceRoute({ view: 'settings' })
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const initialRoute = workspaceRouteFromLocation(window.location)
+    window.history.replaceState(
+      { ...window.history.state, [WORKSPACE_HISTORY_KEY]: true, ...initialRoute },
+      '',
+      window.location.href
+    )
+
+    const handlePopState = () => {
+      const route = workspaceRouteFromLocation(window.location)
+      if (
+        route.view === 'reading' &&
+        route.bookId &&
+        currentViewRef.current === 'reading' &&
+        currentBookIdRef.current === route.bookId
+      ) {
+        return
+      }
+      applyWorkspaceRoute(route)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
 
   const lang = settings.language
   const assistantBooks = useMemo(() => getBooks(), [bookshelfKey, selectedBook?.updatedAt])
@@ -475,9 +588,8 @@ function ReaderWorkspaceContent() {
                   type="button"
                   className="btn-secondary shrink-0 py-2 text-sm"
                   onClick={() => {
-                    setSelectedBook(null)
                     setOpenDataManagement(true)
-                    setView('settings')
+                    pushWorkspaceRoute({ view: 'settings' })
                   }}
                 >
                   {localOnlyMode ? (lang === 'zh' ? '打开本地数据管理' : 'Open local data management') : (lang === 'zh' ? '前往账号中心' : 'Open Account Center')}
@@ -492,10 +604,7 @@ function ReaderWorkspaceContent() {
               <button
                 type="button"
                   onClick={() => {
-                    setView('bookshelf')
-                    setSelectedBook(null)
-                    window.history.replaceState({}, '', '/')
-                    setBookshelfKey(prev => prev + 1)
+                    pushWorkspaceRoute({ view: 'bookshelf' })
                 }}
                 className="flex min-h-11 min-w-0 shrink items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] sm:gap-3"
                 aria-label={lang === 'zh' ? '返回书架首页' : 'Return to bookshelf home'}
@@ -519,10 +628,7 @@ function ReaderWorkspaceContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setView('bookshelf')
-                    setSelectedBook(null)
-                    window.history.replaceState({}, '', '/')
-                    setBookshelfKey(prev => prev + 1) // 强制刷新书架
+                    pushWorkspaceRoute({ view: 'bookshelf' }) // 强制刷新书架
                   }}
                   className={`nav-item min-h-10 px-2 sm:px-3 ${view === 'bookshelf' ? 'active' : ''}`}
                   aria-label={lang === 'zh' ? '打开书架' : 'Open bookshelf'}
@@ -533,8 +639,7 @@ function ReaderWorkspaceContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setView('settings')
-                    window.history.replaceState({}, '', '/?view=settings')
+                    pushWorkspaceRoute({ view: 'settings' })
                   }}
                   className={`nav-item min-h-10 px-2 sm:px-3 ${view === 'settings' ? 'active' : ''}`}
                   aria-label={lang === 'zh' ? '打开设置' : 'Open settings'}
@@ -599,10 +704,7 @@ function ReaderWorkspaceContent() {
               lang={lang}
               quotes={settings.quotes}
               onBack={() => {
-                setSelectedBook(null)
-                setView('bookshelf')
-                window.history.replaceState({}, '', '/')
-                setBookshelfKey(prev => prev + 1) // 强制刷新书架以显示最新数据
+                pushWorkspaceRoute({ view: 'bookshelf' }) // 强制刷新书架以显示最新数据
               }}
               onOpenSettings={handleOpenApiSettings}
               onQuoteAdded={handleSettingsChange}

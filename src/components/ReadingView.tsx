@@ -31,6 +31,7 @@ import { buildMissingBookMetadataUpdates, needsBookMetadataEnrichment } from '@/
 import BookListManager from './BookListManager'
 import { BookLearningAnalytics } from './Charts'
 import { useAccountAccess } from './AuthGuard'
+import { READING_STEP_HISTORY_KEY } from '@/lib/appRoutes'
 
 interface Props {
   book: Book
@@ -43,6 +44,15 @@ interface Props {
 }
 
 type TabType = 'phase' | 'practice' | 'notes' | 'recommendations'
+
+type ReadingStepHistoryState = {
+  [READING_STEP_HISTORY_KEY]?: true
+  view?: string
+  bookId?: string
+  readingBookId?: string
+  readingTab?: TabType
+  readingPhase?: number
+}
 
 type AnalysisTaskEvent = {
   task: BookAnalysisTask
@@ -168,6 +178,67 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const needsAiConfiguration = missingApiKey || aiConsentRequired || apiKeyInvalid
   const practiceBusy = practiceStatus === 'evaluating' || practiceStatus === 'saving'
   const analysisRunning = loading || analyzingInBackground || analysisTask?.status === 'running'
+
+  const pushReadingStep = (nextTab: TabType, nextPhase: number) => {
+    window.history.pushState(
+      {
+        ...window.history.state,
+        [READING_STEP_HISTORY_KEY]: true,
+        readingBookId: book.id,
+        readingTab: nextTab,
+        readingPhase: nextPhase
+      } satisfies ReadingStepHistoryState,
+      '',
+      window.location.href
+    )
+  }
+
+  useEffect(() => {
+    const currentState = window.history.state as ReadingStepHistoryState | null
+    const validTabs: TabType[] = ['phase', 'practice', 'notes', 'recommendations']
+    const hasCurrentReadingState = currentState?.[READING_STEP_HISTORY_KEY] &&
+      currentState.view === 'reading' &&
+      currentState.bookId === book.id &&
+      currentState.readingBookId === book.id &&
+      new URLSearchParams(window.location.search).get('view') === 'reading' &&
+      new URLSearchParams(window.location.search).get('bookId') === book.id
+    const initialTab = hasCurrentReadingState && currentState?.readingTab && validTabs.includes(currentState.readingTab)
+      ? currentState.readingTab
+      : 'phase'
+    const initialPhase = hasCurrentReadingState && typeof currentState?.readingPhase === 'number'
+      ? Math.max(0, Math.min(LEARNING_PHASES.length - 1, currentState.readingPhase))
+      : currentPhase
+
+    if (!currentState?.[READING_STEP_HISTORY_KEY] || currentState.readingBookId !== book.id) {
+      window.history.replaceState(
+        {
+          ...window.history.state,
+          [READING_STEP_HISTORY_KEY]: true,
+          readingBookId: book.id,
+          readingTab: initialTab,
+          readingPhase: initialPhase
+        } satisfies ReadingStepHistoryState,
+        '',
+        window.location.href
+      )
+    } else {
+      setActiveTab(initialTab)
+      setCurrentPhase(initialPhase)
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state as ReadingStepHistoryState | null
+      if (!state?.[READING_STEP_HISTORY_KEY]) return
+      if (state.readingTab && validTabs.includes(state.readingTab)) setActiveTab(state.readingTab)
+      if (typeof state.readingPhase === 'number') {
+        setCurrentPhase(Math.max(0, Math.min(LEARNING_PHASES.length - 1, state.readingPhase)))
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+    // The history entry is initialized once for this reading session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleQuoteSelected = async (text: string) => {
     if (!isAuthenticated) {
@@ -458,11 +529,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   }
 
   const handleTabChange = (tab: TabType) => {
+    if (tab !== activeTab) pushReadingStep(tab, currentPhase)
     setActiveTab(tab)
     scrollToReadingAnchor(readingTabsRef)
   }
 
   const handlePhaseChange = (idx: number) => {
+    if (idx !== currentPhase) pushReadingStep(activeTab, idx)
     setCurrentPhase(idx)
     scrollToReadingAnchor(phaseContentRef)
   }
