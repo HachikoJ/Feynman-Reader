@@ -38,7 +38,21 @@ jobs:
           assert.equal(lock.packages[''].version, version, 'Root package version must match')
           const ref = process.env.GITHUB_REF || ''
           if (ref.startsWith('refs/tags/')) {
-            assert.equal(ref.slice('refs/tags/'.length), `v${version}`, 'Release tag must match package version')
+            const tag = ref.slice('refs/tags/'.length)
+            // `vX.Y.Z` tags are feature releases. `deploy-vX.Y.Z-<short sha>`
+            // tags snapshot the commit that is actually served in production,
+            // so they carry the version they were deployed from instead of
+            // matching package.json exactly.
+            const snapshot = /^deploy-v(\d+\.\d+\.\d+)-([0-9a-f]{7,40})$/.exec(tag)
+            if (snapshot) {
+              assert.equal(snapshot[1], version, 'Deployment snapshot tag must carry the package version')
+              assert.ok(
+                (process.env.GITHUB_SHA || '').startsWith(snapshot[2]),
+                'Deployment snapshot tag must carry the commit it points at'
+              )
+            } else {
+              assert.equal(tag, `v${version}`, 'Release tag must match package version')
+            }
           }
           NODE
 
