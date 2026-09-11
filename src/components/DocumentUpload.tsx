@@ -1,15 +1,23 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Language } from '@/lib/i18n'
 import { logger } from '@/lib/logger'
-import { MAX_DOCUMENT_FILE_SIZE, parseDocument, SUPPORTED_FILE_TYPES } from '@/lib/document-parser'
+import {
+  MAX_DOCUMENT_FILE_SIZE,
+  SUPPORTED_FILE_TYPES,
+  SUPPORTED_FILE_TYPE_HINT,
+  UNSUPPORTED_BOOK_FORMATS,
+  parseDocument
+} from '@/lib/document-parser'
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, createDeepSeekClient, analyzeDocumentForBookInfo, AnalyzedBookInfo, GeneratedTag } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { tokendanceRecoveryMessage } from '@/lib/tokendance'
-import { getSettings, addBook, flushPendingStoreWrites, reloadBookFromPersistence, BookTag } from '@/lib/store'
+import { getSettings, addBook, flushPendingStoreWrites, reloadBookFromPersistence, BookTag, BookChapter } from '@/lib/store'
 import { MAX_BOOK_TAGS, MAX_TAG_LENGTH } from '@/lib/dataLimits'
 import { detectMaliciousContent, sanitizeTextInput, validateAuthorName, validateBookName, validateContent } from '@/lib/validation'
+import { coverReadErrorMessage, readCoverFile } from '@/lib/coverImage'
+import { getSafeImageSrc } from '@/lib/safeUrl'
 import AppIcon from './AppIcon'
 import { useAccountAccess } from './AuthGuard'
 import { isWatchaOAuthEnabled } from '@/lib/accountClient'
@@ -23,6 +31,19 @@ interface Props {
 
 type UploadStep = 'upload' | 'analyzing' | 'confirm'
 
+/** 把解析出的章节转换成只保存偏移量的定位表，避免快照里重复存正文。 */
+function buildChapterIndex(chapters: { title: string; content: string }[] | undefined): BookChapter[] | undefined {
+  if (!chapters || chapters.length === 0) return undefined
+  const index: BookChapter[] = []
+  let cursor = 0
+  for (const chapter of chapters) {
+    const block = `${chapter.title}\n\n${chapter.content}`
+    index.push({ title: chapter.title, start: cursor, length: block.length })
+    cursor += block.length + 2
+  }
+  return index
+}
+
 export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSettings }: Props) {
   const { isAuthenticated, requestLogin } = useAccountAccess()
   const [step, setStep] = useState<UploadStep>('upload')
@@ -32,23 +53,35 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
   const [analyzedInfo, setAnalyzedInfo] = useState<AnalyzedBookInfo | null>(null)
   const [analysisWarning, setAnalysisWarning] = useState<string | null>(null)
   const [documentContent, setDocumentContent] = useState<string>('')
-  
+  const [chapters, setChapters] = useState<BookChapter[] | undefined>(undefined)
+  const [parsedLabel, setParsedLabel] = useState<string>('')
+
   // 可编辑的表单字段
   const [bookName, setBookName] = useState('')
   const [bookAuthor, setBookAuthor] = useState('')
   const [bookDesc, setBookDesc] = useState('')
+  const [bookCover, setBookCover] = useState('')
   const [bookTags, setBookTags] = useState<GeneratedTag[]>([])
   const [newTagName, setNewTagName] = useState('')
   const [newTagCategory, setNewTagCategory] = useState('社科')
-  const [customCategory, setCustomCategory] = useState('') // 自定义分类名
-  
+  const [customCategory, setCustomCategory] = useState('')
+  const [readingCover, setReadingCover] = useState(false)
+  const [coverError, setCoverError] = useState<string | null>(null)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const coverInputRef = useRef<HTMLInputElement>(null)
   const descTextareaRef = useRef<HTMLTextAreaElement>(null)
   const fileAnalysisInFlightRef = useRef(false)
   const saveInFlightRef = useRef(false)
+  const coverReadControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    coverReadControllerRef.current?.abort()
+  }, [])
 
   const handleClose = () => {
     if (saveInFlightRef.current) return
+    coverReadControllerRef.current?.abort()
     onClose()
   }
 
@@ -65,6 +98,31 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
     autoResizeTextarea(e.target)
   }
 
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    coverReadControllerRef.current?.abort()
+    const controller = new AbortController()
+    coverReadControllerRef.current = controller
+    setReadingCover(true)
+    setCoverError(null)
+    try {
+      const dataUrl = await readCoverFile(file, controller.signal)
+      if (coverReadControllerRef.current !== controller) return
+      setBookCover(dataUrl)
+    } catch (coverReadError) {
+      if (coverReadControllerRef.current !== controller) return
+      if (coverReadError instanceof Error && coverReadError.message === 'COVER_READ_ABORTED') return
+      setCoverError(coverReadErrorMessage(coverReadError, lang))
+    } finally {
+      if (coverReadControllerRef.current === controller) {
+        coverReadControllerRef.current = null
+        setReadingCover(false)
+      }
+    }
+  }
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (fileAnalysisInFlightRef.current) return
     const file = e.target.files?.[0]
@@ -78,55 +136,72 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
 
     try {
       logger.debug('开始解析文件:', file.name, file.type, file.size)
-      
-      // 解析文档
+
       const parsed = await parseDocument(file)
       logger.debug('文档解析完成，内容长度:', parsed.content.length)
       setDocumentContent(parsed.content)
+      setChapters(buildChapterIndex(parsed.chapters))
+      setBookCover(parsed.cover || '')
+      setParsedLabel(parsed.chapters && parsed.chapters.length > 1
+        ? (lang === 'zh'
+          ? `已识别 ${parsed.chapters.length} 个章节 · ${parsed.content.length.toLocaleString()} 字符`
+          : `${parsed.chapters.length} chapters · ${parsed.content.length.toLocaleString()} characters`)
+        : (lang === 'zh'
+          ? `已解析 ${parsed.content.length.toLocaleString()} 字符`
+          : `${parsed.content.length.toLocaleString()} characters parsed`))
 
+      const fallbackName = parsed.title?.trim() ||
+        parsed.fileName.replace(/\.[^/.]+$/, '') ||
+        (lang === 'zh' ? '未命名书籍' : 'Untitled book')
       const fallbackInfo: AnalyzedBookInfo = {
-        name: parsed.fileName.replace(/\.[^/.]+$/, '') || (lang === 'zh' ? '未命名书籍' : 'Untitled book'),
-        author: undefined,
-        description: undefined,
+        name: fallbackName,
+        author: parsed.author,
+        description: parsed.description,
         tags: [],
         confidence: 0
       }
 
-      // 检查 API Key
+      // 文件自带元数据优先，AI 仅用于补全缺失信息。
+      setBookName(fallbackInfo.name)
+      setBookAuthor(fallbackInfo.author || '')
+      setBookDesc(fallbackInfo.description || '')
+
       const settings = getSettings()
       if (!settings.apiKey || !isAuthenticated) {
         setAnalyzedInfo(fallbackInfo)
-        setBookName(fallbackInfo.name)
-        setBookAuthor('')
-        setBookDesc('')
         setBookTags([])
         setAnalysisWarning(!isAuthenticated
           ? (lang === 'zh'
-            ? `文档已在当前页面完成解析。请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录，再添加到个人书架；配置 TokenDance 后还可自动提取书籍信息。`
-            : `The document was parsed on this page. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} to add it to your library; configure TokenDance to extract book details automatically.`)
+            ? `文件已在当前页面完成解析。请先${isWatchaOAuthEnabled() ? '使用【观猹】' : ''}登录，再添加到个人书架。`
+            : `The file was parsed on this page. Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} to add it to your library.`)
           : (lang === 'zh'
-            ? '尚未配置 TokenDance API Key，文档已解析。请手工确认书籍信息后添加。'
-            : 'No TokenDance API key is configured. The document was parsed; confirm the book details manually.'))
+            ? '尚未配置 TokenDance API Key，已使用文件自带的书籍信息，可手工修改后添加。'
+            : 'No TokenDance API key is configured. Metadata from the file was used; edit it if needed.'))
         setStep('confirm')
         return
       }
 
-      // AI 分析
       logger.debug('开始 AI 分析...')
       let info = fallbackInfo
       try {
         const client = await createDeepSeekClient(settings.apiKey)
-        info = await analyzeDocumentForBookInfo(
+        const analyzed = await analyzeDocumentForBookInfo(
           client,
           parsed.content,
           parsed.fileName,
           { task: 'document-metadata' }
         )
+        info = {
+          ...analyzed,
+          name: analyzed.name?.trim() || fallbackInfo.name,
+          author: analyzed.author?.trim() || fallbackInfo.author,
+          description: analyzed.description?.trim() || fallbackInfo.description
+        }
         logger.debug('AI 分析完成:', info)
         if (info.confidence === 0) {
           setAnalysisWarning(lang === 'zh'
-            ? 'AI 未能可靠识别书籍信息，文档已保留，请手工核对后添加。'
-            : 'AI could not reliably identify the book. The document was kept; verify the details manually.')
+            ? 'AI 未能可靠识别书籍信息，已保留文件自带信息，请手工核对后添加。'
+            : 'AI could not reliably identify the book. Metadata from the file was kept; verify it manually.')
         }
       } catch (analysisError) {
         logger.error('AI 分析失败，转为手工确认:', analysisError)
@@ -137,24 +212,24 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
         const incomplete = analysisError instanceof Error && analysisError.message === AI_OUTPUT_INCOMPLETE
         const recoveryMessage = tokendanceRecoveryMessage(analysisError, lang)
         setAnalysisWarning(cancelled
-          ? (lang === 'zh' ? '已取消 AI 信息提取。完整文档仍已保留，请手工确认后添加。' : 'AI extraction was cancelled. The full document was kept; confirm the details manually.')
+          ? (lang === 'zh' ? '已取消 AI 信息提取。完整文件仍已保留，请手工确认后添加。' : 'AI extraction was cancelled. The full file was kept; confirm the details manually.')
           : busy
-          ? (lang === 'zh' ? '已有 AI 任务正在运行。完整文档已保留，请稍后重试或手工确认。' : 'Another AI task is running. The full document was kept; retry later or confirm manually.')
+          ? (lang === 'zh' ? '已有 AI 任务正在运行。完整文件已保留，请稍后重试或手工确认。' : 'Another AI task is running. The full file was kept; retry later or confirm manually.')
           : incomplete
-          ? (lang === 'zh' ? 'AI 返回的信息不完整，系统已拦截。完整文档已保留，请手工确认后添加。' : 'The AI returned incomplete information. The full document was kept; confirm manually.')
+          ? (lang === 'zh' ? 'AI 返回的信息不完整，系统已拦截。完整文件已保留，请手工确认后添加。' : 'The AI returned incomplete information. The full file was kept; confirm manually.')
           : contextLimitExceeded
           ? (lang === 'zh'
-              ? '文档上下文过长，系统自动缩减后仍未能提取书籍信息。完整原文会继续保留，请手工确认后添加。'
+              ? '文件上下文过长，系统自动缩减后仍未能提取书籍信息。完整原文会继续保留，请手工确认后添加。'
               : 'The document context was still too long after automatic reduction. The full text will be kept; confirm the book details manually.')
           : recoveryMessage
           ? recoveryMessage
           : consentRequired
           ? (lang === 'zh'
-              ? '尚未完成 TokenDance AI 数据传输授权，文档不会发送给 AI。请手工确认信息，或前往设置完成授权。'
-              : 'TokenDance AI data transfer consent is missing. The document was not sent to AI; confirm manually or enable consent in Settings.')
+              ? '尚未完成 TokenDance AI 数据传输授权，文件不会发送给 AI。请手工确认信息，或前往设置完成授权。'
+              : 'TokenDance AI data transfer consent is missing. The file was not sent to AI; confirm manually or enable consent in Settings.')
           : (lang === 'zh'
-              ? 'AI 分析未完成，文档已保留。请手工确认书籍信息后添加。'
-              : 'AI analysis did not finish. The document was kept; confirm the book details manually.'))
+              ? 'AI 分析未完成，文件已保留。请手工确认书籍信息后添加。'
+              : 'AI analysis did not finish. The file was kept; confirm the book details manually.'))
       }
 
       setAnalyzedInfo(info)
@@ -163,19 +238,17 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
       setBookDesc(info.description || '')
       setBookTags(info.tags)
       setStep('confirm')
-      
-      // 等待 DOM 更新后调整 textarea 高度
+
       setTimeout(() => {
         autoResizeTextarea(descTextareaRef.current)
       }, 0)
-    } catch (err: any) {
+    } catch (err) {
       logger.error('处理文件失败:', err)
-      setError(err.message || (lang === 'zh' ? '文档解析失败' : 'Failed to parse document'))
+      setError(err instanceof Error && err.message ? err.message : (lang === 'zh' ? '文件解析失败' : 'Failed to parse the file'))
       setStep('upload')
     } finally {
       fileAnalysisInFlightRef.current = false
       setAnalyzing(false)
-      // 清空 input 以便重新选择同一文件
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
@@ -188,12 +261,11 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
       setError(lang === 'zh' ? `最多添加 ${MAX_BOOK_TAGS} 个标签` : `You can add up to ${MAX_BOOK_TAGS} tags`)
       return
     }
-    
-    // 如果选择了"其他"，使用自定义分类名
-    const finalCategory = newTagCategory === '其他' 
+
+    const finalCategory = newTagCategory === '其他'
       ? (customCategory.trim() || '其他')
       : newTagCategory
-    
+
     const cleanName = sanitizeTextInput(newTagName.trim(), MAX_TAG_LENGTH)
     const cleanCategory = sanitizeTextInput(finalCategory, MAX_TAG_LENGTH)
     if (detectMaliciousContent(cleanName) || detectMaliciousContent(cleanCategory)) {
@@ -250,10 +322,11 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
       const book = addBook(
         sanitizeTextInput(bookName.trim(), 200),
         bookAuthor.trim() ? sanitizeTextInput(bookAuthor.trim(), 100) : undefined,
-        undefined,
+        bookCover || undefined,
         bookDesc.trim() ? sanitizeTextInput(bookDesc.trim(), 500) : undefined,
         bookTags as BookTag[],
-        documentContent
+        documentContent,
+        chapters
       )
       bookId = book.id
       await flushPendingStoreWrites()
@@ -262,7 +335,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
     } catch (saveError) {
       if (bookId) await reloadBookFromPersistence(bookId).catch(() => undefined)
       logger.error('Document book save failed:', saveError)
-      setError(lang === 'zh' ? '书籍保存失败，文档和填写内容仍保留，请稍后重试。' : 'Saving failed. Your document and form content were kept; please try again shortly.')
+      setError(lang === 'zh' ? '书籍保存失败，文件和填写内容仍保留，请稍后重试。' : 'Saving failed. Your file and form content were kept; please try again shortly.')
     } finally {
       saveInFlightRef.current = false
       setSaving(false)
@@ -270,19 +343,20 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
   }
 
   const categories = ['社科', '心理', '文学', '科技', '经管', '历史', '哲学', '艺术', '生活', '教育', '其他']
+  const coverPreview = getSafeImageSrc(bookCover)
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
       <div className="modal-content product-dialog max-h-[calc(100dvh-32px)]" onClick={e => e.stopPropagation()}>
         <div className="product-dialog-header">
           <div className="product-dialog-title">
-            <span className="product-dialog-title-icon"><AppIcon name="file" size={19} /></span>
+            <span className="product-dialog-title-icon"><AppIcon name="bookOpen" size={19} /></span>
             <div>
-              <h2>{lang === 'zh' ? '上传文档添加书籍' : 'Upload Document to Add Book'}</h2>
-              <p>{lang === 'zh' ? '导入原文，快速建立你的阅读条目' : 'Import a source and create a reading entry'}</p>
+              <h2>{lang === 'zh' ? '导入书籍' : 'Import Book'}</h2>
+              <p>{lang === 'zh' ? '导入原文后，书名、作者、封面、标签都可以自由修改' : 'Import a source, then edit title, author, cover, and tags freely'}</p>
             </div>
           </div>
-          <button type="button" onClick={handleClose} disabled={saving} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭上传窗口' : 'Close upload dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
+          <button type="button" onClick={handleClose} disabled={saving} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭导入窗口' : 'Close import dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
             <AppIcon name="close" size={20} />
           </button>
         </div>
@@ -292,23 +366,28 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
           <div>
             <p className="mb-4 text-sm leading-6 text-[var(--text-secondary)]">
               {lang === 'zh'
-                ? `支持 PDF、DOCX、Markdown、TXT、JSON 格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB）。登录后添加到个人书架；连接 TokenDance 可自动提取书籍信息，也可手工填写。`
-                : `Supports PDF, DOCX, Markdown, TXT, and JSON (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). Sign in to add a document to your library. Connect TokenDance to extract book details automatically, or fill them in manually.`}
+                ? `支持 ${SUPPORTED_FILE_TYPE_HINT} 等常用格式（最大 ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB）。EPUB / MOBI / AZW3 / FB2 会自动读取书名、作者、封面与章节；DOCX / DOC 与 PDF 也能直接转成可阅读、可划线的正文。`
+                : `Supports ${SUPPORTED_FILE_TYPE_HINT} and more (max ${MAX_DOCUMENT_FILE_SIZE / 1024 / 1024}MB). EPUB / MOBI / AZW3 / FB2 automatically provide title, author, cover, and chapters; DOCX / DOC and PDF are converted into readable, highlightable text.`}
             </p>
-            
-            <div 
+
+            <div
               className="product-dialog-dropzone"
               onClick={() => fileInputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') fileInputRef.current?.click()
+              }}
             >
               <AppIcon name="folder" tone="blue" size={34} />
               <p className="font-medium text-[var(--text-primary)]">
-                {lang === 'zh' ? '点击选择文件' : 'Click to select a file'}
+                {lang === 'zh' ? '点击选择电子书或文档' : 'Click to choose a book or document'}
               </p>
-              <p className="text-xs text-[var(--text-secondary)] mt-2">
-                {SUPPORTED_FILE_TYPES.join(', ')}
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                {SUPPORTED_FILE_TYPES.join('  ')}
               </p>
             </div>
-            
+
             <input
               ref={fileInputRef}
               type="file"
@@ -317,8 +396,14 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
               className="hidden"
             />
 
-        {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            <div className="product-dialog-callout mt-4 rounded-lg p-3 text-xs leading-5">
+              {lang === 'zh'
+                ? <>带有 DRM 加密的电子书（如 Kindle / 微信读书商城下载的加密文件）无法解析，请先使用官方渠道导出无 DRM 的 EPUB/PDF 或笔记。暂不支持：{UNSUPPORTED_BOOK_FORMATS.join('、')}。</>
+                : <>DRM-protected books (for example encrypted Kindle or WeChat Reading downloads) cannot be parsed. Export a DRM-free EPUB/PDF or your notes through the official app first. Not supported: {UNSUPPORTED_BOOK_FORMATS.join(', ')}.</>}
+            </div>
+
+            {error && (
+              <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
                 {error}
               </div>
             )}
@@ -331,7 +416,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
             {!getSettings().apiKey && onOpenSettings && (
               <button type="button" onClick={() => {
                 if (!isAuthenticated) {
-                  requestLogin(lang === 'zh' ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再保存文档或配置 TokenDance AI。` : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before saving the document or configuring TokenDance AI.`)
+                  requestLogin(lang === 'zh' ? `请先${isWatchaOAuthEnabled() ? '使用观猹' : ''}登录，再保存文件或配置 TokenDance AI。` : `Sign in${isWatchaOAuthEnabled() ? ' with Watcha' : ''} before saving the file or configuring TokenDance AI.`)
                   return
                 }
                 onClose()
@@ -349,7 +434,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
           <div className="text-center py-12">
             <AppIcon name="scan" tone="accent" size={48} className="mx-auto mb-4 animate-pulse" />
             <p className="text-[var(--text-secondary)]">
-              {lang === 'zh' ? '正在解析文档内容...' : 'Parsing document...'}
+              {lang === 'zh' ? '正在解析书籍内容...' : 'Parsing the book...'}
             </p>
           </div>
         )}
@@ -357,26 +442,81 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
         {step === 'confirm' && analyzedInfo && (
           <div className="space-y-4">
             <div className="product-dialog-callout mb-4 rounded-lg p-3 text-sm leading-6">
+              {parsedLabel || (lang === 'zh'
+                ? `已完整解析 ${documentContent.length.toLocaleString()} 个字符。`
+                : `${documentContent.length.toLocaleString()} characters parsed in full.`)}
+              {' '}
               {lang === 'zh'
-                ? `已完整解析 ${documentContent.length.toLocaleString()} 个字符。添加后，原文将用于阶段学习、费曼实践、角色问答和相关推荐。`
-                : `${documentContent.length.toLocaleString()} characters parsed in full. After adding the book, the source will support phase learning, Feynman practice, persona Q&A, and recommendations.`}
+                ? '原文将用于站内阅读划线、阶段学习、费曼实践和相关推荐。'
+                : 'The source powers in-app reading, highlights, phase learning, Feynman practice, and recommendations.'}
             </div>
 
-            {/* 置信度提示 */}
             <div className={`mb-4 rounded-lg border p-3 text-sm ${
               analyzedInfo.confidence >= 70
                 ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300'
                 : analyzedInfo.confidence >= 40
                 ? 'border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300'
-                : analyzedInfo.confidence > 0
-                ? 'border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
-                : 'bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)]'
+                : 'border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
             }`}>
               {analyzedInfo.confidence > 0
                 ? (lang === 'zh'
                   ? `AI 分析置信度: ${analyzedInfo.confidence}%，请核实以下信息是否准确`
                   : `AI confidence: ${analyzedInfo.confidence}%, please verify the information below`)
-                : (lang === 'zh' ? '未使用 AI 分析，请手工核对以下书籍信息。' : 'AI analysis was not used. Verify the book details manually.')}
+                : (lang === 'zh' ? '书籍信息来自文件元数据或文件名，请按需要修改。' : 'Book details come from the file metadata or name. Edit them as needed.')}
+            </div>
+
+            {/* 封面 */}
+            <div className="product-dialog-section">
+              <label className="product-dialog-label">{lang === 'zh' ? '封面图片' : 'Cover Image'}</label>
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  disabled={saving}
+                  aria-label={lang === 'zh' ? '上传封面' : 'Upload cover'}
+                  className="product-dialog-cover flex items-center justify-center cursor-pointer"
+                  onClick={() => coverInputRef.current?.click()}
+                >
+                  {coverPreview
+                    // eslint-disable-next-line @next/next/no-img-element -- 封面来自本地文件或跨域链接，无需 Next 图片优化
+                    ? <img src={coverPreview} alt="Cover" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                    : <AppIcon name="camera" tone="blue" size={28} />}
+                </button>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCoverUpload}
+                  disabled={saving}
+                  aria-label={lang === 'zh' ? '封面图片文件' : 'Cover image file'}
+                  className="hidden"
+                />
+                <div className="text-sm text-[var(--text-secondary)]">
+                  <span className="font-medium text-[var(--text-primary)]">{lang === 'zh' ? '上传封面' : 'Upload cover'}</span>
+                  <span className="mt-1 block text-xs">
+                    {bookCover
+                      ? (lang === 'zh' ? '已从文件中读取封面，可替换或移除' : 'Cover read from the file; replace or remove it')
+                      : (lang === 'zh' ? '建议使用竖版图片，可选' : 'Portrait image, optional')}
+                  </span>
+                  {(bookCover || readingCover || coverError) && (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => {
+                        coverReadControllerRef.current?.abort()
+                        coverReadControllerRef.current = null
+                        setReadingCover(false)
+                        setCoverError(null)
+                        setBookCover('')
+                      }}
+                      className="mt-2 block text-xs text-[var(--text-secondary)] underline underline-offset-2 hover:text-[var(--text-primary)]"
+                    >
+                      {lang === 'zh' ? '移除图片' : 'Remove'}
+                    </button>
+                  )}
+                </div>
+              </div>
+              {readingCover && <p role="status" className="mt-2 text-sm text-[var(--text-secondary)]">{lang === 'zh' ? '正在读取封面图片...' : 'Reading cover image...'}</p>}
+              {coverError && <p role="alert" className="mt-2 text-sm text-[var(--error)]">{coverError}</p>}
             </div>
 
             {/* 书名 */}
@@ -395,9 +535,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
 
             {/* 作者 */}
             <div className="product-dialog-section">
-              <label className="block text-sm font-medium mb-2">
-                {lang === 'zh' ? '作者' : 'Author'}
-              </label>
+              <label className="product-dialog-label">{lang === 'zh' ? '作者' : 'Author'}</label>
               <input
                 type="text"
                 value={bookAuthor}
@@ -409,9 +547,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
 
             {/* 简介 */}
             <div className="product-dialog-section">
-              <label className="block text-sm font-medium mb-2">
-                {lang === 'zh' ? '简介' : 'Description'}
-              </label>
+              <label className="product-dialog-label">{lang === 'zh' ? '简介' : 'Description'}</label>
               <textarea
                 ref={descTextareaRef}
                 value={bookDesc}
@@ -428,21 +564,21 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
                 <AppIcon name="tag" size={16} />
                 {lang === 'zh' ? '标签' : 'Tags'}
               </label>
-              
-              {/* 已有标签 */}
+
               {bookTags.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
+                <div className="mb-3 flex flex-wrap gap-2">
                   {bookTags.map((tag, idx) => (
-                    <div 
+                    <div
                       key={idx}
                       className="product-dialog-tag flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm text-[var(--text-primary)]"
                     >
                       <span className="text-xs text-[var(--text-secondary)]">{tag.category}</span>
                       <span>·</span>
                       <span className="font-medium text-[var(--accent)]">{tag.name}</span>
-                      <button 
+                      <button
                         onClick={() => handleRemoveTag(idx)}
-                        className="text-red-400 hover:text-red-500 ml-1"
+                        aria-label={lang === 'zh' ? '移除标签' : 'Remove tag'}
+                        className="ml-1 text-red-400 hover:text-red-500"
                       >
                         <AppIcon name="close" size={14} />
                       </button>
@@ -451,14 +587,13 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
                 </div>
               )}
 
-              {/* 添加标签 */}
               <div className="space-y-3">
-                <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">
+                <div className="mb-2 text-xs font-medium text-[var(--text-secondary)]">
                   {lang === 'zh' ? '添加新标签' : 'Add New Tag'}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+                    <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
                       {lang === 'zh' ? '分类' : 'Category'}
                     </label>
                     <select
@@ -481,28 +616,28 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
                         value={customCategory}
                         onChange={e => setCustomCategory(e.target.value)}
                         placeholder={lang === 'zh' ? '输入自定义分类' : 'Enter custom category'}
-                        className="input-field w-full mt-2"
+                        className="input-field mt-2 w-full"
                       />
                     )}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+                    <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">
                       {lang === 'zh' ? '标签名' : 'Tag Name'}
                     </label>
                     <input
                       type="text"
                       value={newTagName}
                       onChange={e => setNewTagName(e.target.value)}
-                      onKeyPress={e => e.key === 'Enter' && handleAddTag()}
+                      onKeyDown={e => e.key === 'Enter' && handleAddTag()}
                       placeholder={lang === 'zh' ? '如：心理学' : 'e.g., Psychology'}
                       className="input-field w-full"
                     />
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={handleAddTag}
                   disabled={!newTagName.trim() || (newTagCategory === '其他' && !customCategory.trim())}
-                  className="btn-secondary product-dialog-action w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-secondary product-dialog-action w-full disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <AppIcon name="plus" tone="violet" size={16} />
                   {lang === 'zh' ? '添加标签' : 'Add Tag'}
@@ -515,18 +650,17 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
                 {error}
               </div>
             )}
-
           </div>
         )}
 
         </div>
 
         <div className="product-dialog-footer">
-          <button onClick={handleClose} disabled={analyzing || saving} className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed">
+          <button onClick={handleClose} disabled={analyzing || saving} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
             {lang === 'zh' ? '取消' : 'Cancel'}
           </button>
           {step === 'confirm' && analyzedInfo && (
-            <button onClick={handleConfirm} disabled={saving} className="btn-primary items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+            <button onClick={handleConfirm} disabled={saving || readingCover} className="btn-primary items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50">
               <AppIcon name="check" size={17} />
               {saving ? (lang === 'zh' ? '正在保存...' : 'Saving...') : (lang === 'zh' ? '确认添加' : 'Confirm & Add')}
             </button>

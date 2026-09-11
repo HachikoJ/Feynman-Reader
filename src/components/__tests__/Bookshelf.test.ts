@@ -1,4 +1,4 @@
-import { getBookshelfProgressPercentage, scoreReviewPriority } from '../Bookshelf'
+import { getBookReadingPercentage, getBookshelfProgressPercentage, scoreReviewPriority } from '../Bookshelf'
 import type { Book } from '@/lib/store'
 
 function reviewBook(overrides: Partial<Book> = {}): Book {
@@ -25,6 +25,30 @@ describe('bookshelf progress', () => {
 
   it('keeps in-progress books based on their completed learning phases', () => {
     expect(getBookshelfProgressPercentage({ currentPhase: 3 })).toBe(50)
+  })
+})
+
+describe('bookshelf reading progress', () => {
+  it('shows nothing for books without imported source text', () => {
+    expect(getBookReadingPercentage({})).toBeNull()
+  })
+
+  it('treats an untouched reader as not started', () => {
+    expect(getBookReadingPercentage({ readingProgress: { currentPage: 0, totalPages: 12, percentage: 0 } })).toBeNull()
+  })
+
+  it('rounds and clamps the stored reading percentage', () => {
+    expect(getBookReadingPercentage({ readingProgress: { currentPage: 3, totalPages: 12, percentage: 25 } })).toBe(25)
+    expect(getBookReadingPercentage({ readingProgress: { currentPage: 2, totalPages: 3, percentage: 66.6 } })).toBe(67)
+    expect(getBookReadingPercentage({ readingProgress: { currentPage: 3, totalPages: 3, percentage: 140 } })).toBe(100)
+  })
+
+  it('counts a stored page position as started even when the percentage rounds to zero', () => {
+    expect(getBookReadingPercentage({ readingProgress: { currentPage: 1, totalPages: 240, percentage: 0.4 } })).toBe(0)
+  })
+
+  it('ignores a corrupt percentage instead of rendering NaN', () => {
+    expect(getBookReadingPercentage({ readingProgress: { currentPage: 0, totalPages: 12, percentage: Number.NaN } })).toBeNull()
   })
 })
 

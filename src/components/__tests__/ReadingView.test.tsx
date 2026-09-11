@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import 'openai/shims/node'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ReadingView from '../ReadingView'
 import { Book } from '@/lib/store'
 import * as store from '@/lib/store'
@@ -413,5 +413,223 @@ describe('ReadingView assistant source targets', () => {
     })
     await waitFor(() => expect(target).toHaveClass('reading-source-highlight'))
     expect(target).toHaveTextContent('需要定位的角色问题')
+  })
+})
+
+describe('ReadingView reader highlights', () => {
+  const chapterOne = '第一章 认知革命\n\n虚构故事让智人得以大规模协作。'
+  const chapterTwo = '第二章 农业革命\n\n农业革命是史上最大的骗局。'
+  const documentContent = `${chapterOne}\n\n${chapterTwo}`
+  const quote = '虚构故事让智人得以大规模协作。'
+  const expectedOffset = documentContent.indexOf('虚构故事')
+
+  const readerBook: Book = {
+    ...book,
+    status: 'reading',
+    documentContent,
+    chapters: [
+      { title: '第一章 认知革命', start: 0, length: chapterOne.length },
+      { title: '第二章 农业革命', start: chapterOne.length + 2, length: chapterTwo.length }
+    ]
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    Object.defineProperty(window, 'scrollTo', { value: jest.fn(), writable: true })
+    HTMLElement.prototype.scrollIntoView = jest.fn()
+    jest.spyOn(store, 'getBook').mockImplementation(() => readerBook)
+    jest.spyOn(store, 'flushPendingStoreWrites').mockResolvedValue()
+    jest.spyOn(store, 'updateBook').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => jest.restoreAllMocks())
+
+  function selectPassage(text: string) {
+    const passage = screen.getByText(text)
+    const range = {
+      commonAncestorContainer: passage,
+      getBoundingClientRect: () => ({ top: 120, left: 60, width: 140, height: 24, bottom: 144, right: 200 })
+    }
+    jest.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: () => range,
+      toString: () => text,
+      removeAllRanges: jest.fn()
+    } as unknown as Selection)
+    fireEvent.mouseUp(passage)
+  }
+
+  it('stores the highlight offset and colour so it can be re-anchored later', async () => {
+    render(<ReadingView book={readerBook} apiKey="" lang="zh" onBack={jest.fn()} onOpenSettings={jest.fn()} />)
+    fireEvent.click(screen.getByTestId('reading-tab-reader'))
+
+    selectPassage(quote)
+    fireEvent.click(await screen.findByRole('button', { name: '划线' }))
+
+    await waitFor(() => expect(store.updateBook).toHaveBeenCalledTimes(1))
+    expect(store.updateBook).toHaveBeenCalledWith(readerBook.id, {
+      noteRecords: [expect.objectContaining({
+        type: 'note',
+        quote,
+        offset: expectedOffset,
+        color: 'yellow',
+        chapterIndex: 0,
+        chapterTitle: '第一章 认知革命',
+        source: 'reading'
+      })]
+    })
+  })
+
+  it('keeps the selection toolbar hidden outside the article text', async () => {
+    render(<ReadingView book={readerBook} apiKey="" lang="zh" onBack={jest.fn()} onOpenSettings={jest.fn()} />)
+    fireEvent.click(screen.getByTestId('reading-tab-reader'))
+
+    const heading = screen.getByRole('heading', { name: '第一章 认知革命' })
+    jest.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: () => ({ commonAncestorContainer: document.body }),
+      toString: () => quote,
+      removeAllRanges: jest.fn()
+    } as unknown as Selection)
+    fireEvent.mouseUp(heading)
+
+    expect(screen.queryByRole('button', { name: '划线并写笔记' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ReadingView notes workspace', () => {
+  const chapterOne = '第一章 认知革命\n\n虚构故事让智人得以大规模协作。'
+  const chapterTwo = '第二章 农业革命\n\n农业革命是史上最大的骗局。'
+  const documentContent = `${chapterOne}\n\n${chapterTwo}`
+  const highlightQuote = '虚构故事让智人得以大规模协作。'
+
+  const annotatedBook: Book = {
+    ...book,
+    status: 'reading',
+    documentContent,
+    chapters: [
+      { title: '第一章 认知革命', start: 0, length: chapterOne.length },
+      { title: '第二章 农业革命', start: chapterOne.length + 2, length: chapterTwo.length }
+    ],
+    noteRecords: [
+      {
+        id: 'note-1',
+        type: 'note',
+        content: '协作能力是智人的关键优势。',
+        quote: highlightQuote,
+        offset: documentContent.indexOf('虚构故事'),
+        color: 'blue',
+        chapterIndex: 0,
+        chapterTitle: '第一章 认知革命',
+        source: 'reading',
+        tags: ['关键概念'],
+        createdAt: 1
+      },
+      {
+        id: 'note-2',
+        type: 'note',
+        content: '农业革命带来的影响。',
+        source: 'practice',
+        createdAt: 2
+      }
+    ],
+    bookmarks: [
+      {
+        id: 'bookmark-1',
+        chapterIndex: 1,
+        offset: documentContent.indexOf('农业革命是史上'),
+        chapterTitle: '第二章 农业革命',
+        snippet: '农业革命是史上最大的骗局。',
+        label: '回过头再看',
+        color: 'green',
+        createdAt: 2
+      }
+    ],
+    readingProgress: { currentPage: 1, totalPages: 2, percentage: 50 }
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    Object.defineProperty(window, 'scrollTo', { value: jest.fn(), writable: true })
+    HTMLElement.prototype.scrollIntoView = jest.fn()
+    jest.spyOn(store, 'getBook').mockImplementation(() => annotatedBook)
+    jest.spyOn(store, 'flushPendingStoreWrites').mockResolvedValue()
+    jest.spyOn(store, 'updateBook').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => jest.restoreAllMocks())
+
+  function renderNotes() {
+    render(<ReadingView book={annotatedBook} apiKey="" lang="zh" onBack={jest.fn()} onOpenSettings={jest.fn()} />)
+    fireEvent.click(screen.getByTestId('reading-tab-notes'))
+  }
+
+  it('aggregates bookmarks in the notes tab and returns to the bookmarked passage', async () => {
+    const { container } = render(
+      <ReadingView book={annotatedBook} apiKey="" lang="zh" onBack={jest.fn()} onOpenSettings={jest.fn()} />
+    )
+    fireEvent.click(screen.getByTestId('reading-tab-notes'))
+
+    expect(await screen.findByRole('heading', { name: '书签 (1)' })).toBeInTheDocument()
+    const card = container.querySelector('[data-reading-source-id="bookmark-1"]') as HTMLElement
+    expect(card).not.toBeNull()
+    expect(within(card).getByText('回过头再看')).toBeInTheDocument()
+    expect(within(card).getByText('农业革命是史上最大的骗局。')).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: '回到原文' }))
+    expect(await screen.findByRole('heading', { name: '第二章 农业革命' })).toBeInTheDocument()
+  })
+
+  it('shows highlight tags and filters the note list by tag', async () => {
+    renderNotes()
+
+    const filter = await screen.findByRole('button', { name: '关键概念' })
+    expect(screen.getByText('协作能力是智人的关键优势。')).toBeInTheDocument()
+    expect(screen.getByText('农业革命带来的影响。')).toBeInTheDocument()
+
+    fireEvent.click(filter)
+    expect(screen.getByText('协作能力是智人的关键优势。')).toBeInTheDocument()
+    expect(screen.queryByText('农业革命带来的影响。')).not.toBeInTheDocument()
+  })
+
+  it('stores tags when saving a highlight with a note', async () => {
+    render(<ReadingView book={annotatedBook} apiKey="" lang="zh" onBack={jest.fn()} onOpenSettings={jest.fn()} />)
+    fireEvent.click(screen.getByTestId('reading-tab-reader'))
+
+    const passage = screen.getByText(highlightQuote)
+    jest.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: () => ({
+        commonAncestorContainer: passage,
+        getBoundingClientRect: () => ({ top: 120, left: 60, width: 140, height: 24, bottom: 144, right: 200 })
+      }),
+      toString: () => highlightQuote,
+      removeAllRanges: jest.fn()
+    } as unknown as Selection)
+    fireEvent.mouseUp(passage)
+
+    fireEvent.click(await screen.findByRole('button', { name: '划线并写笔记' }))
+    fireEvent.change(screen.getByPlaceholderText('写下这段原文对你的意义（可留空）'), {
+      target: { value: '协作是认知革命的前提。' }
+    })
+    const tagInput = screen.getByLabelText('添加标签')
+    fireEvent.change(tagInput, { target: { value: '关键概念' } })
+    fireEvent.keyDown(tagInput, { key: 'Enter' })
+    fireEvent.click(screen.getByRole('button', { name: '保存划线笔记' }))
+
+    await waitFor(() => expect(store.updateBook).toHaveBeenCalledTimes(1))
+    expect(store.updateBook).toHaveBeenCalledWith(annotatedBook.id, {
+      noteRecords: expect.arrayContaining([
+        expect.objectContaining({
+          quote: highlightQuote,
+          source: 'reading',
+          color: 'yellow',
+          tags: ['关键概念']
+        })
+      ])
+    })
   })
 })

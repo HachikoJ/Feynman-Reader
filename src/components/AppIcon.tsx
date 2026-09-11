@@ -22,6 +22,7 @@ import {
   ClipboardList,
   Download,
   Eye,
+  ExternalLink,
   FileText,
   Flame,
   FolderOpen,
@@ -67,6 +68,7 @@ export type AppIconName =
   | 'brain' | 'briefcase' | 'building' | 'camera' | 'chart' | 'check' | 'success'
   | 'chevronDown' | 'chevronLeft' | 'chevronRight' | 'chevronUp' | 'circle' | 'help'
   | 'clipboard' | 'download' | 'eye' | 'file' | 'flame' | 'folder' | 'graduation'
+  | 'externalLink'
   | 'handshake' | 'info' | 'key' | 'landmark' | 'library' | 'lightbulb' | 'lock'
   | 'map' | 'message' | 'microscope' | 'minus' | 'note' | 'edit' | 'pin' | 'refresh'
   | 'plus' | 'rocket' | 'route' | 'scale' | 'scan' | 'search' | 'settings' | 'sparkles' | 'sprout' | 'tag'
@@ -98,6 +100,7 @@ const icons: Record<AppIconName, LucideIcon> = {
   clipboard: ClipboardList,
   download: Download,
   eye: Eye,
+  externalLink: ExternalLink,
   file: FileText,
   flame: Flame,
   folder: FolderOpen,

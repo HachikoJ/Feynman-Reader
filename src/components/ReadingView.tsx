@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react'
 import OpenAI from 'openai'
 import { logger } from '@/lib/logger'
-import { Book, BookAnalysisTask, NoteRecord, AppSettings, addQuoteFromSelection, updateBook, addPracticeRecord, deletePracticeRecord, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
+import { Book, BookAnalysisTask, BookBookmark, NoteRecord, AppSettings, addQuoteFromSelection, updateBook, addPracticeRecord, deletePracticeRecord, flushPendingStoreWrites, getBook, isQAPracticeRecordComplete, reloadBookFromPersistence } from '@/lib/store'
 import { createLocalId } from '@/lib/localId'
 import { Language, t } from '@/lib/i18n'
-import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt } from '@/lib/feynman-prompts'
+import { LEARNING_PHASES, generateSystemPrompt, generatePhasePrompt, generateReviewPrompt, normalizeReadingEvidence } from '@/lib/feynman-prompts'
 import { AI_CONTEXT_LIMIT_EXCEEDED, AI_DATA_CONSENT_REQUIRED, AI_OUTPUT_INCOMPLETE, chat, chatJson, createDeepSeekClient, generateBookMetadata, isDeepSeekAuthenticationError, parsePracticeEvaluation } from '@/lib/deepseek'
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { tokendanceRecoveryMessage } from '@/lib/tokendance'
@@ -18,6 +18,13 @@ import MarkdownRenderer from './MarkdownRenderer'
 import SourceEvidence from './SourceEvidence'
 import CopyContentButton from './CopyContentButton'
 import BookRecommendations from './BookRecommendations'
+import BookReader, {
+  ReaderBookmarkDraft,
+  ReaderBookmarkPatch,
+  ReaderHighlightDraft,
+  ReaderHighlightPatch
+} from './BookReader'
+import HighlightImportDialog from './HighlightImportDialog'
 import {
   clampCompletedPhaseCount,
   completePhase,
@@ -25,7 +32,9 @@ import {
   isPhaseCompleted,
   isPhaseUnlocked
 } from '@/lib/learningProgress'
-import { MAX_AI_ANSWER_LENGTH, MAX_NOTE_LENGTH } from '@/lib/dataLimits'
+import { MAX_AI_ANSWER_LENGTH, MAX_BOOKMARKS_PER_BOOK, MAX_NOTE_LENGTH } from '@/lib/dataLimits'
+import { DEFAULT_HIGHLIGHT_COLOR, normalizeNoteTags } from '@/lib/readerAnnotations'
+import { colorLabel, HIGHLIGHT_DOT_CLASSES } from './HighlightColorPicker'
 import AppIcon, { AppIconName, AppIconTone } from './AppIcon'
 import { buildMissingBookMetadataUpdates, needsBookMetadataEnrichment } from '@/lib/bookMetadata'
 import BookListManager from './BookListManager'
@@ -45,7 +54,7 @@ interface Props {
   onQuoteAdded?: (settings: AppSettings) => void
 }
 
-type TabType = 'phase' | 'practice' | 'notes' | 'recommendations'
+type TabType = 'reader' | 'phase' | 'practice' | 'notes' | 'recommendations'
 
 type ReadingStepHistoryState = {
   [READING_STEP_HISTORY_KEY]?: true
@@ -162,6 +171,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const [newNote, setNewNote] = useState('')
   const [noteSaving, setNoteSaving] = useState(false)
   const [noteError, setNoteError] = useState<string | null>(null)
+  const [bookmarkSaving, setBookmarkSaving] = useState(false)
+  const [showHighlightImport, setShowHighlightImport] = useState(false)
+  const [readerFocusChapter, setReaderFocusChapter] = useState<number | null>(null)
+  const [readerFocusOffset, setReaderFocusOffset] = useState<number | null>(null)
+  const [noteSourceFilter, setNoteSourceFilter] = useState<'all' | 'reading' | 'import' | 'manual'>('all')
+  const [noteTagFilter, setNoteTagFilter] = useState<string | null>(null)
   const [recommendations, setRecommendations] = useState<string>(initialBook.recommendations || '')
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [showPracticeHistory, setShowPracticeHistory] = useState(false)
@@ -174,12 +189,21 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const practiceSubmissionRef = useRef(false)
   const practiceDeletionIdsRef = useRef(new Set<string>())
   const noteMutationInFlightRef = useRef(false)
+  const bookmarkMutationInFlightRef = useRef(false)
   const metadataEnrichmentAttemptsRef = useRef(new Set<string>())
   const currentBookIdRef = useRef(book.id)
   const missingApiKey = apiKey.trim().length === 0
   const needsAiConfiguration = missingApiKey || aiConsentRequired || apiKeyInvalid
   const practiceBusy = practiceStatus === 'evaluating' || practiceStatus === 'saving'
   const analysisRunning = loading || analyzingInBackground || analysisTask?.status === 'running'
+  /** 用户的划线 / 笔记，作为费曼复述的核对依据，[H#] 编号与来源核对面板一致。 */
+  const readingEvidence = normalizeReadingEvidence(
+    noteRecords.map(record => ({
+      quote: record.quote,
+      note: record.quote ? (record.content === record.quote ? undefined : record.content) : record.content,
+      chapterTitle: record.chapterTitle
+    }))
+  )
 
   const pushReadingStep = (nextTab: TabType, nextPhase: number) => {
     window.history.pushState(
@@ -197,7 +221,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
   useEffect(() => {
     const currentState = window.history.state as ReadingStepHistoryState | null
-    const validTabs: TabType[] = ['phase', 'practice', 'notes', 'recommendations']
+    const validTabs: TabType[] = ['reader', 'phase', 'practice', 'notes', 'recommendations']
     const hasCurrentReadingState = currentState?.[READING_STEP_HISTORY_KEY] &&
       currentState.view === 'reading' &&
       currentState.bookId === book.id &&
@@ -483,7 +507,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         setAnalysisTask(phaseTask)
         
         try {
-          const prompt = generatePhasePrompt(book.name, phase.id, lang)
+          const prompt = generatePhasePrompt(book.name, phase.id, lang, Boolean(book.documentContent))
           const requiredHeadings = [...prompt.matchAll(/^##\s+(.+)$/gm)].map(match => match[1].trim())
           const response = await chat(client, systemPrompt, prompt, book.documentContent, {
             requiredHeadings,
@@ -619,6 +643,20 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     scrollToReadingAnchor(phaseContentRef)
   }
 
+  /** 从笔记、划线或书签跳回原文：切到阅读 tab，并按字符偏移或章节定位。 */
+  const handleOpenReaderAtChapter = (chapterIndex?: number, offset?: number) => {
+    setReaderFocusChapter(typeof chapterIndex === 'number' && chapterIndex >= 0 ? chapterIndex : null)
+    setReaderFocusOffset(typeof offset === 'number' && Number.isFinite(offset) && offset >= 0 ? offset : null)
+    handleTabChange('reader')
+  }
+
+  // 离开阅读 tab 时清空定位请求，保证下次点击同一处仍能跳转。
+  useEffect(() => {
+    if (activeTab === 'reader') return
+    if (readerFocusChapter !== null) setReaderFocusChapter(null)
+    if (readerFocusOffset !== null) setReaderFocusOffset(null)
+  }, [activeTab, readerFocusChapter, readerFocusOffset])
+
   const visibleAnalysisError = analysisError || analysisTask?.error || null
 
   const handleNextPhase = () => {
@@ -672,6 +710,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       requestLogin(lang === 'zh' ? '登录后才能使用 AI 点评并保存费曼实践记录。' : 'Sign in to use AI review and save Feynman practice records.')
       return
     }
+    // 阅读优先：有原文的书，先读、先划线，再复述，AI 才能真正核对理解。
+    if (book.documentContent && readingEvidence.length === 0) {
+      setPracticeError(lang === 'zh'
+        ? '先用「阅读原文」读完一节，并划下至少一处划线或笔记，再来做费曼复述。AI 会据此核对你的理解是否忠实于原文。'
+        : 'Read a section first and save at least one highlight or note. AI will then check your retelling against your own reading evidence.')
+      return
+    }
     if (teachingNote.length > MAX_AI_ANSWER_LENGTH) {
       setPracticeError(lang === 'zh'
         ? `教学内容不能超过 ${MAX_AI_ANSWER_LENGTH.toLocaleString()} 个字符。`
@@ -696,7 +741,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     setPracticeStatus('evaluating')
     
     try {
-      const prompt = generateReviewPrompt(book.name, teachingNote, lang)
+      const prompt = generateReviewPrompt(book.name, teachingNote, lang, readingEvidence)
       const systemPrompt = generateSystemPrompt(book.name, lang)
       const sessionId = createLocalId()
       let response: string
@@ -803,6 +848,200 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     }
   }
 
+  /**
+   * 统一写入笔记：站内划线、手工笔记和外部导入都走同一条持久化路径，
+   * 保证失败时能回滚到持久化后的真实数据。
+   */
+  const persistNoteRecords = async (nextRecords: NoteRecord[], failureMessage: string): Promise<boolean> => {
+    if (noteMutationInFlightRef.current) return false
+    noteMutationInFlightRef.current = true
+    setNoteSaving(true)
+    setNoteError(null)
+    try {
+      updateBook(book.id, { noteRecords: nextRecords })
+      await flushPendingStoreWrites()
+      const persistedBook = getBook(book.id)
+      if (persistedBook) setBook(persistedBook)
+      setNoteRecords(persistedBook?.noteRecords || nextRecords)
+      return true
+    } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+      if (persistedBook) {
+        setBook(persistedBook)
+        setNoteRecords(persistedBook.noteRecords || [])
+      }
+      logger.error('Note save failed:', error)
+      setNoteError(failureMessage)
+      return false
+    } finally {
+      noteMutationInFlightRef.current = false
+      setNoteSaving(false)
+    }
+  }
+
+  /** 站内阅读选中原文后的划线 / 划线笔记，保留出处用于后续 AI 佐证。 */
+  const handleReaderHighlight = async (draft: ReaderHighlightDraft): Promise<boolean> => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能保存划线，并用于费曼练习与 AI 分析。' : 'Sign in to save highlights for Feynman practice and AI analysis.')
+      return false
+    }
+    const quote = draft.quote.trim()
+    if (!quote) return false
+    if (noteMutationInFlightRef.current) return false
+    const latestRecords = getBook(book.id)?.noteRecords || noteRecords
+    const tags = normalizeNoteTags(draft.tags)
+    const newRecord: NoteRecord = {
+      id: createLocalId(),
+      type: 'note',
+      content: draft.note.trim() || quote,
+      quote,
+      ...(draft.chapterIndex !== undefined ? { chapterIndex: draft.chapterIndex } : {}),
+      ...(draft.chapterTitle ? { chapterTitle: draft.chapterTitle } : {}),
+      ...(draft.offset !== undefined && Number.isFinite(draft.offset)
+        ? { offset: Math.max(0, Math.floor(draft.offset)) }
+        : {}),
+      ...(draft.color ? { color: draft.color } : {}),
+      ...(tags.length > 0 ? { tags } : {}),
+      source: 'reading',
+      createdAt: Date.now()
+    }
+    return persistNoteRecords([...latestRecords, newRecord], lang === 'zh'
+      ? '划线保存失败，请稍后重试。'
+      : 'The highlight could not be saved. Please try again.')
+  }
+
+  /** 阅读器里修改划线的备注与颜色，外部导入的划线同样可以在这里管理。 */
+  const handleReaderHighlightUpdate = async (id: string, patch: ReaderHighlightPatch): Promise<boolean> => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能修改划线。' : 'Sign in to edit highlights.')
+      return false
+    }
+    if (noteMutationInFlightRef.current) return false
+    const latestRecords = getBook(book.id)?.noteRecords || noteRecords
+    const note = (patch.note ?? '').trim()
+    const nextRecords: NoteRecord[] = latestRecords.map(record => {
+      if (record.id !== id) return record
+      const updated: NoteRecord = { ...record }
+      if (patch.note !== undefined) updated.content = note || record.quote || record.content
+      if (patch.color) updated.color = patch.color
+      if (patch.tags !== undefined) {
+        const tags = normalizeNoteTags(patch.tags)
+        if (tags.length > 0) updated.tags = tags
+        else delete updated.tags
+      }
+      return updated
+    })
+    return persistNoteRecords(nextRecords, lang === 'zh'
+      ? '划线更新失败，请稍后重试。'
+      : 'The highlight could not be updated. Please try again.')
+  }
+
+  const handleReaderHighlightDelete = async (id: string): Promise<boolean> => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能删除划线。' : 'Sign in to delete highlights.')
+      return false
+    }
+    if (noteMutationInFlightRef.current) return false
+    const latestRecords = getBook(book.id)?.noteRecords || noteRecords
+    return persistNoteRecords(latestRecords.filter(record => record.id !== id), lang === 'zh'
+      ? '划线删除失败，原划线已恢复。请稍后重试。'
+      : 'The highlight could not be deleted and was restored. Please try again.')
+  }
+
+  /** 书签与划线共用同一条持久化路径，写入失败时回滚到持久化后的真实数据。 */
+  const persistBookmarks = async (nextBookmarks: BookBookmark[], failureMessage: string): Promise<boolean> => {
+    if (bookmarkMutationInFlightRef.current) return false
+    bookmarkMutationInFlightRef.current = true
+    try {
+      updateBook(book.id, { bookmarks: nextBookmarks })
+      await flushPendingStoreWrites()
+      const persistedBook = getBook(book.id)
+      if (persistedBook) setBook(persistedBook)
+      return true
+    } catch (error) {
+      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
+      if (persistedBook) setBook(persistedBook)
+      logger.error('Bookmark save failed:', error, failureMessage)
+      return false
+    } finally {
+      bookmarkMutationInFlightRef.current = false
+    }
+  }
+
+  /** 阅读器添加书签：只保存位置与摘要，不复制原文。 */
+  const handleReaderBookmarkSave = async (draft: ReaderBookmarkDraft): Promise<boolean> => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能保存书签，并在其他设备查看。' : 'Sign in to save bookmarks across devices.')
+      return false
+    }
+    if (bookmarkMutationInFlightRef.current) return false
+    const latestBookmarks = getBook(book.id)?.bookmarks || book.bookmarks || []
+    if (latestBookmarks.length >= MAX_BOOKMARKS_PER_BOOK) return false
+    const snippet = (draft.snippet || '').trim().slice(0, 300)
+      || (draft.chapterTitle || '').slice(0, 300)
+      || (lang === 'zh' ? '阅读位置' : 'Reading position')
+    const label = (draft.label || '').trim().slice(0, 500)
+    const bookmark: BookBookmark = {
+      id: createLocalId(),
+      chapterIndex: Number.isFinite(draft.chapterIndex) ? Math.max(-1, Math.floor(draft.chapterIndex)) : -1,
+      offset: Number.isFinite(draft.offset) ? Math.max(0, Math.floor(draft.offset)) : 0,
+      ...(draft.chapterTitle ? { chapterTitle: draft.chapterTitle.slice(0, 200) } : {}),
+      snippet,
+      ...(label ? { label } : {}),
+      color: draft.color || DEFAULT_HIGHLIGHT_COLOR,
+      createdAt: Date.now()
+    }
+    return persistBookmarks([...latestBookmarks, bookmark], lang === 'zh'
+      ? '书签保存失败，请稍后重试。'
+      : 'The bookmark could not be saved. Please try again.')
+  }
+
+  const handleReaderBookmarkUpdate = async (id: string, patch: ReaderBookmarkPatch): Promise<boolean> => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能修改书签。' : 'Sign in to edit bookmarks.')
+      return false
+    }
+    if (bookmarkMutationInFlightRef.current) return false
+    const latestBookmarks = getBook(book.id)?.bookmarks || book.bookmarks || []
+    const nextBookmarks: BookBookmark[] = latestBookmarks.map(bookmark => {
+      if (bookmark.id !== id) return bookmark
+      const updated: BookBookmark = { ...bookmark }
+      if (patch.label !== undefined) {
+        const label = patch.label.trim().slice(0, 500)
+        if (label) updated.label = label
+        else delete updated.label
+      }
+      if (patch.color) updated.color = patch.color
+      return updated
+    })
+    return persistBookmarks(nextBookmarks, lang === 'zh'
+      ? '书签更新失败，请稍后重试。'
+      : 'The bookmark could not be updated. Please try again.')
+  }
+
+  const handleReaderBookmarkDelete = async (id: string): Promise<boolean> => {
+    if (!isAuthenticated) {
+      requestLogin(lang === 'zh' ? '登录后才能删除书签。' : 'Sign in to delete bookmarks.')
+      return false
+    }
+    if (bookmarkMutationInFlightRef.current) return false
+    const latestBookmarks = getBook(book.id)?.bookmarks || book.bookmarks || []
+    return persistBookmarks(latestBookmarks.filter(bookmark => bookmark.id !== id), lang === 'zh'
+      ? '书签删除失败，原书签已恢复。请稍后重试。'
+      : 'The bookmark could not be deleted and was restored. Please try again.')
+  }
+
+  /** 「我的笔记」里的书签删除入口，带动写入状态，避免重复点击。 */
+  const handleBookmarkDeleteFromNotes = async (id: string) => {
+    if (bookmarkSaving) return
+    setBookmarkSaving(true)
+    try {
+      await handleReaderBookmarkDelete(id)
+    } finally {
+      setBookmarkSaving(false)
+    }
+  }
+
   const handleSaveNote = async () => {
     if (noteMutationInFlightRef.current) return
     if (!isAuthenticated) {
@@ -816,38 +1055,19 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         : `A note cannot exceed ${MAX_NOTE_LENGTH.toLocaleString()} characters.`)
       return
     }
+    const latestRecords = getBook(book.id)?.noteRecords || noteRecords
     const newRecord: NoteRecord = {
       id: createLocalId(),
       type: 'note',
       content: newNote.trim(),
       phaseId: LEARNING_PHASES[currentPhase]?.id,
+      source: 'manual',
       createdAt: Date.now()
     }
-    const updatedRecords = [...noteRecords, newRecord]
-    noteMutationInFlightRef.current = true
-    setNoteSaving(true)
-    setNoteError(null)
-    try {
-      updateBook(book.id, { noteRecords: updatedRecords })
-      await flushPendingStoreWrites()
-      const persistedBook = getBook(book.id)
-      if (persistedBook) setBook(persistedBook)
-      setNoteRecords(persistedBook?.noteRecords || updatedRecords)
-      setNewNote('')
-    } catch (error) {
-      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
-      if (persistedBook) {
-        setBook(persistedBook)
-        setNoteRecords(persistedBook.noteRecords || [])
-      }
-      logger.error('Note save failed:', error)
-      setNoteError(lang === 'zh'
-        ? '笔记保存失败，输入内容已保留，请稍后重试。'
-        : 'The note could not be saved. Your input was kept; please try again.')
-    } finally {
-      noteMutationInFlightRef.current = false
-      setNoteSaving(false)
-    }
+    const saved = await persistNoteRecords([...latestRecords, newRecord], lang === 'zh'
+      ? '笔记保存失败，输入内容已保留，请稍后重试。'
+      : 'The note could not be saved. Your input was kept; please try again.')
+    if (saved) setNewNote('')
   }
 
   const handleDeleteNote = async (noteId: string) => {
@@ -856,30 +1076,10 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       requestLogin(lang === 'zh' ? '登录后才能删除笔记。' : 'Sign in to delete notes.')
       return
     }
-    const updatedRecords = noteRecords.filter(n => n.id !== noteId)
-    noteMutationInFlightRef.current = true
-    setNoteSaving(true)
-    setNoteError(null)
-    try {
-      updateBook(book.id, { noteRecords: updatedRecords })
-      await flushPendingStoreWrites()
-      const persistedBook = getBook(book.id)
-      if (persistedBook) setBook(persistedBook)
-      setNoteRecords(persistedBook?.noteRecords || updatedRecords)
-    } catch (error) {
-      const persistedBook = await reloadBookFromPersistence(book.id).catch(() => undefined)
-      if (persistedBook) {
-        setBook(persistedBook)
-        setNoteRecords(persistedBook.noteRecords || [])
-      }
-      logger.error('Note deletion failed:', error)
-      setNoteError(lang === 'zh'
-        ? '笔记删除失败，原笔记已恢复。请稍后重试。'
-        : 'The note could not be deleted and was restored. Please try again.')
-    } finally {
-      noteMutationInFlightRef.current = false
-      setNoteSaving(false)
-    }
+    const latestRecords = getBook(book.id)?.noteRecords || noteRecords
+    await persistNoteRecords(latestRecords.filter(record => record.id !== noteId), lang === 'zh'
+      ? '笔记删除失败，原笔记已恢复。请稍后重试。'
+      : 'The note could not be deleted and was restored. Please try again.')
   }
 
   const handleBookUpdate = () => {
@@ -925,6 +1125,32 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
   const completedPhaseCount = clampCompletedPhaseCount(book.currentPhase, LEARNING_PHASES.length)
   const practiceComplete = book.bestScore >= 60
 
+  /** 「我的笔记」的标签建议与筛选口径，与阅读器里的标签规则保持同一套。 */
+  const noteTagOptions = (() => {
+    const tags: string[] = []
+    const seen = new Set<string>()
+    noteRecords.forEach(record => {
+      normalizeNoteTags(record.tags).forEach(tag => {
+        const key = tag.toLowerCase()
+        if (seen.has(key)) return
+        seen.add(key)
+        tags.push(tag)
+      })
+    })
+    return tags.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+  })()
+  const visibleNoteRecords = noteRecords.filter(record => {
+    if (noteSourceFilter === 'reading' && record.source !== 'reading') return false
+    if (noteSourceFilter === 'import' && record.source !== 'import') return false
+    if (noteSourceFilter === 'manual' && (record.source === 'reading' || record.source === 'import')) return false
+    if (noteTagFilter) {
+      const tags = normalizeNoteTags(record.tags)
+      if (!tags.some(tag => tag.toLowerCase() === noteTagFilter.toLowerCase())) return false
+    }
+    return true
+  })
+  const bookBookmarks = book.bookmarks || []
+
   return (
     <div className="max-w-4xl mx-auto" data-reading-source-kind="book" data-reading-source-id={book.id}>
       {/* Header */}
@@ -967,8 +1193,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       </div>
 
       {/* Tabs */}
-      <div ref={readingTabsRef} className="mb-6 grid scroll-mt-24 grid-cols-4 gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 sm:gap-2">
+      <div ref={readingTabsRef} className="mb-6 grid scroll-mt-24 grid-cols-5 gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 sm:gap-2">
         {[
+          { key: 'reader' as TabType, label: lang === 'zh' ? '阅读原文' : 'Read', mobileLabel: lang === 'zh' ? '原文' : 'Read', icon: 'bookOpen' as AppIconName, tone: 'cyan' as const },
           { key: 'phase' as TabType, label: lang === 'zh' ? '阶段学习' : 'Learning', mobileLabel: lang === 'zh' ? '阶段学习' : 'Learn', icon: 'library' as AppIconName, tone: 'blue' as const },
           { key: 'practice' as TabType, label: lang === 'zh' ? '费曼实践' : 'Practice', mobileLabel: lang === 'zh' ? '费曼实践' : 'Practice', icon: 'graduation' as AppIconName, tone: 'green' as const },
           { key: 'notes' as TabType, label: lang === 'zh' ? '我的笔记' : 'Notes', mobileLabel: lang === 'zh' ? '我的笔记' : 'Notes', icon: 'note' as AppIconName, tone: 'amber' as const },
@@ -991,6 +1218,44 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           </button>
         ))}
       </div>
+
+      {/* Reader Tab：原文阅读 + 划线，费曼练习以这里的原文与笔记为依据 */}
+      {activeTab === 'reader' && (
+        <div className="animate-fade-in">
+          <div className="card mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-lg font-bold">
+                <AppIcon name="bookOpen" tone="cyan" size={20} />
+                {lang === 'zh' ? '阅读原文' : 'Read the source'}
+              </h2>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                {lang === 'zh'
+                  ? '先读原文，再让 AI 帮你核对与多角度理解；划线、书签与笔记都会保存在这本书里。'
+                  : 'Read first, then use AI to verify and widen your understanding. Highlights, bookmarks, and notes stay with the book.'}
+              </p>
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg bg-[var(--bg-secondary)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] sm:self-auto">
+              <AppIcon name="note" tone="amber" size={14} />
+              {lang === 'zh'
+                ? `${(book.noteRecords || []).filter(record => record.quote).length} 条划线 · ${(book.bookmarks || []).length} 个书签`
+                : `${(book.noteRecords || []).filter(record => record.quote).length} highlights · ${(book.bookmarks || []).length} bookmarks`}
+            </span>
+          </div>
+          <BookReader
+            book={book}
+            lang={lang}
+            onSaveHighlight={handleReaderHighlight}
+            onUpdateHighlight={handleReaderHighlightUpdate}
+            onDeleteHighlight={handleReaderHighlightDelete}
+            onSaveBookmark={handleReaderBookmarkSave}
+            onUpdateBookmark={handleReaderBookmarkUpdate}
+            onDeleteBookmark={handleReaderBookmarkDelete}
+            focusChapterIndex={readerFocusChapter}
+            focusOffset={readerFocusOffset}
+            onProgressSaved={handleBookUpdate}
+          />
+        </div>
+      )}
 
       {/* Phase Tab */}
       {activeTab === 'phase' && (
@@ -1402,6 +1667,48 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             </div>
 
               <>
+                {book.documentContent && (
+                  <div className={`mb-4 rounded-xl border p-3 ${
+                    readingEvidence.length === 0
+                      ? 'border-amber-500/40 bg-amber-500/10'
+                      : 'border-[var(--border)] bg-[var(--bg-secondary)]'
+                  }`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="inline-flex items-center gap-2 text-sm font-medium">
+                        <AppIcon name={readingEvidence.length === 0 ? 'alert' : 'check'} tone={readingEvidence.length === 0 ? 'amber' : 'green'} size={16} />
+                        {readingEvidence.length === 0
+                          ? (lang === 'zh' ? '先读原文并划线，AI 才有核对依据' : 'Read and highlight first so AI has evidence to check')
+                          : (lang === 'zh'
+                              ? `AI 将用你的 ${readingEvidence.length} 条划线 / 笔记核对复述`
+                              : `AI will check your retelling against ${readingEvidence.length} highlights/notes`)}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReaderFocusChapter(null)
+                          handleTabChange('reader')
+                        }}
+                        className="btn-secondary min-h-10 gap-1.5 !px-3 !text-xs"
+                      >
+                        <AppIcon name="bookOpen" size={15} />
+                        {lang === 'zh' ? '去阅读原文' : 'Open the reader'}
+                      </button>
+                    </div>
+                    {readingEvidence.length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-[var(--text-secondary)]">
+                        {readingEvidence.slice(0, 3).map(item => (
+                          <li key={item.ref} className="truncate">
+                            <span className="mr-1 font-semibold text-[var(--accent)]">[{item.ref}]</span>
+                            {item.quote || item.note}
+                          </li>
+                        ))}
+                        {readingEvidence.length > 3 && (
+                          <li>{lang === 'zh' ? `其余 ${readingEvidence.length - 3} 条已一并发送给 AI。` : `${readingEvidence.length - 3} more sent to AI.`}</li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 <h3 className="font-semibold mb-1">{t(lang, 'practice.teach')}</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-3">{t(lang, 'practice.teachDesc')}</p>
 
@@ -1544,7 +1851,12 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                             </p>
                             <div className="bg-[var(--bg-card)] rounded p-3">
                               <MarkdownRenderer content={record.aiReview} onQuoteSelected={handleQuoteSelected} />
-                              <SourceEvidence content={record.aiReview} documentContent={book.documentContent} lang={lang} />
+                              <SourceEvidence
+                                content={record.aiReview}
+                                documentContent={book.documentContent}
+                                highlights={readingEvidence}
+                                lang={lang}
+                              />
                             </div>
                           </div>
                           <div>
@@ -1588,7 +1900,19 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       {activeTab === 'notes' && (
         <div className="animate-fade-in">
           <div className="card mb-6">
-            <h2 className="flex items-center gap-2 text-xl font-bold mb-4"><AppIcon name="note" tone="amber" size={22} />{t(lang, 'practice.notes')}</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-xl font-bold"><AppIcon name="note" tone="amber" size={22} />{t(lang, 'practice.notes')}</h2>
+              <button
+                type="button"
+                onClick={() => setShowHighlightImport(true)}
+                disabled={noteSaving}
+                className="btn-secondary !px-3 !py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                title={lang === 'zh' ? '导入微信读书、Kindle、Readwise 等平台的划线与笔记' : 'Import highlights and notes from WeChat Reading, Kindle, Readwise, and more'}
+              >
+                <AppIcon name="download" tone="amber" size={16} />
+                {lang === 'zh' ? '导入笔记' : 'Import notes'}
+              </button>
+            </div>
             <textarea
               value={newNote}
               onChange={e => {
@@ -1611,14 +1935,65 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
           </div>
 
           <div className="card">
-            <h3 className="flex items-center gap-2 font-semibold mb-4"><AppIcon name="library" tone="blue" size={19} />{lang === 'zh' ? '笔记历史' : 'History'} ({noteRecords.length})</h3>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 font-semibold"><AppIcon name="library" tone="blue" size={19} />{lang === 'zh' ? '笔记历史' : 'History'} ({noteRecords.length})</h3>
+              <div className="flex flex-wrap items-center gap-1">
+                {([
+                  { key: 'all' as const, label: lang === 'zh' ? '全部' : 'All' },
+                  { key: 'reading' as const, label: lang === 'zh' ? '原文划线' : 'Highlights' },
+                  { key: 'import' as const, label: lang === 'zh' ? '外部导入' : 'Imported' },
+                  { key: 'manual' as const, label: lang === 'zh' ? '手工笔记' : 'Notes' }
+                ]).map(option => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setNoteSourceFilter(option.key)}
+                    aria-pressed={noteSourceFilter === option.key}
+                    className={`rounded-full px-2.5 py-1 text-xs transition ${
+                      noteSourceFilter === option.key
+                        ? 'bg-[var(--accent)] text-white'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {noteTagOptions.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-1">
+                <span className="mr-1 text-xs text-[var(--text-secondary)]">{lang === 'zh' ? '标签' : 'Tags'}</span>
+                {([
+                  { key: null as string | null, label: lang === 'zh' ? '全部标签' : 'All tags' },
+                  ...noteTagOptions.map(tag => ({ key: tag as string | null, label: tag }))
+                ]).map(option => (
+                  <button
+                    key={option.key ?? '__all__'}
+                    type="button"
+                    onClick={() => setNoteTagFilter(option.key)}
+                    aria-pressed={noteTagFilter === option.key}
+                    className={`rounded-full px-2.5 py-1 text-xs transition ${
+                      noteTagFilter === option.key
+                        ? 'bg-[var(--accent)] text-white'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {noteRecords.length === 0 ? (
               <p className="text-[var(--text-secondary)] text-center py-8">
                 {lang === 'zh' ? '还没有笔记' : 'No notes yet'}
               </p>
+            ) : visibleNoteRecords.length === 0 ? (
+              <p className="text-[var(--text-secondary)] text-center py-8">
+                {lang === 'zh' ? '当前筛选条件下没有笔记' : 'No notes match this filter'}
+              </p>
             ) : (
               <div className="space-y-3">
-                {noteRecords.slice().reverse().map(note => (
+                {visibleNoteRecords.slice().reverse().map(note => (
                   <div
                     key={note.id}
                     className="bg-[var(--bg-secondary)] rounded-xl p-4"
@@ -1626,21 +2001,135 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                     data-reading-source-id={note.id}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className={`shrink-0 rounded px-2 py-1 text-xs ${
+                          note.source === 'reading'
+                            ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                            : note.source === 'import'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-[var(--bg-card)] text-[var(--text-secondary)]'
+                        }`}>
+                          {note.source === 'reading'
+                            ? (lang === 'zh' ? '原文划线' : 'Highlight')
+                            : note.source === 'import'
+                              ? (lang === 'zh' ? '外部导入' : 'Imported')
+                              : (lang === 'zh' ? '手工笔记' : 'Note')}
+                        </span>
                         {note.phaseId && (
                           <span className="text-xs bg-[var(--accent)]/20 text-[var(--accent)] px-2 py-1 rounded">
                             {t(lang, `phases.${note.phaseId}.subtitle`)}
+                          </span>
+                        )}
+                        {note.chapterTitle && (
+                          <span className="min-w-0 truncate text-xs text-[var(--text-secondary)]">
+                            {note.chapterTitle}
                           </span>
                         )}
                         <span className="text-xs text-[var(--text-secondary)]">
                           {new Date(note.createdAt).toLocaleString()}
                         </span>
                       </div>
-                      <button onClick={() => handleDeleteNote(note.id)} disabled={noteSaving} className="text-red-400 text-sm disabled:opacity-50">
-                        {lang === 'zh' ? '删除' : 'Delete'}
-                      </button>
+                      <div className="flex shrink-0 items-center gap-3">
+                        {book.documentContent && (
+                          (typeof note.chapterIndex === 'number' && note.chapterIndex >= 0)
+                          || (typeof note.offset === 'number' && Number.isFinite(note.offset))
+                        ) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenReaderAtChapter(note.chapterIndex, note.offset)}
+                            className="text-sm text-[var(--accent)]"
+                          >
+                            {lang === 'zh' ? '回到原文' : 'Source'}
+                          </button>
+                        )}
+                        <button onClick={() => handleDeleteNote(note.id)} disabled={noteSaving} className="text-red-400 text-sm disabled:opacity-50">
+                          {lang === 'zh' ? '删除' : 'Delete'}
+                        </button>
+                      </div>
                     </div>
+                    {note.quote && (
+                      <blockquote className="mb-2 whitespace-pre-wrap border-l-2 border-[var(--accent)]/50 pl-3 text-sm text-[var(--text-secondary)]">
+                        {note.quote}
+                      </blockquote>
+                    )}
                     <p className="whitespace-pre-wrap text-sm">{note.content}</p>
+                    {normalizeNoteTags(note.tags).length > 0 && (
+                      <ul className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {normalizeNoteTags(note.tags).map(tag => (
+                          <li key={tag} className="rounded-full bg-[var(--bg-card)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">
+                            {tag}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card mt-6">
+            <h3 className="mb-4 flex items-center gap-2 font-semibold">
+              <AppIcon name="bookMarked" tone="violet" size={19} />
+              {lang === 'zh' ? '书签' : 'Bookmarks'} ({bookBookmarks.length})
+            </h3>
+            {bookBookmarks.length === 0 ? (
+              <p className="py-8 text-center text-[var(--text-secondary)]">
+                {lang === 'zh' ? '还没有书签。在阅读原文时点工具栏的「书签」即可添加。' : 'No bookmarks yet. Use “Bookmark” in the reader toolbar to add one.'}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {bookBookmarks.slice().reverse().map(bookmark => (
+                  <div
+                    key={bookmark.id}
+                    className="rounded-xl bg-[var(--bg-secondary)] p-4"
+                    data-reading-source-kind="bookmark"
+                    data-reading-source-id={bookmark.id}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${HIGHLIGHT_DOT_CLASSES[bookmark.color || DEFAULT_HIGHLIGHT_COLOR]}`}
+                          aria-hidden
+                        />
+                        {bookmark.chapterTitle && (
+                          <span className="min-w-0 truncate text-xs text-[var(--text-secondary)]">{bookmark.chapterTitle}</span>
+                        )}
+                        <span className="text-xs text-[var(--text-secondary)]">
+                          {new Date(bookmark.createdAt).toLocaleString()}
+                        </span>
+                        <span className="text-xs text-[var(--text-secondary)]">
+                          {lang === 'zh'
+                            ? `${colorLabel(bookmark.color || DEFAULT_HIGHLIGHT_COLOR, true)}书签`
+                            : `${colorLabel(bookmark.color || DEFAULT_HIGHLIGHT_COLOR, false)} bookmark`}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        {book.documentContent && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenReaderAtChapter(bookmark.chapterIndex, bookmark.offset)}
+                            className="text-sm text-[var(--accent)]"
+                          >
+                            {lang === 'zh' ? '回到原文' : 'Source'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleBookmarkDeleteFromNotes(bookmark.id)}
+                          disabled={bookmarkSaving}
+                          className="text-sm text-red-400 disabled:opacity-50"
+                        >
+                          {lang === 'zh' ? '删除' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                    {bookmark.snippet && (
+                      <blockquote className="mb-2 whitespace-pre-wrap border-l-2 border-[var(--accent)]/50 pl-3 text-sm text-[var(--text-secondary)]">
+                        {bookmark.snippet}
+                      </blockquote>
+                    )}
+                    {bookmark.label && <p className="whitespace-pre-wrap text-sm">{bookmark.label}</p>}
                   </div>
                 ))}
               </div>
@@ -1702,6 +2191,21 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             />
           )}
         </div>
+      )}
+
+      {showHighlightImport && (
+        <HighlightImportDialog
+          lang={lang}
+          targetBookId={book.id}
+          onImported={() => {
+            const updatedBook = getBook(book.id)
+            if (updatedBook) {
+              setBook(updatedBook)
+              setNoteRecords(updatedBook.noteRecords || [])
+            }
+          }}
+          onClose={() => setShowHighlightImport(false)}
+        />
       )}
 
       {showBookOrganizer && (

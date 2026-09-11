@@ -2,6 +2,8 @@ import type {
   AppSettings,
   BookAnalysisTask,
   Book,
+  BookBookmark,
+  BookChapter,
   BookStatus,
   BookTag,
   CustomQuote,
@@ -15,6 +17,7 @@ import {
   MAX_BOOK_LIST_DESCRIPTION_LENGTH,
   MAX_BOOK_LIST_NAME_LENGTH,
   MAX_BOOK_LISTS,
+  MAX_BOOKMARKS_PER_BOOK,
   MAX_BOOK_RELATION_NOTE_LENGTH,
   MAX_BOOK_RELATIONS,
   MAX_BOOK_TAGS,
@@ -25,6 +28,7 @@ import {
 import { AIUsageRecord, MAX_AI_USAGE_RECORDS } from './aiUsage'
 import type { BookList, BookRelation, BookRelationType } from './bookRelations'
 import { migrateToTokenDanceAfterSunset } from './aiProviderPolicy'
+import { normalizeNoteTags } from './readerAnnotations'
 
 export const BACKUP_DATA_VERSION = 5
 export { MAX_BACKUP_FILE_BYTES } from './dataLimits'
@@ -42,6 +46,13 @@ const BOOK_RELATION_TYPES = new Set<BookRelationType>(['series', 'related', 'pre
 
 const BOOK_STATUSES = new Set<BookStatus>(['unread', 'reading', 'finished'])
 const NOTE_TYPES = new Set<NoteRecord['type']>(['note', 'teaching'])
+const NOTE_SOURCES = new Set<NonNullable<NoteRecord['source']>>(['reading', 'manual', 'import', 'practice'])
+const MAX_NOTE_QUOTE_LENGTH = 20_000
+const MAX_BOOKMARK_SNIPPET_LENGTH = 300
+const MAX_BOOKMARK_LABEL_LENGTH = 500
+const MAX_CHAPTERS_PER_BOOK = 2000
+const MAX_CHAPTER_TITLE_LENGTH = 200
+const HIGHLIGHT_COLORS = new Set<BookBookmark['color']>(['yellow', 'green', 'blue', 'pink'])
 const PERSONAS = new Set<PersonaType>([
   'elementary', 'college', 'professional', 'scientist', 'entrepreneur',
   'teacher', 'investor', 'user', 'competitor', 'nitpicker'
@@ -195,10 +206,51 @@ function normalizeTag(value: unknown, path: string): BookTag {
   }
 }
 
+function normalizeChapters(value: unknown, path: string): BookChapter[] {
+  if (!Array.isArray(value)) fail(path, '必须是数组')
+  if (value.length > MAX_CHAPTERS_PER_BOOK) fail(path, `最多允许 ${MAX_CHAPTERS_PER_BOOK} 个章节`)
+  return value.map((raw, index) => {
+    const item = record(raw, `${path}[${index}]`)
+    return {
+      title: stringValue(item.title, `${path}[${index}].title`, MAX_CHAPTER_TITLE_LENGTH)!,
+      start: finiteNumber(item.start, `${path}[${index}].start`, 0, MAX_DOCUMENT_TEXT_LENGTH, true),
+      length: finiteNumber(item.length, `${path}[${index}].length`, 0, MAX_DOCUMENT_TEXT_LENGTH, true)
+    }
+  })
+}
+
+function normalizeHighlightColor(value: unknown): BookBookmark['color'] | undefined {
+  return HIGHLIGHT_COLORS.has(value as BookBookmark['color']) ? value as BookBookmark['color'] : undefined
+}
+
+function normalizeBookmarks(value: unknown, path: string): BookBookmark[] {
+  if (!Array.isArray(value)) fail(path, '必须是数组')
+  if (value.length > MAX_BOOKMARKS_PER_BOOK) fail(path, `最多允许 ${MAX_BOOKMARKS_PER_BOOK} 个书签`)
+  return value.map((raw, index) => {
+    const item = record(raw, `${path}[${index}]`)
+    const color = normalizeHighlightColor(item.color)
+    return {
+      id: identifier(item.id, `${path}[${index}].id`),
+      chapterIndex: finiteNumber(item.chapterIndex, `${path}[${index}].chapterIndex`, -1, 100_000, true),
+      offset: finiteNumber(item.offset, `${path}[${index}].offset`, 0, MAX_DOCUMENT_TEXT_LENGTH, true),
+      ...(item.chapterTitle !== undefined
+        ? { chapterTitle: stringValue(item.chapterTitle, `${path}[${index}].chapterTitle`, MAX_CHAPTER_TITLE_LENGTH, false)! }
+        : {}),
+      snippet: stringValue(item.snippet, `${path}[${index}].snippet`, MAX_BOOKMARK_SNIPPET_LENGTH)!,
+      ...(item.label !== undefined
+        ? { label: stringValue(item.label, `${path}[${index}].label`, MAX_BOOKMARK_LABEL_LENGTH, false)! }
+        : {}),
+      ...(color ? { color } : {}),
+      createdAt: timestamp(item.createdAt, `${path}[${index}].createdAt`)
+    }
+  })
+}
+
 function normalizeNote(value: unknown, path: string): NoteRecord {
   const item = record(value, path)
   if (!NOTE_TYPES.has(item.type as NoteRecord['type'])) fail(`${path}.type`, '取值无效')
   const type = item.type as NoteRecord['type']
+  const color = normalizeHighlightColor(item.color)
   return {
     id: identifier(item.id, `${path}.id`),
     type,
@@ -207,7 +259,20 @@ function normalizeNote(value: unknown, path: string): NoteRecord {
       ? { aiReview: stringValue(item.aiReview, `${path}.aiReview`, 100_000)! }
       : {}),
     ...(item.phaseId !== undefined ? { phaseId: stringValue(item.phaseId, `${path}.phaseId`, 64)! } : {}),
-    createdAt: timestamp(item.createdAt, `${path}.createdAt`)
+    createdAt: timestamp(item.createdAt, `${path}.createdAt`),
+    ...(item.quote !== undefined ? { quote: stringValue(item.quote, `${path}.quote`, MAX_NOTE_QUOTE_LENGTH, false)! } : {}),
+    ...(item.chapterTitle !== undefined ? { chapterTitle: stringValue(item.chapterTitle, `${path}.chapterTitle`, 200, false)! } : {}),
+    ...(item.chapterIndex !== undefined
+      ? { chapterIndex: finiteNumber(item.chapterIndex, `${path}.chapterIndex`, 0, 100_000, true) }
+      : {}),
+    ...(item.source !== undefined && NOTE_SOURCES.has(item.source as NonNullable<NoteRecord['source']>)
+      ? { source: item.source as NoteRecord['source'] }
+      : {}),
+    ...(item.offset !== undefined
+      ? { offset: finiteNumber(item.offset, `${path}.offset`, 0, MAX_DOCUMENT_TEXT_LENGTH, true) }
+      : {}),
+    ...(color ? { color } : {}),
+    ...(item.tags !== undefined ? { tags: normalizeNoteTags(item.tags) } : {})
   }
 }
 
@@ -327,10 +392,12 @@ function normalizeBook(value: unknown, path: string): Book {
   const summaryOnly = item._summaryOnly === true
 
   const notes = item.noteRecords === undefined ? [] : item.noteRecords
+  const bookmarks = item.bookmarks === undefined ? [] : item.bookmarks
   const practices = item.practiceRecords === undefined ? [] : item.practiceRecords
   const qaRecords = item.qaPracticeRecords === undefined ? [] : item.qaPracticeRecords
   const tags = item.tags === undefined ? [] : item.tags
   if (!Array.isArray(notes) || notes.length > MAX_NOTES_PER_BOOK) fail(`${path}.noteRecords`, `最多允许 ${MAX_NOTES_PER_BOOK} 条记录`)
+  if (!Array.isArray(bookmarks)) fail(`${path}.bookmarks`, '必须是数组')
   if (!Array.isArray(practices) || practices.length > MAX_PRACTICES_PER_BOOK) fail(`${path}.practiceRecords`, `最多允许 ${MAX_PRACTICES_PER_BOOK} 条记录`)
   if (!Array.isArray(qaRecords) || qaRecords.length > MAX_QA_RECORDS_PER_BOOK) fail(`${path}.qaPracticeRecords`, `最多允许 ${MAX_QA_RECORDS_PER_BOOK} 条记录`)
   if (!Array.isArray(tags) || tags.length > MAX_TAGS) fail(`${path}.tags`, `最多允许 ${MAX_TAGS} 个标签`)
@@ -374,6 +441,8 @@ function normalizeBook(value: unknown, path: string): Book {
     ...(item.description !== undefined ? { description: stringValue(item.description, `${path}.description`, 5000, item.description !== '')! } : {}),
     tags: tags.map((tag, index) => normalizeTag(tag, `${path}.tags[${index}]`)),
     ...(item.documentContent !== undefined ? { documentContent: stringValue(item.documentContent, `${path}.documentContent`, MAX_DOCUMENT_TEXT_LENGTH)! } : {}),
+    ...(item.chapters !== undefined ? { chapters: normalizeChapters(item.chapters, `${path}.chapters`) } : {}),
+    ...(item.bookmarks !== undefined ? { bookmarks: normalizeBookmarks(item.bookmarks, `${path}.bookmarks`) } : {}),
     status,
     currentPhase,
     noteRecords: normalizedNotes,

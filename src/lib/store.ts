@@ -58,6 +58,49 @@ export interface NoteRecord {
   aiReview?: string          // 仅兼容旧版教学模拟记录，普通笔记不会生成
   phaseId?: string           // 关联的阶段
   createdAt: number
+  /** 原文划线：划线内容与所在章节，便于回到原文核对。 */
+  quote?: string
+  chapterIndex?: number
+  chapterTitle?: string
+  /** 划线在 documentContent 中的起始偏移，用于精确回到原文位置。 */
+  offset?: number
+  /** 记录来源：站内阅读划线、手工笔记、外部阅读器导入。 */
+  source?: NoteSource
+  /** 划线颜色，仅站内阅读器使用；缺省按黄色展示。 */
+  color?: HighlightColor
+  /** 用户自定义标签，用于按主题筛选划线笔记。 */
+  tags?: string[]
+}
+
+export type NoteSource = 'reading' | 'manual' | 'import' | 'practice'
+
+/** 划线颜色与书签颜色共用一套取值。 */
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink'
+
+/** 书籍章节定位（不复制正文，只保存偏移量，避免快照体积翻倍）。 */
+export interface BookChapter {
+  title: string
+  start: number
+  length: number
+}
+
+/**
+ * 阅读书签。只记录位置与摘要，不复制原文：
+ * - offset 是 documentContent 中的字符偏移，章节结构变化后仍能定位；
+ * - sectionIndex 不落库，阅读时按 sections 现算，避免分节规则调整后失效。
+ */
+export interface BookBookmark {
+  id: string
+  /** 对应 book.chapters 的下标；没有章节结构时为 -1。 */
+  chapterIndex: number
+  offset: number
+  chapterTitle?: string
+  /** 书签位置的原文摘要，便于在列表中辨认。 */
+  snippet: string
+  /** 用户备注，可留空。 */
+  label?: string
+  color?: HighlightColor
+  createdAt: number
 }
 
 // 费曼实践记录
@@ -137,6 +180,10 @@ export interface Book {
   description?: string     // 一句话介绍
   tags?: BookTag[]         // AI 生成的标签
   documentContent?: string // 上传的文档内容（作为知识库）
+  /** 章节定位表（标题 + 在 documentContent 中的起止），用于站内阅读与划线定位。 */
+  chapters?: BookChapter[]
+  /** 阅读书签（含位置与摘要），与笔记、划线分开保存。 */
+  bookmarks?: BookBookmark[]
   status: BookStatus
   currentPhase: number
   noteRecords: NoteRecord[]
@@ -1116,7 +1163,15 @@ export async function flushPendingSettingsWrites(): Promise<void> {
   throw error instanceof Error ? error : new Error('Failed to persist settings')
 }
 
-export function addBook(name: string, author?: string, cover?: string, description?: string, tags?: BookTag[], documentContent?: string): Book {
+export function addBook(
+  name: string,
+  author?: string,
+  cover?: string,
+  description?: string,
+  tags?: BookTag[],
+  documentContent?: string,
+  chapters?: BookChapter[]
+): Book {
   const now = Date.now()
   const newBook: Book = {
     id: createLocalId(),
@@ -1126,6 +1181,7 @@ export function addBook(name: string, author?: string, cover?: string, descripti
     description,
     tags,
     documentContent,
+    chapters,
     status: 'unread',
     currentPhase: 0,
     noteRecords: [],

@@ -27,6 +27,7 @@ import { AI_OUTPUT_INCOMPLETE, createDeepSeekClient, generateBookTags } from '@/
 import { AI_REQUEST_CANCELLED, AI_TASK_BUSY } from '@/lib/aiRequestManager'
 import { AlertCircle, ChartNoAxesCombined, ChevronDown, ChevronRight, LayoutGrid, List, Tag, X } from 'lucide-react'
 import DocumentUpload from './DocumentUpload'
+import HighlightImportDialog from './HighlightImportDialog'
 import { validateBookName, validateAuthorName, validateContent, sanitizeTextInput, detectMaliciousContent } from '@/lib/validation'
 import { undoRedoManager, createDeleteBookAction, createBatchDeleteBooksAction } from '@/lib/undoRedo'
 import { getSafeImageSrc } from '@/lib/safeUrl'
@@ -64,8 +65,21 @@ const categoryLabelsEn: Record<string, string> = {
   '其他': 'Other'
 }
 
+/** 六阶段学习（费曼流程）进度，与原文阅读进度分开统计。 */
 export function getBookshelfProgressPercentage(book: Pick<Book, 'currentPhase'>): number {
   return Math.min(100, Math.max(0, (book.currentPhase / LEARNING_PHASES.length) * 100))
+}
+
+/**
+ * 原文阅读进度：有导入原文并按节阅读过的书才有这个指标，
+ * 与费曼阶段进度、AI 评分是三件事，不能互相替代。
+ */
+export function getBookReadingPercentage(book: Pick<Book, 'readingProgress' | 'chapters'>): number | null {
+  const percentage = book.readingProgress?.percentage
+  if (typeof percentage !== 'number' || !Number.isFinite(percentage)) return null
+  const currentPage = book.readingProgress?.currentPage ?? 0
+  if (percentage <= 0 && currentPage <= 0) return null
+  return Math.min(100, Math.max(0, Math.round(percentage)))
 }
 
 export function scoreReviewPriority(book: Pick<Book, 'status' | 'currentPhase' | 'bestScore' | 'practiceRecords' | 'qaPracticeRecords' | 'updatedAt' | 'createdAt'>, now = Date.now()): number {
@@ -99,6 +113,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
   const [tagGenerationError, setTagGenerationError] = useState<string | null>(null)
   const [showTagFilter, setShowTagFilter] = useState(false)
   const [showDocumentUpload, setShowDocumentUpload] = useState(false)
+  const [showHighlightImport, setShowHighlightImport] = useState(false)
   const [deleteConfirmBook, setDeleteConfirmBook] = useState<Book | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const coverReaderRef = useRef<FileReader | null>(null)
@@ -818,7 +833,9 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
     return lang === 'zh' ? '复述一次核心观点' : 'Retell one core idea'
   }
 
-  const renderBookListRow = (book: Book, virtualized = false) => (
+  const renderBookListRow = (book: Book, virtualized = false) => {
+    const readingPercentage = getBookReadingPercentage(book)
+    return (
     <MobileSwipeCard
       key={book.id}
       disabled={batchMode}
@@ -890,14 +907,26 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   book.bestScore >= 60
                     ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                }`}>
+                }`} title={lang === 'zh' ? '费曼实践最高分' : 'Best Feynman practice score'}>
                   <AppIcon name="target" size={13} />
-                  {book.bestScore}{lang === 'zh' ? '分' : ''}
+                  {lang === 'zh' ? `费曼 ${book.bestScore} 分` : `Feynman ${book.bestScore}`}
+                </span>
+              )}
+              {readingPercentage !== null && (
+                <span
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--accent)]/10 px-1.5 py-0.5 text-xs font-semibold text-[var(--accent)]"
+                  title={lang === 'zh' ? '原文阅读进度' : 'Source reading progress'}
+                >
+                  <AppIcon name="bookOpen" size={13} />
+                  {lang === 'zh' ? `已读 ${readingPercentage}%` : `${readingPercentage}% read`}
                 </span>
               )}
               <span
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--bg-secondary)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]"
-                aria-label={`${t(lang, 'bookshelf.progress')} ${book.currentPhase}/${LEARNING_PHASES.length}`}
+                aria-label={lang === 'zh'
+                  ? `费曼阶段进度 ${book.currentPhase}/${LEARNING_PHASES.length}`
+                  : `Learning phase progress ${book.currentPhase}/${LEARNING_PHASES.length}`}
+                title={lang === 'zh' ? '已完成的学习阶段（与阅读进度无关）' : 'Completed learning phases (separate from reading progress)'}
               >
                 <span>{book.currentPhase}/{LEARNING_PHASES.length}</span>
                 <span className="flex items-center gap-0.5" aria-hidden="true">
@@ -963,7 +992,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
       </div>
     </MobileSwipeCard>
-  )
+    )
+  }
 
   return (
     <div className="bookshelf-page mx-auto max-w-7xl">
@@ -1078,9 +1108,14 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
             <AppIcon name="plus" size={17} />
             <span className="hidden lg:inline">{t(lang, 'bookshelf.addBook')}</span>
           </button>
-          <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '上传文档' : 'Upload document'} title={lang === 'zh' ? '上传文档' : 'Upload Document'}>
-            <AppIcon name="upload" tone="blue" size={17} /><span className="hidden lg:inline">{lang === 'zh' ? '上传文档' : 'Upload Doc'}</span>
+          <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '导入书籍' : 'Import book'} title={lang === 'zh' ? '导入书籍（EPUB、MOBI、PDF 等）' : 'Import a book (EPUB, MOBI, PDF, and more)'}>
+            <AppIcon name="upload" tone="blue" size={17} /><span className="hidden lg:inline">{lang === 'zh' ? '导入书籍' : 'Import Book'}</span>
           </button>
+          {books.length > 0 && (
+            <button onClick={() => setShowHighlightImport(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '导入笔记' : 'Import notes'} title={lang === 'zh' ? '导入笔记（微信读书、Kindle、Readwise 等平台的划线与笔记）' : 'Import notes (highlights and notes from WeChat Reading, Kindle, Readwise, and more)'}>
+              <AppIcon name="note" tone="amber" size={17} /><span className="hidden lg:inline">{lang === 'zh' ? '导入笔记' : 'Import Notes'}</span>
+            </button>
+          )}
           <button onClick={() => setShowBookLists(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '管理书单' : 'Manage lists'} title={lang === 'zh' ? '书单' : 'Lists'}>
             <AppIcon name="bookMarked" tone="violet" size={17} />
             <span className="hidden lg:inline">{lang === 'zh' ? '书单' : 'Lists'}</span>
@@ -1368,6 +1403,23 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   <h3 className="truncate text-sm font-semibold">{book.name}</h3>
                 </div>
                 {book.author && <p className="mt-0.5 truncate text-xs text-[var(--text-secondary)]">{book.author}</p>}
+                {(() => {
+                  const readingPercentage = getBookReadingPercentage(book)
+                  if (readingPercentage === null) return null
+                  return (
+                    <div
+                      className="mt-1.5 flex items-center gap-1.5"
+                      title={lang === 'zh' ? `原文阅读进度 ${readingPercentage}%` : `${readingPercentage}% of the source read`}
+                    >
+                      <span className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--border)]">
+                        <span className="block h-full rounded-full bg-[var(--accent)]" style={{ width: `${readingPercentage}%` }} />
+                      </span>
+                      <span className="shrink-0 text-[10px] text-[var(--text-secondary)]">
+                        {lang === 'zh' ? `已读 ${readingPercentage}%` : `${readingPercentage}%`}
+                      </span>
+                    </div>
+                  )
+                })()}
               </div>
             </div>
             </MobileSwipeCard>
@@ -1448,6 +1500,28 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
             
             <div className="product-dialog-body">
             <div className="space-y-4">
+              {!editingBook && (
+                <div className="product-dialog-callout flex flex-wrap items-center justify-between gap-3 rounded-lg p-3 text-sm">
+                  <span className="min-w-0 flex-1 text-[var(--text-secondary)]">
+                    {lang === 'zh'
+                      ? '有电子书文件？导入后可自动带出书名、作者、封面与章节，同样可自由修改。'
+                      : 'Have a book file? Import it to prefill title, author, cover, and chapters — all editable afterwards.'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={savingBook}
+                    onClick={() => {
+                      closeBookModal()
+                      setShowDocumentUpload(true)
+                    }}
+                    className="btn-secondary min-h-10 shrink-0 !px-3 !text-sm"
+                  >
+                    <AppIcon name="upload" tone="blue" size={16} />
+                    {lang === 'zh' ? '导入 EPUB / MOBI / PDF' : 'Import EPUB / MOBI / PDF'}
+                  </button>
+                </div>
+              )}
+
               {/* Cover Upload */}
               <div className="product-dialog-section">
                 <label className="product-dialog-label">
@@ -1669,6 +1743,15 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
           onBookAdded={() => setBooks(getBooks())}
           onClose={() => setShowDocumentUpload(false)}
           onOpenSettings={onOpenSettings}
+        />
+      )}
+
+      {/* Highlight import modal */}
+      {showHighlightImport && (
+        <HighlightImportDialog
+          lang={lang}
+          onImported={() => setBooks(getBooks())}
+          onClose={() => setShowHighlightImport(false)}
         />
       )}
 

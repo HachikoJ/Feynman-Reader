@@ -9,6 +9,11 @@ export const MAX_BOOK_TAGS = 20
 export const MAX_TAG_LENGTH = 50
 export const MAX_AI_ANSWER_LENGTH = 20_000
 export const MAX_NOTE_LENGTH = 200_000
+// 单本书的书签上限，阅读器新增与备份导入共用同一边界。
+export const MAX_BOOKMARKS_PER_BOOK = 500
+// 单条笔记的标签上限与单个标签长度。
+export const MAX_NOTE_TAGS = 8
+export const MAX_NOTE_TAG_LENGTH = 24
 export const MAX_BOOK_LISTS = 200
 export const MAX_BOOKS_PER_LIST = 1_000
 export const MAX_BOOK_RELATIONS = 5_000
