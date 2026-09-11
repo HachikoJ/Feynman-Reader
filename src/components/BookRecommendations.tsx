@@ -12,6 +12,8 @@ import LoadingQuotes from './LoadingQuotes'
 import AppIcon from './AppIcon'
 import { useAccountAccess } from './AuthGuard'
 import MarkdownRenderer from './MarkdownRenderer'
+import SelectableContent from './SelectableContent'
+import { createSelectionSource } from '@/lib/selectionSources'
 
 interface RecommendedBook {
   title: string
@@ -205,6 +207,11 @@ export default function BookRecommendations({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [addingBookKey, setAddingBookKey] = useState<string | null>(null)
   const addingBookKeysRef = useRef(new Set<string>())
+  const recommendationSelectionSource = (text: string) => createSelectionSource(
+    { kind: 'recommendation', bookId: book.id },
+    `《${book.name}》${lang === 'zh' ? '相关推荐' : ' recommendations'}`,
+    text
+  )
 
   // 加载已保存的推荐
   useEffect(() => {
@@ -417,7 +424,13 @@ export default function BookRecommendations({
   }
 
   return (
-    <div className="card">
+    <SelectableContent
+      className="card"
+      lang={lang}
+      source={recommendationSelectionSource}
+      onSaveSelection={onQuoteSelected}
+      saveLabel={lang === 'zh' ? '加入金句' : 'Save quote'}
+    >
       {loadingRecommendations ? (
         <LoadingQuotes lang={lang} quotes={quotes} />
       ) : (
@@ -498,10 +511,10 @@ export default function BookRecommendations({
                           《{recBook.title}》
                           {recBook.year && <span className="text-sm text-[var(--text-secondary)] ml-2">({recBook.year})</span>}
                         </h5>
-                        <MarkdownRenderer content={recBook.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                        <MarkdownRenderer content={recBook.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} selectionSource={recommendationSelectionSource} lang={lang} />
                         <div className="mt-2 flex items-start gap-1.5 text-sm text-[var(--accent)]">
                           <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5 shrink-0" />
-                          <MarkdownRenderer content={recBook.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                          <MarkdownRenderer content={recBook.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} selectionSource={recommendationSelectionSource} lang={lang} />
                         </div>
                       </div>
                       <button
@@ -557,10 +570,10 @@ export default function BookRecommendations({
                               <p className="text-sm text-[var(--text-secondary)] mt-1">
                                 {recBook.author} {recBook.year && `(${recBook.year})`}
                               </p>
-                              <MarkdownRenderer content={recBook.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                              <MarkdownRenderer content={recBook.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} selectionSource={recommendationSelectionSource} lang={lang} />
                               <div className="mt-2 flex items-start gap-1.5 text-sm text-[var(--accent)]">
                                 <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5 shrink-0" />
-                                <MarkdownRenderer content={recBook.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                                <MarkdownRenderer content={recBook.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} selectionSource={recommendationSelectionSource} lang={lang} />
                               </div>
                             </div>
                             <button
@@ -617,10 +630,10 @@ export default function BookRecommendations({
                             <p className="text-sm text-[var(--text-secondary)] mt-1">
                               {path.book.author}
                             </p>
-                            <MarkdownRenderer content={path.book.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                            <MarkdownRenderer content={path.book.description} className="mt-1 text-sm text-[var(--text-secondary)] [&>p]:my-0" onQuoteSelected={onQuoteSelected} selectionSource={recommendationSelectionSource} lang={lang} />
                             <div className="mt-2 flex items-start gap-1.5 text-sm text-[var(--accent)]">
                               <AppIcon name="lightbulb" tone="amber" size={15} className="mt-0.5 shrink-0" />
-                              <MarkdownRenderer content={path.book.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} />
+                              <MarkdownRenderer content={path.book.reason} className="min-w-0 flex-1 [&>p]:my-0" onQuoteSelected={onQuoteSelected} selectionSource={recommendationSelectionSource} lang={lang} />
                             </div>
                           </div>
                           <button
@@ -652,6 +665,6 @@ export default function BookRecommendations({
       )}
         </>
       )}
-    </div>
+    </SelectableContent>
   )
 }

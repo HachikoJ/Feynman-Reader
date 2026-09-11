@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify'
 
-const COMMON_ATTRIBUTES = ['class', 'title', 'colspan', 'rowspan', 'align', 'open', 'start']
+const COMMON_ATTRIBUTES = ['class', 'title', 'colspan', 'rowspan', 'align', 'open', 'start', 'role', 'tabindex', 'data-reader-highlight', 'data-highlight-id', 'data-reader-search', 'data-reader-color', 'data-reader-search-active']
 
 /** Sanitize AI-provided HTML before it reaches the DOM. */
 export function sanitizeHtml(value: string, svg = false): string {

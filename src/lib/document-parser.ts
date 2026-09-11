@@ -159,24 +159,249 @@ function normalizeParagraphs(input: string): string {
     .trim()
 }
 
-/** 把 HTML / XHTML 片段转换为段落化纯文本（不依赖 DOM，可在 Node 测试环境运行）。 */
+/**
+ * 统一使用一小组 Markdown 兼容标记保存文档语义。它仍然是纯文本，因而不改变
+ * 现有数据模型、搜索和字符偏移；阅读器可以据此恢复标题、列表、引用、表格和代码块。
+ */
+function normalizeStructuredText(input: string): string {
+  return input
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u00a0\u3000]/g, ' ')
+    .split('\n')
+    .map(line => line.replace(/[ \t]+$/g, ''))
+    .join('\n')
+    .replace(/\n[ \t]+\n/g, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function stripMarkup(input: string): string {
+  return decodeHtmlEntities(input.replace(/<[^>]*>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeChapterTitle(input: string, fallback: string): string {
+  return stripMarkup(input).replace(/[\r\n]+/g, ' ').trim() || fallback
+}
+
+function composeChapters(chapters: ParsedChapter[]): string {
+  return chapters.map(chapter => `${chapter.title}\n\n${chapter.content}`).join('\n\n')
+}
+
+function removeLeadingHeading(content: string, title: string): string {
+  const lines = content.split('\n')
+  const firstContentLine = lines.findIndex(line => line.trim().length > 0)
+  if (firstContentLine < 0) return ''
+  const heading = lines[firstContentLine].replace(/^#{1,6}\s+/, '').trim()
+  if (heading !== title.trim()) return content
+  lines.splice(firstContentLine, 1)
+  return normalizeStructuredText(lines.join('\n'))
+}
+
+interface PdfTextItemLike {
+  str: string
+  transform?: number[]
+  width?: number
+  height?: number
+  hasEOL?: boolean
+}
+
+interface PdfLayoutLine {
+  text: string
+  x: number
+  endX: number
+  y: number
+  fontSize: number
+  pageIndex: number
+  position: 'top' | 'middle' | 'bottom'
+}
+
+function isCjkCharacter(value: string): boolean {
+  return /[\u2e80-\u9fff\uf900-\ufaff]/u.test(value)
+}
+
+function joinPdfFragments(previous: string, next: string, gap: number, fontSize: number): string {
+  if (!previous || !next) return previous + next
+  if (/\s$/u.test(previous) || /^\s/u.test(next)) return previous + next
+  const left = previous.slice(-1)
+  const right = next.slice(0, 1)
+  if (isCjkCharacter(left) || isCjkCharacter(right)) return previous + next
+  if (/^[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff，。！？；：、）》】」』’”。，！？；：]/u.test(right)) return previous + next
+  if (/^[([{"'“‘《【（「『]/u.test(left)) return previous + next
+  return gap > Math.max(1.5, fontSize * 0.18) ? `${previous} ${next}` : previous + next
+}
+
+function normalizePdfLine(text: string): string {
+  return text
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, '')
+    .replace(/[ \t]{2,}/gu, ' ')
+    .trim()
+}
+
+function joinPdfLines(previous: string, next: string): string {
+  const left = previous.trimEnd()
+  const right = next.trimStart()
+  if (!left) return right
+  if (!right) return left
+  // 英文单词跨行时去掉断词连字符；中文句子直接相连。
+  if (/[A-Za-z0-9]-(?:\s*)$/u.test(left) && /^[a-z0-9]/u.test(right)) return `${left.slice(0, -1)}${right}`
+  if (isCjkCharacter(left.slice(-1)) || isCjkCharacter(right.slice(0, 1))) return left + right
+  return `${left} ${right}`
+}
+
+function pdfItemMetrics(item: PdfTextItemLike): { x: number; y: number; fontSize: number; width: number } {
+  const transform = Array.isArray(item.transform) ? item.transform : []
+  const x = Number.isFinite(transform[4]) ? Number(transform[4]) : 0
+  const y = Number.isFinite(transform[5]) ? Number(transform[5]) : 0
+  const scale = Math.max(Math.abs(Number(transform[0]) || 0), Math.abs(Number(transform[3]) || 0))
+  const fontSize = Math.max(6, Math.abs(Number(item.height) || 0), scale || 12)
+  const width = Math.max(0, Number(item.width) || 0)
+  return { x, y, fontSize, width }
+}
+
+/**
+ * 使用 PDF 文本项的坐标重建可读正文。PDF.js 返回的是绘制指令顺序，
+ * 直接拼接会破坏中文、分栏、段落和英文断词。
+ */
+export function reconstructPdfText(pages: PdfTextItemLike[][]): string {
+  const pageLines: PdfLayoutLine[][] = pages.map((items, pageIndex) => {
+    const usable = items
+      .map(item => ({ item, metrics: pdfItemMetrics(item) }))
+      .filter(({ item }) => typeof item.str === 'string' && item.str.trim().length > 0)
+    const lines: PdfLayoutLine[] = []
+    usable.sort((a, b) => b.metrics.y - a.metrics.y || a.metrics.x - b.metrics.x)
+    usable.forEach(({ item, metrics }) => {
+      const text = normalizePdfLine(item.str)
+      if (!text) return
+      const previous = lines[lines.length - 1]
+      const tolerance = Math.max(2, Math.min(metrics.fontSize, previous?.fontSize ?? metrics.fontSize) * 0.45)
+      if (previous && Math.abs(previous.y - metrics.y) <= tolerance) {
+        previous.text = joinPdfFragments(previous.text, text, Math.max(0, metrics.x - previous.endX), metrics.fontSize)
+        previous.endX = Math.max(previous.endX, metrics.x + metrics.width)
+        previous.fontSize = Math.max(previous.fontSize, metrics.fontSize)
+      } else {
+        lines.push({ text, x: metrics.x, endX: metrics.x + metrics.width, y: metrics.y, fontSize: metrics.fontSize, pageIndex, position: 'middle' })
+      }
+    })
+    lines.forEach((line, index) => {
+      line.position = index < 2 ? 'top' : index >= lines.length - 2 ? 'bottom' : 'middle'
+    })
+    return lines
+  })
+
+  // 同一位置在多页重复出现的短行通常是页眉或页脚，正文中只保留一次也会造成噪声。
+  const edgeCounts = new Map<string, number>()
+  const edgeKey = (text: string) => text.replace(/\d+/gu, '#').replace(/\s+/gu, ' ').trim()
+  pageLines.forEach(lines => {
+    const edgeTexts = [...lines.slice(0, 2), ...lines.slice(-2)]
+      .map(line => line.text)
+      .filter(text => text.length >= 2 && text.length <= 120)
+    new Set(edgeTexts.map(edgeKey)).forEach(key => edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1))
+  })
+  const repeatedEdges = new Set([...edgeCounts.entries()].filter(([, count]) => count >= 2).map(([key]) => key))
+  const output: string[] = []
+  let previous: PdfLayoutLine | undefined
+  pageLines.forEach(lines => {
+    const filtered = lines.filter(line => !(repeatedEdges.has(edgeKey(line.text)) && (line.position === 'top' || line.position === 'bottom')))
+    filtered.forEach(line => {
+      if (!previous || output.length === 0) {
+        output.push(line.text)
+        previous = line
+        return
+      }
+      const gap = Math.abs(previous.y - line.y)
+      const expected = Math.max(previous.fontSize, line.fontSize) * 1.25
+      const isList = /^(?:[•●◦▪‣·]|[-–—]|\d+[.)]|[一二三四五六七八九十百]+[、.)])/u.test(line.text)
+      const isHeading = line.text.length <= 90 && (line.fontSize >= 16 || /^(?:第.{1,20}[章节篇]|Chapter\s+\d+)/iu.test(line.text))
+      const pageBreak = previous.pageIndex !== line.pageIndex
+      const pageParagraphBreak = pageBreak && /[。！？.!?]$/u.test(previous.text)
+      const paragraphBreak = isList || isHeading || pageParagraphBreak || (!pageBreak && gap > expected * 1.45)
+      if (paragraphBreak) output.push(`\n${line.text}`)
+      else output[output.length - 1] = joinPdfLines(output[output.length - 1], line.text)
+      previous = line
+    })
+  })
+  return normalizeParagraphs(output.join('\n'))
+}
+
+/**
+ * 把 HTML / XHTML 片段转换为带轻量语义的纯文本。输出采用 Markdown 兼容标记，
+ * 不保留来源 HTML，避免脚本和不可信属性进入阅读器。
+ */
 export function htmlToPlainText(html: string): string {
-  const withoutHidden = html
+  const codeBlocks: string[] = []
+  let source = html
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<\s*(script|style|head|svg|noscript)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, ' ')
-  const withBreaks = withoutHidden
+
+  // 先处理包含子元素的块结构，之后再统一移除剩余标签。
+  source = source.replace(/<\s*pre\b[^>]*>([\s\S]*?)<\s*\/\s*pre\s*>/gi, (_match, body: string) => {
+    const code = decodeHtmlEntities(body.replace(/<\s*\/?\s*code\b[^>]*>/gi, '').replace(/<[^>]*>/g, ''))
+      .replace(/^\s*\n|\n\s*$/g, '')
+    if (!code) return '\n\n'
+    const token = `\uE000CODE${codeBlocks.length}\uE001`
+    codeBlocks.push(`\`\`\`\n${code}\n\`\`\``)
+    return `\n\n${token}\n\n`
+  })
+  source = source.replace(/<\s*table\b[^>]*>([\s\S]*?)<\s*\/\s*table\s*>/gi, (_match, tableBody: string) => {
+    const rows: string[] = []
+    for (const rowMatch of tableBody.matchAll(/<\s*tr\b[^>]*>([\s\S]*?)<\s*\/\s*tr\s*>/gi)) {
+      const row = rowMatch[1]
+      const cells = [...row.matchAll(/<\s*(td|th)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi)]
+      if (cells.length === 0) continue
+      rows.push(`| ${cells.map(cell => stripMarkup(cell[2]).replace(/\|/g, '\\|')).join(' | ')} |`)
+      // Mammoth 等转换器常把表头也输出为 td；统一把首行作为表头，确保 Markdown 可还原为表格。
+      if (rows.length === 1) rows.push(`| ${cells.map(() => '---').join(' | ')} |`)
+    }
+    return rows.length > 0 ? `\n\n${rows.join('\n')}\n\n` : '\n\n'
+  })
+  source = source.replace(/<\s*blockquote\b[^>]*>([\s\S]*?)<\s*\/\s*blockquote\s*>/gi, (_match, body: string) => {
+    const quote = stripMarkup(body)
+    return quote ? `\n\n> ${quote}\n\n` : '\n\n'
+  })
+
+  source = source.replace(/<\s*(ol|ul)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, (_match, kind: string, body: string) => {
+    let index = 0
+    const items = [...body.matchAll(/<\s*li\b[^>]*>([\s\S]*?)<\s*\/\s*li\s*>/gi)]
+      .map(item => {
+        index += 1
+        const text = stripMarkup(item[1])
+        return text ? `${kind.toLowerCase() === 'ol' ? `${index}.` : '-'} ${text}` : ''
+      })
+      .filter(Boolean)
+    return items.length > 0 ? `\n\n${items.join('\n')}\n\n` : '\n\n'
+  })
+
+  const withBreaks = source
+    .replace(/<\s*h([1-6])\b[^>]*>([\s\S]*?)<\s*\/\s*h\1\s*>/gi, (_match, level: string, body: string) => {
+      const heading = stripMarkup(body)
+      return heading ? `\n\n${'#'.repeat(Number(level))} ${heading}\n\n` : '\n\n'
+    })
+    .replace(/<\s*(?:strong|b)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:strong|b)\s*>/gi, '**$1**')
+    .replace(/<\s*(?:em|i)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:em|i)\s*>/gi, '*$1*')
+    .replace(/<\s*code\b[^>]*>([\s\S]*?)<\s*\/\s*code\s*>/gi, '`$1`')
+    .replace(/<\s*img\b[^>]*\balt=(?:"([^"]*)"|'([^']*)')[^>]*>/gi, (_match, doubleAlt: string, singleAlt: string) => {
+      const alt = decodeHtmlEntities(doubleAlt || singleAlt || '').trim()
+      return alt ? `[图片：${alt}]` : ''
+    })
     .replace(/<\s*br\s*\/?\s*>/gi, '\n')
     .replace(/<\s*(hr)\s*\/?\s*>/gi, '\n\n')
-    .replace(/<\s*\/\s*(p|div|section|article|header|footer|blockquote|figcaption|tr|ul|ol|table|body)\s*>/gi, '\n\n')
+    .replace(/<\s*empty-line\s*\/?\s*>/gi, '\n\n')
+    .replace(/<\s*\/\s*(p|div|section|article|header|footer|figcaption|figure|details|summary|body|subtitle|poem|stanza|v)\s*>/gi, '\n\n')
     .replace(/<\s*\/\s*(h[1-6]|li|dt|dd)\s*>/gi, '\n\n')
     .replace(/<\s*(li)\b[^>]*>/gi, '\n· ')
     .replace(/<[^>]*>/g, ' ')
-  return normalizeParagraphs(decodeHtmlEntities(withBreaks))
+  let output = normalizeStructuredText(decodeHtmlEntities(withBreaks).replace(/[ \t]{2,}/g, ' '))
+  codeBlocks.forEach((block, index) => {
+    output = output.replace(`\uE000CODE${index}\uE001`, block)
+  })
+  return output
 }
 
 function firstMatch(source: string, pattern: RegExp): string | undefined {
   const match = source.match(pattern)
-  const value = match?.[1] ? decodeHtmlEntities(match[1]).replace(/\s+/g, ' ').trim() : ''
+  const value = match?.[1] ? stripMarkup(match[1]) : ''
   return value || undefined
 }
 
@@ -216,10 +441,11 @@ async function blobUrlToDataUrl(url: string, fallbackMime: string): Promise<stri
 }
 
 function splitMarkdownChapters(text: string): ParsedChapter[] {
-  const lines = text.split('\n')
+  const lines = normalizeStructuredText(text).split('\n')
   const chapters: ParsedChapter[] = []
   let title = ''
   let buffer: string[] = []
+  let inFence = false
 
   const flush = () => {
     const body = buffer.join('\n').trim()
@@ -229,10 +455,11 @@ function splitMarkdownChapters(text: string): ParsedChapter[] {
   }
 
   for (const line of lines) {
-    const heading = line.match(/^#{1,3}\s+(.*)$/)
+    if (/^\s*```/.test(line)) inFence = !inFence
+    const heading = inFence ? null : line.match(/^#{1,3}\s+(.+?)\s*#*\s*$/)
     if (heading) {
       flush()
-      title = heading[1].trim()
+      title = heading[1].replace(/[*_`~]/g, '').trim()
       continue
     }
     buffer.push(line)
@@ -241,7 +468,7 @@ function splitMarkdownChapters(text: string): ParsedChapter[] {
   return chapters.filter(chapter => chapter.content.length > 0)
 }
 
-const TXT_CHAPTER_PATTERN = /^\s*(第\s*[0-9一二三四五六七八九十百千万]+\s*[章节回卷篇]|Chapter\s+\d+|CHAPTER\s+[IVXLC\d]+)\b.*$/
+const TXT_CHAPTER_PATTERN = /^\s*(?:第\s*[0-9一二三四五六七八九十百千万]+\s*[章节回卷篇](?:\s+|[:：、.-])?.*|Chapter\s+(?:\d+|[IVXLC]+)\b.*)$/i
 
 function splitPlainTextChapters(text: string): ParsedChapter[] {
   const lines = text.split('\n')
@@ -269,14 +496,24 @@ function splitPlainTextChapters(text: string): ParsedChapter[] {
 // ========================================
 
 async function parseTextFile(file: File): Promise<{ content: string; chapters?: ParsedChapter[] }> {
-  const text = await file.text()
-  return { content: text, chapters: [{ title: '正文', content: text.trim() }] }
+  const text = normalizeStructuredText(await file.text())
+  return { content: text, chapters: splitPlainTextChapters(text) }
 }
 
 async function parseMarkdownFile(file: File): Promise<{ content: string; chapters?: ParsedChapter[] }> {
-  const text = await file.text()
+  const text = normalizeStructuredText(await file.text())
   const chapters = splitMarkdownChapters(text)
   return { content: text, chapters: chapters.length > 0 ? chapters : undefined }
+}
+
+async function parseJsonFile(file: File): Promise<{ content: string; chapters?: ParsedChapter[] }> {
+  try {
+    const value = JSON.parse(await file.text())
+    const content = `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``
+    return { content, chapters: [{ title: '正文', content }] }
+  } catch {
+    throw new Error('JSON 解析失败：文件不是有效的 JSON。请修正语法后重试。')
+  }
 }
 
 // ========================================
@@ -292,7 +529,9 @@ async function parseHtmlFile(file: File): Promise<{
   const content = htmlToPlainText(html)
   const title = firstMatch(html, /<title[^>]*>([\s\S]*?)<\/title>/i) ||
     firstMatch(html, /<h1[^>]*>([\s\S]*?)<\/h1>/i)
-  return { content, title, chapters: [{ title: title || '正文', content }] }
+  const chapters = splitMarkdownChapters(content)
+  if (chapters.length === 0) chapters.push({ title: title || '正文', content })
+  return { content, title, chapters }
 }
 
 // ========================================
@@ -314,11 +553,6 @@ function resolveZipPath(base: string, relative: string): string {
 function dirname(path: string): string {
   const index = path.lastIndexOf('/')
   return index === -1 ? '' : path.slice(0, index)
-}
-
-function baseName(path: string): string {
-  const index = path.lastIndexOf('/')
-  return index === -1 ? path : path.slice(index + 1)
 }
 
 export async function parseEpub(file: File): Promise<{
@@ -380,10 +614,12 @@ export async function parseEpub(file: File): Promise<{
     const entry = zip.file(resolveZipPath(opfDir, item.href))
     if (!entry) continue
     const html = await entry.async('text')
-    const content = htmlToPlainText(html)
+    let content = htmlToPlainText(html)
     if (!content) continue
     const heading = firstMatch(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)
-    chapters.push({ title: heading || `第 ${chapters.length + 1} 节`, content })
+    const chapterTitle = normalizeChapterTitle(heading || '', `第 ${chapters.length + 1} 节`)
+    content = removeLeadingHeading(content, chapterTitle)
+    if (content) chapters.push({ title: chapterTitle, content })
   }
   if (chapters.length === 0) throw new Error('EPUB 内容为空或无法提取文本')
 
@@ -460,12 +696,15 @@ export async function parseMobi(file: File): Promise<{
       } catch (error) {
         logger.debug('MOBI 章节读取失败:', item.id, error)
       }
-      const content = html ? htmlToPlainText(html) : (book as { getSpine(): Array<{ text?: string }> }).getSpine().find(entry => entry === item)?.text || ''
+      let content = html ? htmlToPlainText(html) : (book as { getSpine(): Array<{ text?: string }> }).getSpine().find(entry => entry === item)?.text || ''
       if (!content) continue
       const heading = html ? firstMatch(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i) : undefined
+      const chapterTitle = normalizeChapterTitle((item.id && tocLabels.get(item.id)) || heading || '', `第 ${chapters.length + 1} 节`)
+      content = removeLeadingHeading(normalizeStructuredText(content), chapterTitle)
+      if (!content) continue
       chapters.push({
-        title: (item.id && tocLabels.get(item.id)) || heading || `第 ${chapters.length + 1} 节`,
-        content: normalizeParagraphs(content)
+        title: chapterTitle,
+        content
       })
     }
     if (chapters.length === 0) throw new Error('MOBI 内容为空或无法提取文本')
@@ -500,6 +739,38 @@ export async function parseMobi(file: File): Promise<{
 // 解析：FB2
 // ========================================
 
+function extractTopLevelTagContents(source: string, tagName: string): string[] {
+  const tag = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi')
+  const contents: string[] = []
+  let depth = 0
+  let contentStart = -1
+  let match: RegExpExecArray | null
+  while ((match = tag.exec(source))) {
+    const closing = /^<\s*\//.test(match[0])
+    const selfClosing = /\/\s*>$/.test(match[0])
+    if (!closing) {
+      if (depth === 0) contentStart = match.index + match[0].length
+      if (!selfClosing) depth += 1
+    } else if (depth > 0) {
+      depth -= 1
+      if (depth === 0 && contentStart >= 0) {
+        contents.push(source.slice(contentStart, match.index))
+        contentStart = -1
+      }
+    }
+  }
+  return contents
+}
+
+function fb2SectionToStructuredText(sectionXml: string): string {
+  return htmlToPlainText(sectionXml
+    .replace(/<\s*title\b[^>]*>([\s\S]*?)<\s*\/\s*title\s*>/gi, '<h2>$1</h2>')
+    .replace(/<\s*subtitle\b[^>]*>/gi, '<h3>')
+    .replace(/<\s*\/\s*subtitle\s*>/gi, '</h3>')
+    .replace(/<\s*epigraph\b[^>]*>/gi, '<blockquote>')
+    .replace(/<\s*\/\s*epigraph\s*>/gi, '</blockquote>'))
+}
+
 export async function parseFb2(file: File): Promise<{
   content: string
   title?: string
@@ -518,14 +789,15 @@ export async function parseFb2(file: File): Promise<{
     : undefined
   const description = firstMatch(xml, /<annotation[^>]*>([\s\S]*?)<\/annotation>/i)
 
-  const bodyMatch = xml.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+  const bodyMatch = xml.match(/<body(?:\s[^>]*)?>([\s\S]*?)<\/body>/i)
   const body = bodyMatch?.[1] || xml
-  const sections = [...body.matchAll(/<section[^>]*>([\s\S]*?)<\/section>/gi)].map(match => match[1])
+  const sections = extractTopLevelTagContents(body, 'section')
   const chapters: ParsedChapter[] = []
   const collect = (sectionXml: string, index: number) => {
     const sectionTitle = firstMatch(sectionXml, /<title[^>]*>([\s\S]*?)<\/title>/i)
-    const content = htmlToPlainText(sectionXml.replace(/<title[^>]*>[\s\S]*?<\/title>/i, ' '))
-    if (content) chapters.push({ title: sectionTitle || `第 ${index + 1} 节`, content })
+    const chapterTitle = normalizeChapterTitle(sectionTitle || '', `第 ${index + 1} 节`)
+    const content = fb2SectionToStructuredText(sectionXml.replace(/<title[^>]*>[\s\S]*?<\/title>/i, ' '))
+    if (content) chapters.push({ title: chapterTitle, content })
   }
   if (sections.length > 0) sections.forEach(collect)
   else collect(body, 0)
@@ -555,7 +827,7 @@ function decodeRtfBytes(bytes: number[], encoding: string): string {
   }
 }
 
-/** 轻量 RTF → 纯文本：忽略格式表/图片等目标域，保留 \uN、\'hh 与段落。 */
+/** 轻量 RTF → 语义文本：忽略格式表/图片等目标域，保留 Unicode、段落、列表与表格边界。 */
 export function rtfToPlainText(rtf: string): string {
   const codepage = Number(rtf.match(/\\ansicpg(\d+)/)?.[1] || 1252)
   const encoding = RTF_CODEPAGES[codepage] || 'windows-1252'
@@ -589,7 +861,8 @@ export function rtfToPlainText(rtf: string): string {
     if (char !== '\\') {
       if (skippedDepth === -1) {
         flushBytes()
-        output += char === '\n' || char === '\r' ? '\n' : char
+        // RTF 源文件里的物理换行只是排版，真正的正文换行由 \par / \line 表示。
+        if (char !== '\n' && char !== '\r') output += char
       }
       index += 1
       continue
@@ -597,6 +870,12 @@ export function rtfToPlainText(rtf: string): string {
 
     // 控制字符
     const next = rtf[index + 1]
+    if (next === '*') {
+      flushBytes()
+      if (skippedDepth === -1) skippedDepth = groupDepth
+      index += 2
+      continue
+    }
     if (next === '\\' || next === '{' || next === '}') {
       if (skippedDepth === -1) {
         flushBytes()
@@ -630,7 +909,12 @@ export function rtfToPlainText(rtf: string): string {
           index += wordMatch[0].length + (fallbackMatch?.[0].length || 0)
           continue
         }
-      } else if (word === 'par' || word === 'line' || word === 'page' || word === 'sect') {
+      } else if (word === 'par' || word === 'page' || word === 'sect') {
+        if (skippedDepth === -1) {
+          flushBytes()
+          output += '\n\n'
+        }
+      } else if (word === 'line') {
         if (skippedDepth === -1) {
           flushBytes()
           output += '\n'
@@ -639,6 +923,44 @@ export function rtfToPlainText(rtf: string): string {
         if (skippedDepth === -1) {
           flushBytes()
           output += ' '
+        }
+      } else if (word === 'cell') {
+        if (skippedDepth === -1) {
+          flushBytes()
+          output += ' | '
+        }
+      } else if (word === 'trowd') {
+        if (skippedDepth === -1) {
+          flushBytes()
+          if (output.trimEnd().length > 0) output += '\n'
+          output += '| '
+        }
+      } else if (word === 'row') {
+        if (skippedDepth === -1) {
+          flushBytes()
+          output += '\n\n'
+        }
+      } else if (word === 'bullet') {
+        if (skippedDepth === -1) {
+          flushBytes()
+          output += '- '
+        }
+      } else if (word === 'emdash' || word === 'endash') {
+        if (skippedDepth === -1) {
+          flushBytes()
+          output += word === 'emdash' ? '—' : '–'
+        }
+      } else if (word === 'lquote' || word === 'rquote' || word === 'ldblquote' || word === 'rdblquote') {
+        if (skippedDepth === -1) {
+          flushBytes()
+          output += word === 'lquote' ? '‘' : word === 'rquote' ? '’' : word === 'ldblquote' ? '“' : '”'
+        }
+      } else if (word === 'outlinelevel' && param !== undefined) {
+        if (skippedDepth === -1) {
+          flushBytes()
+          const level = Math.min(6, Math.max(1, Number.parseInt(param, 10) + 1))
+          if (output.trimEnd().length > 0) output += '\n\n'
+          output += `${'#'.repeat(level)} `
         }
       } else if (ignoredDestinations.has(word)) {
         if (skippedDepth === -1) skippedDepth = groupDepth
@@ -651,13 +973,14 @@ export function rtfToPlainText(rtf: string): string {
   }
 
   flushBytes()
-  return normalizeParagraphs(output)
+  return normalizeStructuredText(output).replace(/^(?:[•●◦▪‣·])\s*/gm, '- ')
 }
 
 async function parseRtfFile(file: File): Promise<{ content: string; chapters?: ParsedChapter[] }> {
   const rtf = await file.text()
   const content = rtfToPlainText(rtf)
-  return { content, chapters: [{ title: '正文', content }] }
+  const markdownChapters = splitMarkdownChapters(content)
+  return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
 }
 
 // ========================================
@@ -674,7 +997,7 @@ async function parsePDF(file: File): Promise<{ content: string; chapters?: Parse
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false })
     const pdf = await loadingTask.promise
 
-    let fullText = ''
+    const pageItems: PdfTextItemLike[][] = []
     const numPages = pdf.numPages
 
     if (numPages > MAX_DOCUMENT_PAGES) {
@@ -686,13 +1009,28 @@ async function parsePDF(file: File): Promise<{ content: string; chapters?: Parse
     for (let i = 1; i <= numPages; i++) {
       const page = await pdf.getPage(i)
       const textContent = await page.getTextContent()
-      const pageText = textContent.items
-        .map(item => ('str' in item ? item.str || '' : ''))
-        .join(' ')
-      fullText += pageText + '\n'
+      pageItems.push(textContent.items.filter(item => 'str' in item).map(item => ({
+        str: item.str || '',
+        transform: item.transform,
+        width: item.width,
+        height: item.height,
+        hasEOL: item.hasEOL
+      })))
     }
 
-    const content = normalizeParagraphs(fullText)
+    const content = reconstructPdfText(pageItems)
+    const replacementCount = (content.match(/\uFFFD/gu) || []).length
+    const privateUseCount = (content.match(/[\u{e000}-\u{f8ff}\u{f0000}-\u{ffffd}]/gu) || []).length
+    const readableCount = (content.match(/[\p{L}\p{N}\p{P}\p{S}]/gu) || []).length
+    if (!content || readableCount < 2) {
+      throw new Error('这个 PDF 没有可提取的文字层，可能是扫描件。请先使用 OCR 生成可搜索 PDF 后重试。')
+    }
+    if (replacementCount > 0 && replacementCount / Math.max(1, content.length) > 0.02) {
+      throw new Error('这个 PDF 的字体编码无法可靠还原文字，已停止导入以避免乱码。请换用带文字层的 PDF 或先导出为 EPUB / DOCX。')
+    }
+    if (privateUseCount > 0 && privateUseCount / Math.max(1, content.length) > 0.2) {
+      throw new Error('这个 PDF 使用了无法映射到 Unicode 的私有字体编码，已停止导入以避免乱码。请换用带文字层的 PDF 或先导出为 EPUB / DOCX。')
+    }
     return { content, chapters: [{ title: '正文', content }] }
   } catch (error) {
     logger.error('PDF 解析错误:', error)
@@ -704,9 +1042,26 @@ async function parseWord(file: File): Promise<{ content: string; chapters?: Pars
   try {
     const mammoth = await import('mammoth')
     const arrayBuffer = await file.arrayBuffer()
-    const result = await mammoth.extractRawText({ arrayBuffer })
-    const content = normalizeParagraphs(result.value)
-    return { content, chapters: [{ title: '正文', content }] }
+    const options = {
+      styleMap: [
+        "p[style-name='Title'] => h1:fresh",
+        "p[style-name='Subtitle'] => h2:fresh",
+        "p[style-name='Quote'] => blockquote:fresh",
+        "p[style-name='Intense Quote'] => blockquote:fresh",
+        "p[style-name='Code'] => pre:fresh"
+      ]
+    }
+    let result: Awaited<ReturnType<typeof mammoth.convertToHtml>>
+    try {
+      result = await mammoth.convertToHtml({ arrayBuffer }, options)
+    } catch (browserInputError) {
+      // mammoth 的浏览器构建接收 ArrayBuffer，Node/Jest 构建接收 Buffer。
+      if (typeof Buffer === 'undefined') throw browserInputError
+      result = await mammoth.convertToHtml({ buffer: Buffer.from(arrayBuffer) }, options)
+    }
+    const content = htmlToPlainText(result.value)
+    const markdownChapters = splitMarkdownChapters(content)
+    return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
   } catch (error) {
     logger.error('Word 解析错误:', error)
     throw new Error('Word 文档解析失败，仅支持 .docx 格式')
@@ -717,19 +1072,21 @@ async function parseWord(file: File): Promise<{ content: string; chapters?: Pars
 async function parseLegacyWordFile(file: File): Promise<{ content: string; chapters?: ParsedChapter[] }> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   if (isCompoundFile(bytes)) {
-    const content = normalizeParagraphs(extractLegacyWordText(bytes))
-    return { content, chapters: [{ title: '正文', content }] }
+    const content = normalizeStructuredText(extractLegacyWordText(bytes))
+    return { content, chapters: splitPlainTextChapters(content) }
   }
 
   const text = await file.text()
   const head = text.slice(0, 4096).trimStart().toLowerCase()
   if (head.startsWith('{\\rtf')) {
-    const content = normalizeParagraphs(rtfToPlainText(text))
-    return { content, chapters: [{ title: '正文', content }] }
+    const content = rtfToPlainText(text)
+    const markdownChapters = splitMarkdownChapters(content)
+    return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
   }
   if (head.startsWith('<!doctype html') || head.startsWith('<html')) {
-    const content = normalizeParagraphs(htmlToPlainText(text))
-    return { content, chapters: [{ title: '正文', content }] }
+    const content = htmlToPlainText(text)
+    const markdownChapters = splitMarkdownChapters(content)
+    return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
   }
 
   throw new Error('无法识别这个 .doc 文件的内容结构。请用 Word / WPS 打开后另存为 .docx，或导出为 PDF 后重试。')
@@ -801,8 +1158,10 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
         parsed = await parseMarkdownFile(file)
         break
       case 'txt':
-      case 'json':
         parsed = await parseTextFile(file)
+        break
+      case 'json':
+        parsed = await parseJsonFile(file)
         break
       default:
         throw new Error(describeUnsupportedFormat(ext, 'zh'))
@@ -812,17 +1171,23 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
     throw new Error(error instanceof Error && error.message ? error.message : `无法解析文件: ${file.name}`)
   }
 
-  const content = parsed.content.trim()
+  const chapters = parsed.chapters
+    ?.map((chapter, index) => ({
+      title: normalizeChapterTitle(chapter.title, `第 ${index + 1} 节`),
+      content: normalizeStructuredText(chapter.content)
+    }))
+    .filter(chapter => chapter.content.length > 0)
+  // DocumentUpload 的章节定位按 `标题\n\n正文` 建索引；这里统一由章节反向合成全文，
+  // 防止不同格式返回的 content 与 chapters 偏移不一致，造成跳章、划线和引用错位。
+  const content = chapters && chapters.length > 0
+    ? composeChapters(chapters)
+    : normalizeStructuredText(parsed.content)
   logger.debug(`文件解析成功，内容长度: ${content.length} 字符`)
 
   if (!content) {
     throw new Error('文件内容为空或无法提取文本')
   }
   assertSafeExtractedText(content)
-
-  const chapters = parsed.chapters
-    ?.map(chapter => ({ title: chapter.title, content: chapter.content.trim() }))
-    .filter(chapter => chapter.content.length > 0)
 
   return {
     content,

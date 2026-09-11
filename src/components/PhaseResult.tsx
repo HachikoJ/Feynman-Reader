@@ -6,6 +6,7 @@ import MarkdownRenderer from './MarkdownRenderer'
 import AppIcon from './AppIcon'
 import SourceEvidence from './SourceEvidence'
 import CopyContentButton from './CopyContentButton'
+import type { AssistantSource } from '@/lib/assistantSources'
 
 interface Props {
   content: string
@@ -13,6 +14,7 @@ interface Props {
   documentContent?: string
   onExpandAll?: () => void
   onQuoteSelected?: (text: string) => Promise<void> | void
+  selectionSource?: AssistantSource | ((text: string) => AssistantSource)
 }
 
 interface Section {
@@ -21,7 +23,7 @@ interface Section {
   isKeyPoint: boolean
 }
 
-export default function PhaseResult({ content, lang, documentContent, onExpandAll, onQuoteSelected }: Props) {
+export default function PhaseResult({ content, lang, documentContent, onExpandAll, onQuoteSelected, selectionSource }: Props) {
   const parseContent = (text: string): Section[] => {
     const sections: Section[] = []
     const lines = text.split('\n')
@@ -146,6 +148,8 @@ export default function PhaseResult({ content, lang, documentContent, onExpandAl
                   content={section.content}
                   className={section.isKeyPoint ? 'text-[var(--text-primary)]' : ''}
                   onQuoteSelected={onQuoteSelected}
+                  selectionSource={selectionSource}
+                  lang={lang}
                 />
               </div>
             )}

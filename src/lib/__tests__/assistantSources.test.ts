@@ -2,6 +2,7 @@ import {
   assistantSourceHref,
   assistantSourceKindLabel,
   assistantSourceTargetFromSearchParams,
+  linkAssistantSourceReferences,
   MAX_ASSISTANT_SOURCES,
   normalizeAssistantSource,
   normalizeAssistantSources
@@ -10,10 +11,13 @@ import {
 describe('assistant source normalization', () => {
   it.each([
     [{ kind: 'book', bookId: 'book-1' }, 'book:book-1'],
+    [{ kind: 'original', bookId: 'book-1', offset: 42 }, 'original:book-1:42'],
     [{ kind: 'note', bookId: 'book-1', recordId: 'note-1' }, 'note:book-1:note-1'],
+    [{ kind: 'bookmark', bookId: 'book-1', recordId: 'bookmark-1', offset: 84 }, 'bookmark:book-1:bookmark-1'],
     [{ kind: 'phase', bookId: 'book-1', phaseId: 'overview' }, 'phase:book-1:overview'],
     [{ kind: 'practice', bookId: 'book-1', recordId: 'practice-1' }, 'practice:book-1:practice-1'],
-    [{ kind: 'question', bookId: 'book-1', recordId: 'qa-1', questionIndex: 2 }, 'question:book-1:qa-1:2']
+    [{ kind: 'question', bookId: 'book-1', recordId: 'qa-1', questionIndex: 2 }, 'question:book-1:qa-1:2'],
+    [{ kind: 'recommendation', bookId: 'book-1' }, 'recommendation:book-1']
   ])('normalizes a supported source target: %j', (input, expectedId) => {
     expect(normalizeAssistantSource({
       ...input,
@@ -36,6 +40,9 @@ describe('assistant source normalization', () => {
     { kind: 'unknown', bookId: 'book-1' },
     { kind: 'book', bookId: '' },
     { kind: 'note', bookId: 'book-1' },
+    { kind: 'bookmark', bookId: 'book-1' },
+    { kind: 'original', bookId: 'book-1' },
+    { kind: 'original', bookId: 'book-1', offset: -1 },
     { kind: 'phase', bookId: 'book-1', phaseId: 'not-a-phase' },
     { kind: 'practice', bookId: 'book-1' },
     { kind: 'question', bookId: 'book-1' },
@@ -107,5 +114,21 @@ describe('assistant source normalization', () => {
       bookId: 'book-1',
       sourcePhase: 'legacy-phase'
     }))).toBeNull()
+  })
+
+  it('round-trips original offsets and renders only valid inline citation tokens', () => {
+    const sources = normalizeAssistantSources([
+      { kind: 'original', bookId: 'book-1', offset: 320, label: '原文', title: '第三章' },
+      { kind: 'bookmark', bookId: 'book-1', recordId: 'bookmark-1', offset: 410, label: '书签', title: '重要位置' }
+    ])
+    const linked = linkAssistantSourceReferences('解释来自 [R1]，并对照 [R2]。未知 [R3]，代码 `[R1]`。', sources)
+
+    expect(linked).toContain('[R1](/?view=reading&bookId=book-1&sourceKind=original&sourceOffset=320)')
+    expect(linked).toContain('[R2](/?view=reading&bookId=book-1&sourceKind=bookmark&sourceId=bookmark-1&sourceOffset=410)')
+    expect(linked).toContain('未知 [R3]')
+    expect(linked).toContain('代码 `[R1]`')
+
+    const restored = assistantSourceTargetFromSearchParams(new URL(assistantSourceHref(sources[0]), 'https://reader.deline.top').searchParams)
+    expect(restored).toMatchObject({ kind: 'original', bookId: 'book-1', offset: 320 })
   })
 })

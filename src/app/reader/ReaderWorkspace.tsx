@@ -485,7 +485,8 @@ function ReaderWorkspaceContent() {
         bookId: source.bookId,
         ...(source.recordId ? { recordId: source.recordId } : {}),
         ...(source.phaseId ? { phaseId: source.phaseId } : {}),
-        ...(source.questionIndex !== undefined ? { questionIndex: source.questionIndex } : {})
+        ...(source.questionIndex !== undefined ? { questionIndex: source.questionIndex } : {}),
+        ...(source.offset !== undefined ? { offset: source.offset } : {})
       }
     })
   }

@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 
 import '@testing-library/jest-dom'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import MarkdownRenderer from '../MarkdownRenderer'
 
 const renderMermaid = jest.fn()
@@ -141,5 +141,62 @@ describe('MarkdownRenderer', () => {
 
     await waitFor(() => expect(screen.getByText('图表语法暂时无法渲染，已保留 Mermaid 源码。')).toBeInTheDocument())
     expect(screen.getByText('not a diagram')).toBeInTheDocument()
+  })
+
+  it('offers assistant, quote and copy actions for selected learning content', async () => {
+    const saveQuote = jest.fn().mockResolvedValue(undefined)
+    const writeText = jest.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const openEvents: Array<CustomEvent> = []
+    const onOpen = (event: Event) => openEvents.push(event as CustomEvent)
+    window.addEventListener('feynman-open-assistant', onOpen)
+
+    render(
+      <MarkdownRenderer
+        content="虚构故事让人类能够大规模协作。"
+        lang="zh"
+        onQuoteSelected={saveQuote}
+        selectionSource={{
+          id: 'phase:book-1:overview',
+          kind: 'phase',
+          bookId: 'book-1',
+          phaseId: 'overview',
+          label: '阶段学习',
+          title: '《人类简史》· 全书概览'
+        }}
+      />
+    )
+
+    const paragraph = screen.getByText('虚构故事让人类能够大规模协作。')
+    const textNode = paragraph.firstChild as Node
+    const selection = {
+      isCollapsed: false,
+      rangeCount: 1,
+      anchorNode: textNode,
+      focusNode: textNode,
+      toString: () => '虚构故事让人类能够大规模协作。',
+      getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 20, top: 20, bottom: 40, width: 180, height: 20 }) })
+    }
+    jest.spyOn(window, 'getSelection').mockReturnValue(selection as unknown as Selection)
+
+    fireEvent.mouseUp(paragraph)
+    const toolbar = await screen.findByRole('toolbar', { name: '选中文本操作' })
+    fireEvent.click(within(toolbar).getByRole('button', { name: '加入金句' }))
+    await waitFor(() => expect(saveQuote).toHaveBeenCalledWith('虚构故事让人类能够大规模协作。'))
+
+    fireEvent.click(within(toolbar).getByRole('button', { name: '复制选中内容' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('虚构故事让人类能够大规模协作。'))
+
+    fireEvent.click(within(toolbar).getByRole('button', { name: '向费曼小助手提问' }))
+    expect(openEvents).toHaveLength(1)
+    expect(openEvents[0].detail).toEqual(expect.objectContaining({
+      bookId: 'book-1',
+      source: expect.objectContaining({
+        kind: 'phase',
+        phaseId: 'overview',
+        excerpt: '虚构故事让人类能够大规模协作。'
+      })
+    }))
+    window.removeEventListener('feynman-open-assistant', onOpen)
   })
 })

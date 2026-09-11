@@ -1795,6 +1795,23 @@ canvas {
   }
 }
 
+/* Parsed PDF text uses blank lines for paragraphs; keep the reading column stable
+   while allowing long URLs and unbroken CJK strings to wrap safely. */
+.reader-document-body {
+  max-width: 72ch;
+  margin-inline: auto;
+  text-align: start;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  font-kerning: normal;
+}
+
+.reader-document-body mark {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 .reading-source-highlight {
   border-radius: inherit;
   outline: 3px solid transparent;
@@ -1847,4 +1864,48 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Imported documents retain semantic Markdown structure in the reader. Saved
+   annotations are injected as sanitized data markers so headings, lists,
+   quotes, tables and code remain readable without losing edit affordances. */
+.reader-structured-markdown > :first-child {
+  margin-top: 0;
+}
+
+.reader-structured-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.reader-document-body [data-reader-highlight] {
+  cursor: pointer;
+  border-radius: 3px;
+  color: inherit;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.reader-document-body[data-reader-theme='light'] [data-reader-highlight][data-reader-color='yellow'] { background: rgb(253 230 138 / 0.8); }
+.reader-document-body[data-reader-theme='light'] [data-reader-highlight][data-reader-color='green'] { background: rgb(167 243 208 / 0.8); }
+.reader-document-body[data-reader-theme='light'] [data-reader-highlight][data-reader-color='blue'] { background: rgb(186 230 253 / 0.8); }
+.reader-document-body[data-reader-theme='light'] [data-reader-highlight][data-reader-color='pink'] { background: rgb(251 207 232 / 0.8); }
+.reader-document-body[data-reader-theme='paper'] [data-reader-highlight][data-reader-color='yellow'] { background: rgb(252 211 77 / 0.7); }
+.reader-document-body[data-reader-theme='paper'] [data-reader-highlight][data-reader-color='green'] { background: rgb(110 231 183 / 0.6); }
+.reader-document-body[data-reader-theme='paper'] [data-reader-highlight][data-reader-color='blue'] { background: rgb(125 211 252 / 0.6); }
+.reader-document-body[data-reader-theme='paper'] [data-reader-highlight][data-reader-color='pink'] { background: rgb(253 164 175 / 0.6); }
+.reader-document-body[data-reader-theme='dark'] [data-reader-highlight][data-reader-color='yellow'] { background: rgb(251 191 36 / 0.25); }
+.reader-document-body[data-reader-theme='dark'] [data-reader-highlight][data-reader-color='green'] { background: rgb(52 211 153 / 0.25); }
+.reader-document-body[data-reader-theme='dark'] [data-reader-highlight][data-reader-color='blue'] { background: rgb(56 189 248 / 0.25); }
+.reader-document-body[data-reader-theme='dark'] [data-reader-highlight][data-reader-color='pink'] { background: rgb(244 114 182 / 0.25); }
+
+.reader-document-body [data-reader-search] {
+  border-radius: 3px;
+  color: inherit;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.reader-document-body [data-reader-search-active='true'],
+.reader-document-body [data-reader-highlight]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

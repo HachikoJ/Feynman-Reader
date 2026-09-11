@@ -19,6 +19,8 @@ import AppIcon, { AppIconName } from './AppIcon'
 import CopyContentButton from './CopyContentButton'
 import { useAccountAccess } from './AuthGuard'
 import type { AssistantSourceTarget } from '@/lib/assistantSources'
+import { createSelectionSource } from '@/lib/selectionSources'
+import SelectableContent from './SelectableContent'
 
 interface Props {
   book: Book
@@ -525,9 +527,28 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
     : false
   
   const canSubmit = currentRecord && allUnansweredQuestionsHaveAnswers
+  const fallbackSelectionRecord = currentRecord || qaRecords[qaRecords.length - 1]
+  const fallbackSelectionSource = fallbackSelectionRecord
+    ? createSelectionSource(
+        { kind: 'question', bookId: book.id, recordId: fallbackSelectionRecord.id },
+        `《${book.name}》${lang === 'zh' ? '角色问答' : ' role-based Q&A'}`
+      )
+    : createSelectionSource({ kind: 'book', bookId: book.id }, `《${book.name}》`)
+
+  const questionSelectionSource = (recordId: string, questionIndex: number, personaName: string) => (text: string) => createSelectionSource(
+    { kind: 'question', bookId: book.id, recordId, questionIndex },
+    `《${book.name}》· ${personaName}`,
+    text
+  )
 
   return (
-    <div className="space-y-6">
+    <SelectableContent
+      className="space-y-6"
+      lang={lang}
+      source={fallbackSelectionSource}
+      onSaveSelection={onQuoteSelected}
+      saveLabel={lang === 'zh' ? '加入金句' : 'Save quote'}
+    >
       {/* 学习概览：把趋势和评分规则收进同一工作台区域 */}
       <div className="card overflow-hidden p-0">
         {progressRecords.length > 0 && (
@@ -693,7 +714,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                 </button>
 
                 {isExpanded && <div className="border-t border-[var(--border)] px-3 pb-3 pt-3">
-                  <MarkdownRenderer content={q.question} className="mb-2 text-sm leading-6" onQuoteSelected={onQuoteSelected} />
+                  <MarkdownRenderer content={q.question} className="mb-2 text-sm leading-6" onQuoteSelected={onQuoteSelected} selectionSource={questionSelectionSource(currentRecord.id, idx, q.personaName)} lang={lang} />
                   <SourceEvidence content={q.question} documentContent={book.documentContent} lang={lang} />
 
                     {q.userAnswer && q.aiReview && !q.passed && (
@@ -711,7 +732,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                           </p>
                           <CopyContentButton content={q.aiReview} lang={lang} />
                         </div>
-                        <MarkdownRenderer content={q.aiReview} onQuoteSelected={onQuoteSelected} />
+                        <MarkdownRenderer content={q.aiReview} onQuoteSelected={onQuoteSelected} selectionSource={questionSelectionSource(currentRecord.id, idx, q.personaName)} lang={lang} />
                         <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
                     )}
@@ -739,7 +760,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                           </p>
                           <CopyContentButton content={q.aiReview} lang={lang} />
                         </div>
-                        <MarkdownRenderer content={q.aiReview} onQuoteSelected={onQuoteSelected} />
+                        <MarkdownRenderer content={q.aiReview} onQuoteSelected={onQuoteSelected} selectionSource={questionSelectionSource(currentRecord.id, idx, q.personaName)} lang={lang} />
                         <SourceEvidence content={q.aiReview} documentContent={book.documentContent} lang={lang} />
                       </div>
                     )}
@@ -878,7 +899,7 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
                               </p>
                               <CopyContentButton content={attempt.aiReview} lang={lang} />
                             </div>
-                            <MarkdownRenderer content={attempt.aiReview} onQuoteSelected={onQuoteSelected} />
+                            <MarkdownRenderer content={attempt.aiReview} onQuoteSelected={onQuoteSelected} selectionSource={questionSelectionSource(record.id, idx, q.personaName)} lang={lang} />
                             <SourceEvidence content={attempt.aiReview} documentContent={book.documentContent} lang={lang} />
                           </div>
                         ))}
@@ -891,6 +912,6 @@ export default function QAPractice({ book, apiKey, needsAiConfiguration = false,
           )}
         </div>
       )}
-    </div>
+    </SelectableContent>
   )
 }

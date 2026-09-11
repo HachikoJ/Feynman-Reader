@@ -105,11 +105,58 @@ describe('BookReader reading surface', () => {
     expect(screen.getByText('这本书还没有可阅读的原文')).toBeInTheDocument()
   })
 
+
+  it('renders imported semantic structure instead of exposing markdown markers', () => {
+    renderReader(createBook({
+      documentContent: '正文\n\n## 方法框架\n\n- 观察\n- 复述\n\n| 步骤 | 目标 |\n| --- | --- |\n| 1 | 理解 |\n\n```txt\nplain code\n```',
+      chapters: undefined,
+      bookmarks: [],
+      noteRecords: []
+    }))
+
+    expect(screen.getByRole('heading', { name: '方法框架' })).toBeInTheDocument()
+    expect(screen.getByText('观察').closest('ul')).toBeInTheDocument()
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getByText('plain code')).toBeInTheDocument()
+    expect(screen.queryByText('## 方法框架')).not.toBeInTheDocument()
+  })
+
   it('moves to the next section with the toolbar button', () => {
     renderReader(createBook())
     fireEvent.click(screen.getAllByRole('button', { name: '下一节' })[0])
     expect(screen.getByRole('heading', { name: '第二章 农业革命' })).toBeInTheDocument()
     expect(screen.getByText('第 2/2 节 · 已读 100%')).toBeInTheDocument()
+  })
+
+
+  it('opens the assistant with the exact original-text offset', () => {
+    renderReader(createBook())
+    const passage = screen.getByText('虚构故事让智人得以大规模协作。', { selector: 'mark' })
+    const textNode = passage.firstChild as Node
+    const range = document.createRange()
+    range.selectNodeContents(textNode)
+    Object.defineProperty(range, 'getBoundingClientRect', {
+      value: () => ({ left: 40, top: 80, bottom: 100, width: 200, height: 20 })
+    })
+    const selectionSpy = jest.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: () => range,
+      toString: () => passage.textContent || '',
+      removeAllRanges: jest.fn()
+    } as unknown as Selection)
+    const listener = jest.fn()
+    window.addEventListener('feynman-open-assistant', listener)
+
+    fireEvent.mouseUp(passage)
+    fireEvent.click(screen.getByRole('button', { name: '向费曼小助手提问' }))
+
+    expect((listener.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+      bookId: 'book-1',
+      source: { kind: 'original', bookId: 'book-1', offset: highlightOffset }
+    })
+    window.removeEventListener('feynman-open-assistant', listener)
+    selectionSpy.mockRestore()
   })
 })
 

@@ -42,6 +42,8 @@ import { BookLearningAnalytics } from './Charts'
 import { useAccountAccess } from './AuthGuard'
 import { READING_STEP_HISTORY_KEY } from '@/lib/appRoutes'
 import type { AssistantSourceTarget } from '@/lib/assistantSources'
+import { createSelectionSource } from '@/lib/selectionSources'
+import SelectableContent from './SelectableContent'
 
 interface Props {
   book: Book
@@ -291,8 +293,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     if (!sourceTarget || sourceTarget.bookId !== book.id) return
 
     if (sourceTarget.kind === 'book' || sourceTarget.kind === 'phase') setActiveTab('phase')
-    if (sourceTarget.kind === 'note') setActiveTab('notes')
+    if (sourceTarget.kind === 'original') {
+      setActiveTab('reader')
+      if (typeof sourceTarget.offset === 'number') setReaderFocusOffset(sourceTarget.offset)
+    }
+    if (sourceTarget.kind === 'note' || sourceTarget.kind === 'bookmark') setActiveTab('notes')
     if (sourceTarget.kind === 'practice' || sourceTarget.kind === 'question') setActiveTab('practice')
+    if (sourceTarget.kind === 'recommendation') setActiveTab('recommendations')
 
     if (sourceTarget.kind === 'phase' && sourceTarget.phaseId) {
       const phaseIndex = LEARNING_PHASES.findIndex(phase => phase.id === sourceTarget.phaseId)
@@ -311,7 +318,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       return elements.find(element => {
         if (element.dataset.readingSourceKind !== sourceTarget.kind) return false
         const sourceId = element.dataset.readingSourceId
-        if (sourceTarget.kind === 'book') return sourceId === sourceTarget.bookId
+        if (sourceTarget.kind === 'book' || sourceTarget.kind === 'original' || sourceTarget.kind === 'recommendation') return sourceId === sourceTarget.bookId
         if (sourceTarget.kind === 'phase') return sourceId === sourceTarget.phaseId
         return sourceId === sourceTarget.recordId
       }) || null
@@ -327,6 +334,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       if (sourceTarget.kind === 'question') return qaHistoryRef.current
       if (sourceTarget.kind === 'practice') return practiceHistoryRef.current
       if (sourceTarget.kind === 'phase') return phaseProgressRef.current
+      if (sourceTarget.kind === 'original') return document.querySelector<HTMLElement>('[data-reading-source-kind="original"]')
       return document.querySelector<HTMLElement>('[data-reading-source-kind="book"]')
     }
 
@@ -1149,9 +1157,41 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     return true
   })
   const bookBookmarks = book.bookmarks || []
+  const bookSelectionSource = (text: string) => createSelectionSource(
+    { kind: 'book', bookId: book.id },
+    `《${book.name}》`,
+    text
+  )
+  const phaseSelectionSource = phase ? (text: string) => createSelectionSource(
+    { kind: 'phase', bookId: book.id, phaseId: phase.id },
+    `《${book.name}》· ${t(lang, `phases.${phase.id}.title`)}`,
+    text
+  ) : bookSelectionSource
+  const practiceSelectionSource = (recordId: string) => (text: string) => createSelectionSource(
+    { kind: 'practice', bookId: book.id, recordId },
+    `《${book.name}》· ${lang === 'zh' ? '费曼实践' : 'Feynman practice'}`,
+    text
+  )
+  const noteSelectionSource = (record: NoteRecord) => (text: string) => createSelectionSource(
+    { kind: 'note', bookId: book.id, recordId: record.id },
+    record.chapterTitle || `《${book.name}》· ${lang === 'zh' ? '我的笔记' : 'My notes'}`,
+    text
+  )
+  const bookmarkSelectionSource = (bookmark: BookBookmark) => (text: string) => createSelectionSource(
+    { kind: 'bookmark', bookId: book.id, recordId: bookmark.id, offset: bookmark.offset },
+    bookmark.chapterTitle || `《${book.name}》· ${lang === 'zh' ? '书签' : 'Bookmark'}`,
+    text
+  )
 
   return (
-    <div className="max-w-4xl mx-auto" data-reading-source-kind="book" data-reading-source-id={book.id}>
+    <SelectableContent
+      className="max-w-4xl mx-auto"
+      lang={lang}
+      source={bookSelectionSource}
+      onSaveSelection={handleQuoteSelected}
+      saveLabel={lang === 'zh' ? '加入金句' : 'Save quote'}
+    >
+      <div data-reading-source-kind="book" data-reading-source-id={book.id}>
       {/* Header */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
@@ -1404,14 +1444,15 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                   {/* 检查是否可以查看内容 */}
                   {isPhaseUnlocked(currentPhase, completedPhaseCount) ? (
                     <>
-                      <PhaseResult
+                  <PhaseResult
                         key={currentPhase}
                         content={responses[phase.id]}
                         documentContent={book.documentContent}
                         lang={lang}
                         onExpandAll={() => scrollToReadingAnchor(phaseProgressRef)}
                         onQuoteSelected={handleQuoteSelected}
-                      />
+                        selectionSource={phaseSelectionSource}
+                  />
 
                       {/* 每个阶段都显示完成按钮 */}
                       {isPhaseCompleted(currentPhase, completedPhaseCount) ? (
@@ -1859,7 +1900,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                               {lang === 'zh' ? 'AI 点评：' : 'AI Review:'}
                             </p>
                             <div className="bg-[var(--bg-card)] rounded p-3">
-                              <MarkdownRenderer content={record.aiReview} onQuoteSelected={handleQuoteSelected} />
+                              <MarkdownRenderer content={record.aiReview} onQuoteSelected={handleQuoteSelected} selectionSource={practiceSelectionSource(record.id)} lang={lang} />
                               <SourceEvidence
                                 content={record.aiReview}
                                 documentContent={book.documentContent}
@@ -1873,7 +1914,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                               {lang === 'zh' ? '教学输出：' : 'Teaching Output:'}
                             </p>
                             <div className="bg-[var(--bg-card)] rounded p-3">
-                              <MarkdownRenderer content={record.content} />
+                              <MarkdownRenderer content={record.content} onQuoteSelected={handleQuoteSelected} selectionSource={practiceSelectionSource(record.id)} lang={lang} />
                             </div>
                           </div>
                         </div>
@@ -2003,12 +2044,15 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             ) : (
               <div className="space-y-3">
                 {visibleNoteRecords.slice().reverse().map(note => (
-                  <div
+                  <SelectableContent
                     key={note.id}
                     className="bg-[var(--bg-secondary)] rounded-xl p-4"
-                    data-reading-source-kind="note"
-                    data-reading-source-id={note.id}
+                    lang={lang}
+                    source={noteSelectionSource(note)}
+                    onSaveSelection={handleQuoteSelected}
+                    saveLabel={lang === 'zh' ? '加入金句' : 'Save quote'}
                   >
+                    <div data-reading-source-kind="note" data-reading-source-id={note.id}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <span className={`shrink-0 rounded px-2 py-1 text-xs ${
@@ -2071,7 +2115,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                         ))}
                       </ul>
                     )}
-                  </div>
+                    </div>
+                  </SelectableContent>
                 ))}
               </div>
             )}
@@ -2089,12 +2134,15 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             ) : (
               <div className="space-y-3">
                 {bookBookmarks.slice().reverse().map(bookmark => (
-                  <div
+                  <SelectableContent
                     key={bookmark.id}
                     className="rounded-xl bg-[var(--bg-secondary)] p-4"
-                    data-reading-source-kind="bookmark"
-                    data-reading-source-id={bookmark.id}
+                    lang={lang}
+                    source={bookmarkSelectionSource(bookmark)}
+                    onSaveSelection={handleQuoteSelected}
+                    saveLabel={lang === 'zh' ? '加入金句' : 'Save quote'}
                   >
+                    <div data-reading-source-kind="bookmark" data-reading-source-id={bookmark.id}>
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <div className="flex min-w-0 flex-wrap items-center gap-2">
                         <span
@@ -2139,7 +2187,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                       </blockquote>
                     )}
                     {bookmark.label && <p className="whitespace-pre-wrap text-sm">{bookmark.label}</p>}
-                  </div>
+                    </div>
+                  </SelectableContent>
                 ))}
               </div>
             )}
@@ -2149,7 +2198,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
 
       {/* Recommendations Tab */}
       {activeTab === 'recommendations' && (
-        <div className="animate-fade-in">
+        <div className="animate-fade-in" data-reading-source-kind="recommendation" data-reading-source-id={book.id}>
           {book.status !== 'finished' ? (
             <div className="card text-center py-16">
               <AppIcon name="lock" tone="muted" size={56} className="mx-auto mb-4" />
@@ -2245,6 +2294,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         </div>
       )}
 
-    </div>
+      </div>
+    </SelectableContent>
   )
 }

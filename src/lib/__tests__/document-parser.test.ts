@@ -6,6 +6,7 @@ import {
   describeUnsupportedFormat,
   htmlToPlainText,
   parseDocument,
+  reconstructPdfText,
   rtfToPlainText,
 } from '../document-parser'
 
@@ -28,11 +29,16 @@ function makeBinaryFile(name: string, bytes: Uint8Array): File {
   } as File
 }
 
+function expectChapterComposition(parsed: Awaited<ReturnType<typeof parseDocument>>) {
+  expect(parsed.chapters).toBeDefined()
+  expect(parsed.content).toBe(parsed.chapters!.map(chapter => `${chapter.title}\n\n${chapter.content}`).join('\n\n'))
+}
+
 describe('parseDocument upload boundaries', () => {
   it('parses supported text files', async () => {
     await expect(parseDocument(makeFile('notes.txt', '核心概念'))).resolves.toEqual(
       expect.objectContaining({
-        content: '核心概念',
+        content: '正文\n\n核心概念',
         fileName: 'notes.txt',
         fileType: 'txt',
       })
@@ -65,26 +71,115 @@ describe('parseDocument upload boundaries', () => {
 })
 
 describe('structured ebook formats', () => {
+  it('reconstructs PDF lines without inserting spaces into Chinese and preserves paragraphs', () => {
+    const parsed = reconstructPdfText([
+      [
+        { str: '这是', transform: [12, 0, 0, 12, 40, 760], width: 24, height: 12 },
+        { str: '一段中文', transform: [12, 0, 0, 12, 64, 760], width: 48, height: 12 },
+        { str: '正文。', transform: [12, 0, 0, 12, 112, 760], width: 36, height: 12 },
+        { str: '第二段内容。', transform: [12, 0, 0, 12, 40, 720], width: 72, height: 12 }
+      ]
+    ])
+    expect(parsed).toContain('这是一段中文正文。')
+    expect(parsed).toContain('\n\n第二段内容。')
+    expect(parsed).not.toContain('这 是')
+  })
+
+  it('removes repeated page headers and footers while joining wrapped English words', () => {
+    const page = (body: string, pageNumber: number) => [
+      { str: '书籍标题', transform: [10, 0, 0, 10, 40, 800], width: 40, height: 10 },
+      { str: body, transform: [10, 0, 0, 10, 40, 760], width: 160, height: 10 },
+      { str: `页脚 ${pageNumber}`, transform: [10, 0, 0, 10, 40, 30], width: 40, height: 10 }
+    ]
+    const parsed = reconstructPdfText([
+      page('learn-', 1),
+      [
+        { str: '书籍标题', transform: [10, 0, 0, 10, 40, 800], width: 40, height: 10 },
+        { str: 'ing matters.', transform: [10, 0, 0, 10, 40, 740], width: 90, height: 10 },
+        { str: '页脚 2', transform: [10, 0, 0, 10, 40, 30], width: 40, height: 10 }
+      ]
+    ])
+    expect(parsed).toContain('learning matters.')
+    expect(parsed).not.toContain('书籍标题')
+    expect(parsed).not.toContain('页脚 1')
+  })
+
   it('splits markdown files into chapters by heading', async () => {
     const markdown = '# 第一章\n\n开篇内容\n\n## 第二章\n\n后续内容'
     const parsed = await parseDocument(makeFile('book.md', markdown))
     expect(parsed.chapters?.map(chapter => chapter.title)).toEqual(['第一章', '第二章'])
     expect(parsed.chapters?.[1].content).toContain('后续内容')
+    expectChapterComposition(parsed)
   })
 
-  it('converts HTML to readable paragraphs and picks up the title', async () => {
-    const html = '<html><head><title>论学习</title><style>p{color:red}</style></head><body><h1>论学习</h1><p>第一段&amp;重点</p><p>第二段</p></body></html>'
+  it('does not treat headings inside fenced Markdown code as chapters', async () => {
+    const markdown = '# 第一章\n\n```md\n# 这是代码\n```\n\n正文\n\n## 第二章\n后续内容'
+    const parsed = await parseDocument(makeFile('code.md', markdown))
+    expect(parsed.chapters?.map(chapter => chapter.title)).toEqual(['第一章', '第二章'])
+    expect(parsed.chapters?.[0].content).toContain('# 这是代码')
+  })
+
+  it('preserves HTML headings, lists, quotes, tables and code as safe semantic text', async () => {
+    const html = `<html><head><title>论学习</title><style>p{color:red}</style></head><body>
+      <h1>论学习</h1><p>第一段&amp;<strong>重点</strong></p>
+      <h2>方法</h2><ol><li>观察</li><li>解释</li></ol><blockquote>保持怀疑</blockquote>
+      <table><tr><th>概念</th><th>解释</th></tr><tr><td>反馈</td><td>校准理解</td></tr></table>
+      <pre><code>const answer = 42;\n  return answer;</code></pre></body></html>`
     const parsed = await parseDocument(makeFile('lesson.html', html))
     expect(parsed.title).toBe('论学习')
-    expect(parsed.content).toContain('第一段&重点')
-    expect(parsed.content).toContain('第二段')
+    expect(parsed.chapters?.map(chapter => chapter.title)).toEqual(['论学习', '方法'])
+    expect(parsed.content).toContain('第一段&**重点**')
+    expect(parsed.content).toContain('1. 观察\n2. 解释')
+    expect(parsed.content).toContain('> 保持怀疑')
+    expect(parsed.content).toContain('| 概念 | 解释 |')
+    expect(parsed.content).toContain('```\nconst answer = 42;\n  return answer;\n```')
     expect(parsed.content).not.toContain('color:red')
-    expect(parsed.chapters).toHaveLength(1)
+    expectChapterComposition(parsed)
   })
 
   it('extracts text from RTF control words and escapes', () => {
-    expect(rtfToPlainText('{\\rtf1\\ansi 你好\\par 第二段}')).toBe('你好\n第二段')
+    expect(rtfToPlainText('{\\rtf1\\ansi 你好\\par 第二段}')).toBe('你好\n\n第二段')
     expect(rtfToPlainText("{\\rtf1\\ansi\\ansicpg936 \\'c4\\'e3\\par}")).toContain('你')
+    expect(rtfToPlainText('{\\rtf1\\ansi\\bullet 第一项\\par\\bullet 第二项}')).toContain('- 第一项\n\n- 第二项')
+    expect(rtfToPlainText('{\\rtf1\\ansi 第一格\\cell 第二格\\cell\\row}')).toContain('第一格 | 第二格 |')
+  })
+
+  it('normalizes TXT chapters and pretty-prints valid JSON', async () => {
+    const text = await parseDocument(makeFile('novel.txt', '序言\n\n第一章 开始\n第一段\n\n第二章 继续\n第二段'))
+    expect(text.chapters?.map(chapter => chapter.title)).toEqual(['序', '第一章 开始', '第二章 继续'])
+    expectChapterComposition(text)
+
+    const json = await parseDocument(makeFile('data.json', '{"concept":"反馈","steps":[1,2]}'))
+    expect(json.content).toContain('```json\n{\n  "concept": "反馈"')
+    expectChapterComposition(json)
+    await expect(parseDocument(makeFile('broken.json', '{bad'))).rejects.toThrow('JSON 解析失败')
+  })
+
+  it('preserves DOCX heading, list and table structure', async () => {
+    const { Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow } = await import('docx')
+    const document = new Document({
+      sections: [{
+        children: [
+          new Paragraph({ text: '学习方法', heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: '先观察事实。' }),
+          new Paragraph({ text: '再复述概念。', bullet: { level: 0 } }),
+          new Table({
+            rows: [
+              new TableRow({ children: [new TableCell({ children: [new Paragraph('步骤')] }), new TableCell({ children: [new Paragraph('目的')] })] }),
+              new TableRow({ children: [new TableCell({ children: [new Paragraph('复述')] }), new TableCell({ children: [new Paragraph('发现缺口')] })] })
+            ]
+          })
+        ]
+      }]
+    })
+    const buffer = await Packer.toBuffer(document)
+    const parsed = await parseDocument(makeBinaryFile('method.docx', new Uint8Array(buffer)))
+    expect(parsed.chapters?.[0].title).toBe('学习方法')
+    expect(parsed.content).toContain('- 再复述概念。')
+    expect(parsed.content).toContain('| 步骤 | 目的 |')
+    expect(parsed.content).toContain('| --- | --- |')
+    expect(parsed.content).toContain('| 复述 | 发现缺口 |')
+    expectChapterComposition(parsed)
   })
 
   it('parses FB2 metadata and sections', async () => {
@@ -96,7 +191,9 @@ describe('structured ebook formats', () => {
     <annotation>专注力的价值</annotation>
   </title-info></description>
   <body>
-    <section><title>第一章</title><p>专注是一种能力。</p></section>
+    <section><title><p>第一章</p></title><p>专注是一种能力。</p>
+      <section><title><p>练习</p></title><p>每天安排专注时段。</p></section>
+    </section>
     <section><title>第二章</title><p>分心是默认状态。</p></section>
   </body>
 </FictionBook>`
@@ -105,6 +202,8 @@ describe('structured ebook formats', () => {
     expect(parsed.author).toContain('纽波特')
     expect(parsed.description).toBe('专注力的价值')
     expect(parsed.chapters?.map(chapter => chapter.title)).toEqual(['第一章', '第二章'])
+    expect(parsed.chapters?.[0].content).toContain('## 练习')
+    expectChapterComposition(parsed)
   })
 
   it('parses an EPUB package with metadata, spine order and cover', async () => {
@@ -146,6 +245,7 @@ describe('structured ebook formats', () => {
     expect(parsed.cover?.startsWith('data:image/jpeg;base64,')).toBe(true)
     expect(parsed.chapters?.map(chapter => chapter.title)).toEqual(['系统一', '系统二'])
     expect(parsed.content).toContain('快速直觉')
+    expectChapterComposition(parsed)
   })
 
   it('rejects DRM protected EPUB files without crashing', async () => {
@@ -176,10 +276,10 @@ describe('legacy .doc documents', () => {
 
   it('accepts RTF and HTML files that are only named .doc', async () => {
     await expect(parseDocument(makeFile('旧版文档.doc', '{\\rtf1\\ansi 旧版正文\\par 第二段}'))).resolves.toEqual(
-      expect.objectContaining({ fileType: 'doc', content: '旧版正文\n第二段' })
+      expect.objectContaining({ fileType: 'doc', content: '正文\n\n旧版正文\n\n第二段' })
     )
     await expect(parseDocument(makeFile('网页文档.doc', '<html><body><p>网页正文</p></body></html>'))).resolves.toEqual(
-      expect.objectContaining({ fileType: 'doc', content: '网页正文' })
+      expect.objectContaining({ fileType: 'doc', content: '正文\n\n网页正文' })
     )
   })
 

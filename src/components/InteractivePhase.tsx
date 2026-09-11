@@ -17,6 +17,7 @@ import SourceEvidence from './SourceEvidence'
 import { getThinkingQuestionsForPhase, ThinkingQuestion } from '@/lib/learningModes'
 import AppIcon from './AppIcon'
 import CopyContentButton from './CopyContentButton'
+import type { AssistantSource } from '@/lib/assistantSources'
 
 interface Props {
   bookId: string
@@ -29,6 +30,7 @@ interface Props {
   documentContent?: string
   onContentChange?: (newContent: string) => void
   onQuoteSelected?: (text: string) => Promise<void> | void
+  selectionSource?: AssistantSource | ((text: string) => AssistantSource)
 }
 
 function interactiveAIError(error: unknown, lang: Language, fallbackZh: string, fallbackEn: string): string {
@@ -56,7 +58,8 @@ export default function InteractivePhase({
   lang,
   documentContent,
   onContentChange,
-  onQuoteSelected
+  onQuoteSelected,
+  selectionSource
 }: Props) {
   const [content, setContent] = useState(initialContent)
   const [isEditing, setIsEditing] = useState(false)
@@ -327,7 +330,7 @@ export default function InteractivePhase({
         ) : (
           /* 显示内容 */
           <div className="prose prose-invert max-w-none">
-            <MarkdownRenderer content={content} onQuoteSelected={onQuoteSelected} />
+            <MarkdownRenderer content={content} onQuoteSelected={onQuoteSelected} selectionSource={selectionSource} lang={lang} />
             <SourceEvidence content={content} documentContent={documentContent} lang={lang} />
           </div>
         )}
@@ -397,7 +400,7 @@ export default function InteractivePhase({
                   <div className="mb-2 flex justify-end">
                     <CopyContentButton content={item.a} lang={lang} />
                   </div>
-                  <MarkdownRenderer content={item.a} onQuoteSelected={onQuoteSelected} />
+                  <MarkdownRenderer content={item.a} onQuoteSelected={onQuoteSelected} selectionSource={selectionSource} lang={lang} />
                   <SourceEvidence content={item.a} documentContent={documentContent} lang={lang} />
                 </div>
               </div>

@@ -7,7 +7,7 @@ import {
   type AssistantSourceTarget
 } from './assistantSources'
 
-export type LearningRecordKind = 'note' | 'phase' | 'practice' | 'question' | 'answer'
+export type LearningRecordKind = 'note' | 'bookmark' | 'phase' | 'practice' | 'question' | 'recommendation' | 'answer'
 
 export interface LearningRecordEntry {
   bookId: string
@@ -37,7 +37,7 @@ function entry(
   label: string,
   content: string,
   createdAt: number,
-  target: Pick<AssistantSourceTarget, 'recordId' | 'phaseId' | 'questionIndex'>
+  target: Pick<AssistantSourceTarget, 'recordId' | 'phaseId' | 'questionIndex' | 'offset'>
 ): LearningRecordEntry | null {
   const normalizedContent = content.trim()
   const source = normalizeAssistantSource({
@@ -76,6 +76,18 @@ function allEntries(book: Book): LearningRecordEntry[] {
     const value = entry(book, 'note', note.type === 'teaching' ? '教学笔记' : '读书笔记', `笔记：${note.content}${note.aiReview ? `\nAI 点评：${note.aiReview}` : ''}${note.phaseId ? `\n关联阶段：${note.phaseId}` : ''}`, note.createdAt, { recordId: note.id })
     return value ? [value] : []
   })
+  const bookmarks = (book.bookmarks || []).flatMap(bookmark => {
+    const label = bookmark.label?.trim() || bookmark.chapterTitle?.trim() || '阅读书签'
+    const value = entry(
+      book,
+      'bookmark',
+      label,
+      `书签位置：${bookmark.chapterTitle || '原文'}\n原文摘要：${bookmark.snippet}${bookmark.label ? `\n用户备注：${bookmark.label}` : ''}`,
+      bookmark.createdAt,
+      { recordId: bookmark.id, offset: bookmark.offset }
+    )
+    return value ? [value] : []
+  })
   const phases = Object.entries(book.responses || {}).flatMap(([phase, content]) => {
     if (!isAssistantSourcePhaseId(phase)) return []
     const value = entry(book, 'phase', `阶段分析：${phase}`, content, book.updatedAt, { phaseId: phase })
@@ -86,7 +98,10 @@ function allEntries(book: Book): LearningRecordEntry[] {
     return value ? [value] : []
   })
   const questions = (book.qaPracticeRecords || []).flatMap(record => questionEntries(book, record))
-  return [...notes, ...phases, ...practices, ...questions].filter(item => item.content)
+  const recommendation = book.recommendations?.trim()
+    ? entry(book, 'recommendation', '相关推荐', book.recommendations, book.updatedAt, {})
+    : null
+  return [...notes, ...bookmarks, ...phases, ...practices, ...questions, ...(recommendation ? [recommendation] : [])].filter(item => item.content)
 }
 
 function terms(value: string): string[] {
@@ -106,9 +121,11 @@ function scoreEntry(entryValue: LearningRecordEntry, query: string): number {
   })
   const lowerQuery = query.toLocaleLowerCase()
   if (lowerQuery.includes('笔记') && entryValue.kind === 'note') score += 8
+  if (/(书签|标记|上次看到|阅读位置)/.test(lowerQuery) && entryValue.kind === 'bookmark') score += 8
   if (/(实践|复述|点评|评分|表现|错误|薄弱)/.test(lowerQuery) && entryValue.kind === 'practice') score += 7
   if (/(问答|提问|问题|角色|回答|追问)/.test(lowerQuery) && entryValue.kind === 'question') score += 7
   if (/(阶段|分析|背景|概览|拆解|辩证|融会)/.test(lowerQuery) && entryValue.kind === 'phase') score += 6
+  if (/(推荐|相关|延伸|接下来读|书单)/.test(lowerQuery) && entryValue.kind === 'recommendation') score += 7
   if (haystack.includes(lowerQuery.trim()) && lowerQuery.trim().length > 1) score += 12
   return score
 }
@@ -141,9 +158,6 @@ export function buildAssistantLearningContextWithSources(
   const contextualMatches = mentionedBook && matches.length === 0
     ? allEntries(mentionedBook).map(item => ({ ...item, score: 1 })).sort((a, b) => b.createdAt - a.createdAt).slice(0, MAX_MATCHES)
     : matches
-  const overview = mentionedBook
-    ? `书籍：${mentionedBook.name}\n作者：${mentionedBook.author || '未知'}\n简介：${mentionedBook.description || '暂无'}\n学习阶段：${mentionedBook.currentPhase}/6，综合分：${mentionedBook.bestScore || 0}`
-    : ''
   const bookSource = mentionedBook
     ? normalizeAssistantSource({
       kind: 'book',
@@ -157,15 +171,21 @@ export function buildAssistantLearningContextWithSources(
   const recordSources = normalizeAssistantSources(contextualMatches.map(match => match.source))
     .slice(0, bookSource ? 5 : 6)
   const sources = normalizeAssistantSources([
-    ...recordSources,
-    ...(bookSource ? [bookSource] : [])
+    ...(bookSource ? [bookSource] : []),
+    ...recordSources
   ])
+  const sourceReference = new Map(sources.map((source, index) => [source.id, `R${index + 1}`]))
+  const overview = mentionedBook
+    ? `${bookSource ? `[${sourceReference.get(bookSource.id)}] ` : ''}书籍：${mentionedBook.name}\n作者：${mentionedBook.author || '未知'}\n简介：${mentionedBook.description || '暂无'}\n学习阶段：${mentionedBook.currentPhase}/6，综合分：${mentionedBook.bestScore || 0}`
+    : ''
   if (!contextualMatches.length) return { context: overview, sources }
   let remaining = MAX_CONTEXT_CHARS - overview.length
   const details: string[] = []
   for (const match of contextualMatches) {
     if (remaining <= 0) break
-    const value = trim(compactMatch(match), Math.min(6_000, remaining))
+    const reference = sourceReference.get(match.source.id)
+    if (!reference) continue
+    const value = trim(`[${reference}] ${compactMatch(match)}`, Math.min(6_000, remaining))
     details.push(value)
     remaining -= value.length
   }

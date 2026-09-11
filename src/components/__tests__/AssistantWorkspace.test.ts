@@ -8,6 +8,7 @@ import {
   findAssistantMentionedBook,
   getAssistantMentionQuery,
   clampAssistantPosition,
+  resolveAssistantContextBook,
   shouldDeriveAssistantSessionTitle
 } from '../AssistantWorkspace'
 import { buildAssistantLearningContext, buildFeynmanNudge, searchLearningRecords } from '@/lib/assistantLearningContext'
@@ -38,6 +39,13 @@ describe('Feynman Assistant context helpers', () => {
     expect(findAssistantMentionedBook('请结合 @追风筝的人 解释背叛', books)?.id).toBe('kite')
     expect(findAssistantMentionedBook('我对活着的结尾有疑问', books)?.id).toBe('short')
     expect(findAssistantMentionedBook('今天聊点别的', books)).toBeUndefined()
+  })
+
+  it('keeps active and session-associated book context when the question omits a title', () => {
+    expect(resolveAssistantContextBook('这段话和我之前的笔记有什么关系？', books, books[1])?.id).toBe('short')
+    expect(resolveAssistantContextBook('回顾一下我上次哪里没讲清楚', books, null, 'kite')?.id).toBe('kite')
+    expect(resolveAssistantContextBook('继续解释', books, books[1], 'short', 'kite')?.id).toBe('kite')
+    expect(resolveAssistantContextBook('请解释追风筝的人的救赎', books, books[1], 'short', 'short')?.id).toBe('kite')
   })
 
   it('returns the active @ query at the cursor', () => {
@@ -108,6 +116,20 @@ describe('Feynman Assistant context helpers', () => {
     const context = buildAssistantLearningContext('请回顾这本书的实践和记录', [detailed], detailed)
     expect(context).toContain('关于创伤记忆与救赎的详细描述')
     expect(context).toContain('遗漏了哈桑的视角')
+  })
+
+  it('retrieves bookmarks and recommendations with inline source ids', () => {
+    const enriched = {
+      ...books[0],
+      bookmarks: [{ id: 'bookmark-1', chapterIndex: 0, offset: 128, chapterTitle: '第一章', snippet: '风筝是救赎的线索', label: '关键转折', createdAt: 5 }],
+      recommendations: '可以对照阅读关于创伤与记忆的作品。'
+    }
+    const bookmarkContext = buildAssistantLearningContext('我的书签里哪一处是关键转折？', [enriched], enriched)
+    const recommendationContext = buildAssistantLearningContext('有哪些相关推荐？', [enriched], enriched)
+
+    expect(bookmarkContext).toContain('[R')
+    expect(bookmarkContext).toContain('风筝是救赎的线索')
+    expect(recommendationContext).toContain('关于创伤与记忆的作品')
   })
 
   it('builds a Feynman reminder from the actual learning history', () => {

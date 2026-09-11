@@ -6,6 +6,8 @@ import type { Language } from '@/lib/i18n'
 import { MAX_BOOKMARKS_PER_BOOK, MAX_NOTE_TAG_LENGTH, MAX_NOTE_TAGS } from '@/lib/dataLimits'
 import { logger } from '@/lib/logger'
 import { updateReadingProgress } from '@/lib/readingProgress'
+import { openAssistantWithSelection } from '@/lib/assistantEvents'
+import { createSelectionSource } from '@/lib/selectionSources'
 import {
   buildReaderSections,
   extractSectionBody,
@@ -25,10 +27,12 @@ import {
   MAX_SEARCH_TERM_LENGTH,
   normalizeNoteTags,
   scanDocumentMatches,
-  type SearchMatch
+  type SearchMatch,
+  type TextSegment
 } from '@/lib/readerAnnotations'
 import AppIcon from './AppIcon'
 import HighlightColorPicker, { HIGHLIGHT_DOT_CLASSES } from './HighlightColorPicker'
+import MarkdownRenderer from './MarkdownRenderer'
 
 export interface ReaderHighlightDraft {
   quote: string
@@ -93,6 +97,8 @@ type ChapterFilter = 'all' | 'none' | number
 
 interface SelectionState {
   text: string
+  /** Exact character offset in book.documentContent for this DOM selection. */
+  offset?: number
   top: number
   left: number
 }
@@ -137,6 +143,45 @@ const MAX_HIGHLIGHT_NOTE_CHARS = 2000
 const MAX_BOOKMARK_LABEL_CHARS = 200
 const NOTICE_DURATION = 2600
 
+function escapeReaderHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/**
+ * Preserve the parser's Markdown-like structure while injecting trusted markers
+ * for saved highlights and search results. Splitting on newlines prevents a
+ * multi-paragraph highlight from swallowing Markdown block boundaries.
+ */
+function buildAnnotatedReaderMarkdown(segments: TextSegment[], activeSearchOffset: number | null): string {
+  return segments.map(segment => {
+    if (segment.kind === 'plain') return segment.text
+    return segment.text.split(/(\n)/).map(part => {
+      if (part === '\n' || !part) return part
+      const safeText = escapeReaderHtml(part)
+      if (segment.kind === 'highlight' && segment.record) {
+        const id = encodeURIComponent(segment.record.id)
+        const color = isHighlightColor(segment.record.color) ? segment.record.color : DEFAULT_HIGHLIGHT_COLOR
+        return `<mark data-reader-highlight="${id}" data-highlight-id="${id}" data-reader-color="${color}" role="button" tabindex="0">${safeText}</mark>`
+      }
+      const active = activeSearchOffset !== null && segment.offset === activeSearchOffset ? ' data-reader-search-active="true"' : ''
+      return `<mark data-reader-search="${segment.offset ?? ''}"${active}>${safeText}</mark>`
+    }).join('')
+  }).join('')
+}
+
+function closestTextOffset(source: string, selected: string, approximateOffset: number): number {
+  let best = source.indexOf(selected)
+  if (best < 0) return -1
+  let cursor = best + Math.max(1, selected.length)
+  while (cursor < source.length) {
+    const next = source.indexOf(selected, cursor)
+    if (next < 0) break
+    if (Math.abs(next - approximateOffset) < Math.abs(best - approximateOffset)) best = next
+    cursor = next + Math.max(1, selected.length)
+  }
+  return best
+}
+
 const THEME_CLASSES: Record<ReaderTheme, string> = {
   light: 'bg-white text-slate-900',
   paper: 'bg-[#f7f1e3] text-[#3a3226]',
@@ -147,34 +192,6 @@ const THEME_MUTED_CLASSES: Record<ReaderTheme, string> = {
   light: 'text-slate-500',
   paper: 'text-[#7a6a52]',
   dark: 'text-slate-400'
-}
-
-/** 阅读器自带三套底色，划线配色按底色单独取值，避免夜间主题下过亮。 */
-const HIGHLIGHT_MARK_CLASSES: Record<ReaderTheme, Record<HighlightColor, string>> = {
-  light: {
-    yellow: 'bg-amber-200/80',
-    green: 'bg-emerald-200/80',
-    blue: 'bg-sky-200/80',
-    pink: 'bg-pink-200/80'
-  },
-  paper: {
-    yellow: 'bg-amber-300/70',
-    green: 'bg-emerald-300/60',
-    blue: 'bg-sky-300/60',
-    pink: 'bg-rose-300/60'
-  },
-  dark: {
-    yellow: 'bg-amber-400/25',
-    green: 'bg-emerald-400/25',
-    blue: 'bg-sky-400/25',
-    pink: 'bg-pink-400/25'
-  }
-}
-
-const SEARCH_MARK_CLASSES: Record<ReaderTheme, string> = {
-  light: 'bg-[var(--accent)]/20',
-  paper: 'bg-[var(--accent)]/25',
-  dark: 'bg-[var(--accent)]/35'
 }
 
 function readStoredNumber(key: string, fallback: number, min: number, max: number): number {
@@ -326,6 +343,7 @@ export default function BookReader({
   const [activeMatchOffset, setActiveMatchOffset] = useState<number | null>(null)
 
   const articleRef = useRef<HTMLDivElement>(null)
+  const readerBodyRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const noticeTimerRef = useRef<number | null>(null)
@@ -491,6 +509,7 @@ export default function BookReader({
     () => buildTextSegments(body, highlightRanges, searchRanges, bodyStart),
     [body, highlightRanges, searchRanges, bodyStart]
   )
+  const annotatedMarkdown = useMemo(() => buildAnnotatedReaderMarkdown(segments, activeMatchOffset), [activeMatchOffset, segments])
 
   const currentSectionBookmark = useMemo(
     () => (section ? bookmarks.find(item => item.offset >= section.start && item.offset < section.end) ?? null : null),
@@ -594,19 +613,34 @@ export default function BookReader({
       setSelection(null)
       return
     }
-    const text = currentSelection.toString().replace(/[ \t]+\n/g, '\n').trim()
+    const readerBody = readerBodyRef.current
+    const selectionStartsInBody = readerBody?.contains(range.startContainer) ?? false
+    const selectionEndsInBody = readerBody?.contains(range.endContainer) ?? false
+    const rawSelection = currentSelection.toString()
+    const text = rawSelection.replace(/[ \t]+\n/g, '\n').trim()
     if (text.length < 2) {
       setSelection(null)
       return
     }
     const rect = range.getBoundingClientRect()
+    let offset: number | undefined
+    if (readerBody && selectionStartsInBody && selectionEndsInBody) {
+      const prefix = range.cloneRange()
+      prefix.selectNodeContents(readerBody)
+      prefix.setEnd(range.startContainer, range.startOffset)
+      const leadingWhitespace = rawSelection.length - rawSelection.trimStart().length
+      const approximate = prefix.toString().length + leadingWhitespace
+      const matched = closestTextOffset(body, text, approximate)
+      if (matched >= 0) offset = bodyStart + matched
+    }
     setMarkEditor(null)
     setSelection({
       text: text.slice(0, MAX_HIGHLIGHT_QUOTE_CHARS),
+      ...(offset !== undefined ? { offset } : {}),
       top: Math.max(64, rect.top),
       left: Math.min(Math.max(170, rect.left + rect.width / 2), Math.max(170, window.innerWidth - 170))
     })
-  }, [])
+  }, [body, bodyStart])
 
   const clearSelection = () => {
     setSelection(null)
@@ -626,7 +660,7 @@ export default function BookReader({
         note: withNote ? noteDraft.trim() : '',
         chapterIndex: section && section.chapterIndex >= 0 ? section.chapterIndex : undefined,
         chapterTitle: section?.title || undefined,
-        offset: index >= 0 ? bodyStart + index : undefined,
+        offset: selection.offset ?? (index >= 0 ? bodyStart + index : undefined),
         color: selectionColor,
         tags: normalizeNoteTags(selectionTags)
       })
@@ -640,6 +674,32 @@ export default function BookReader({
         : 'Saved to Notes. It will ground your Feynman practice and AI analysis.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const askAssistantAboutSelection = () => {
+    if (!selection) return
+    const index = body.indexOf(selection.text)
+    const offset = selection.offset ?? (index >= 0 ? bodyStart + index : bodyStart)
+    openAssistantWithSelection({
+      text: selection.text,
+      source: createSelectionSource(
+        { kind: 'original', bookId: book.id, offset },
+        section?.title ? `《${book.name}》· ${section.title}` : `《${book.name}》原文`,
+        selection.text
+      ),
+      bookId: book.id,
+      lang
+    })
+    clearSelection()
+  }
+
+  const copySelectedText = async () => {
+    if (!selection) return
+    try {
+      await navigator.clipboard.writeText(selection.text)
+    } catch {
+      showNotice('error', zh ? '复制失败，请重试。' : 'Copy failed. Please try again.')
     }
   }
 
@@ -814,8 +874,8 @@ export default function BookReader({
         <h3 className="mb-2 text-lg font-bold">{zh ? '这本书还没有可阅读的原文' : 'No readable text yet'}</h3>
         <p className="mx-auto max-w-xl text-sm text-[var(--text-secondary)]">
           {zh
-            ? '回到书架，点击「添加书籍」并选择导入 EPUB、MOBI、AZW3、FB2、PDF、DOCX、HTML、RTF、TXT 或 Markdown 文件，就能在这里直接阅读原文、划线、写笔记并添加书签。手工创建的书籍不会自动拥有原文。'
-            : 'Go back to the library, choose “Add Book,” and import an EPUB, MOBI, AZW3, FB2, PDF, DOCX, HTML, RTF, TXT, or Markdown file to read, highlight, annotate, and bookmark it here. Manually created books do not contain source text.'}
+            ? '回到书架，点击「添加书籍」并选择导入 EPUB、MOBI、AZW3、FB2、PDF、DOC、DOCX、HTML、RTF、TXT 或 Markdown 文件，就能在这里直接阅读原文、划线、写笔记并添加书签。手工创建的书籍不会自动拥有原文。'
+            : 'Go back to the library, choose “Add Book,” and import an EPUB, MOBI, AZW3, FB2, PDF, DOC, DOCX, HTML, RTF, TXT, or Markdown file to read, highlight, annotate, and bookmark it here. Manually created books do not contain source text.'}
         </p>
       </div>
     )
@@ -833,7 +893,7 @@ export default function BookReader({
   ]
 
   return (
-    <div className="relative">
+    <div className="relative" data-selection-owner="book-reader" data-reading-source-kind="original" data-reading-source-id={book.id}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <button
@@ -934,55 +994,43 @@ export default function BookReader({
       <div className="relative">
         <div
           ref={articleRef}
-          onMouseUp={captureSelection}
-          onTouchEnd={captureSelection}
+          onMouseUp={event => {
+            event.stopPropagation()
+            captureSelection()
+          }}
+          onTouchEnd={event => {
+            event.stopPropagation()
+            captureSelection()
+          }}
           className={`rounded-xl border border-[var(--border)] px-4 py-6 shadow-sm sm:px-8 sm:py-10 ${THEME_CLASSES[theme]}`}
         >
           <h3 className="mb-4 text-lg font-bold">{sectionLabel}</h3>
           <div
-            className="whitespace-pre-wrap break-words leading-8"
+            ref={readerBodyRef}
+            className="reader-document-body break-words"
+            data-reader-theme={theme}
+            data-active-search-offset={activeMatchOffset ?? undefined}
             style={{ fontSize: `${fontSize}px`, lineHeight: 1.9 }}
+            onClick={event => {
+              const marker = (event.target as Element | null)?.closest<HTMLElement>('[data-reader-highlight]')
+              if (!marker) return
+              let id = marker.dataset.readerHighlight || ''
+              try { id = decodeURIComponent(id) } catch { /* keep the raw id */ }
+              const record = highlights.find(item => item.id === id)
+              if (record) openMarkEditor(record, marker)
+            }}
+            onKeyDown={event => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              const marker = (event.target as Element | null)?.closest<HTMLElement>('[data-reader-highlight]')
+              if (!marker) return
+              event.preventDefault()
+              let id = marker.dataset.readerHighlight || ''
+              try { id = decodeURIComponent(id) } catch { /* keep the raw id */ }
+              const record = highlights.find(item => item.id === id)
+              if (record) openMarkEditor(record, marker)
+            }}
           >
-            {segments.map((segment, index) => {
-              if (segment.kind === 'highlight' && segment.record) {
-                const record = segment.record
-                const color = normalizeColor(record.color)
-                return (
-                  <mark
-                    key={`highlight-${record.id}-${index}`}
-                    data-highlight-id={record.id}
-                    role="button"
-                    tabIndex={0}
-                    title={noteTextOf(record) || (zh ? '点击查看或修改这条划线' : 'Open this highlight')}
-                    onClick={event => openMarkEditor(record, event.currentTarget)}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        openMarkEditor(record, event.currentTarget)
-                      }
-                    }}
-                    className={`cursor-pointer rounded-[3px] text-inherit ${HIGHLIGHT_MARK_CLASSES[theme][color]} ${
-                      markEditor?.id === record.id ? 'ring-2 ring-[var(--accent)]' : ''
-                    }`}
-                  >
-                    {segment.text}
-                  </mark>
-                )
-              }
-              if (segment.kind === 'search') {
-                return (
-                  <mark
-                    key={`search-${segment.offset}-${index}`}
-                    className={`rounded-[3px] text-inherit ${SEARCH_MARK_CLASSES[theme]} ${
-                      activeMatchOffset !== null && segment.offset === activeMatchOffset ? 'ring-2 ring-[var(--accent)]' : ''
-                    }`}
-                  >
-                    {segment.text}
-                  </mark>
-                )
-              }
-              return <span key={`plain-${index}`}>{segment.text}</span>
-            })}
+            <MarkdownRenderer content={annotatedMarkdown} className="reader-structured-markdown" lang={lang} />
           </div>
           <p className={`mt-8 text-xs ${THEME_MUTED_CLASSES[theme]}`}>
             {zh
@@ -1383,7 +1431,16 @@ export default function BookReader({
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-1.5 shadow-xl">
+            <div className="flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-1.5 shadow-xl">
+              <button
+                type="button"
+                onClick={askAssistantAboutSelection}
+                className="btn-primary gap-1.5 !px-3 !py-2 !text-xs"
+                aria-label={zh ? '向费曼小助手提问' : 'Ask Feynman Assistant'}
+              >
+                <AppIcon name="sparkles" size={15} />
+                {zh ? '问小助手' : 'Ask'}
+              </button>
               <HighlightColorPicker value={selectionColor} onChange={setSelectionColor} zh={zh} disabled={saving} />
               <span className="h-5 w-px bg-[var(--border)]" aria-hidden />
               <button
@@ -1402,6 +1459,15 @@ export default function BookReader({
               >
                 <AppIcon name="note" size={15} />
                 {zh ? '划线并写笔记' : 'Highlight + note'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void copySelectedText()}
+                className="btn-secondary gap-1.5 !px-3 !py-2 !text-xs"
+                aria-label={zh ? '复制选中原文' : 'Copy selected text'}
+              >
+                <AppIcon name="clipboard" size={15} />
+                {zh ? '复制' : 'Copy'}
               </button>
             </div>
           )}
