@@ -2,6 +2,25 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.3.0] - 2026-09-11
+
+### Added
+
+- Read the source text inside the app. Imported books open in a chapter reader with a table of contents, four highlight colors, per-highlight notes and tags, bookmarks with notes and colors, keyword search, font-size and reader-theme controls, keyboard section navigation, and a reading-progress badge on the bookshelf. Reading progress stays separate from the six-phase Feynman progress and from AI scores.
+- Reference your own reading while learning: Feynman practice and AI review can point at the exact highlight through `[H#]` references, and phase prompts are now required to label claims that come from the source, mark outside-source judgments, and avoid invented quotations, page numbers, or references.
+- Import highlights and notes from other readers. Readwise and Zotero are read through their official APIs with tokens that stay in the browser; WeChat Reading, Kindle, Apple Books, Dedao, Google Play Books, and KOReader are supported through their official text exports. The platform support tab lists each export path with official links, and explains why platforms without an official route (Get Notes, Youdao Note, iReader, JD Read, Fanqie, QQ Reader, and similar) are not integrated. No cookie scraping, scripted sign-in, or reverse engineering is used.
+- Collect in-app highlights and bookmarks in My Notes, filterable by source (source highlight, imported, manual note) and by tag.
+- Import EPUB, MOBI / AZW3 / AZW / PRC, FB2, DOCX / DOC, HTML / XHTML, RTF, PDF, TXT, Markdown, and JSON. EPUB and MOBI bring their title, author, cover, and chapters with them; DOCX / DOC and PDF become readable, highlightable text.
+
+### Changed
+
+- Adding a book and uploading a document now share one import dialog: after importing a file you can still edit title, author, cover, and tags instead of the metadata being fixed by the import path.
+- Highlights keep their chapter and character offsets, so imported notes and in-app reading can be traced back to the passage they came from.
+
+### Compatibility
+
+- Backups accept the new chapter, bookmark, reading-progress, note-source, and tag fields and still import v0.2.x backups. No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.3.0.md).
+
 ## [0.2.7] - 2026-09-10
 
 ### Added

@@ -15,7 +15,7 @@
 
 Feynman Reader is an AI reading workspace built around the Feynman technique. Build a six-phase understanding of a book, teach it in your own words, and use feedback and questions from three roles to identify gaps. Notes, quotes, and the Feynman Assistant connect each practice session to future reading and review.
 
-Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.2.5](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.5). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md).
+Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.3.0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.3.0). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md). Every deployment keeps its source on GitHub under a `deploy-` snapshot tag, for example [deploy-v0.2.7-f248026](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.2.7-f248026).
 
 ![Current desktop bookshelf with five books, learning status, scores, and a review suggestion](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
@@ -25,7 +25,9 @@ Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. C
 
 | Area | Current behavior |
 | --- | --- |
-| Books and documents | Create books, edit covers, organize tags and lists, or upload PDF, DOCX, TXT, Markdown, and JSON reference material. |
+| Books and documents | Create books, edit covers, organize tags and lists, or import EPUB, MOBI / AZW3, FB2, PDF, DOCX / DOC, HTML, RTF, TXT, Markdown, and JSON. EPUB and MOBI also fill in the title, author, cover, and chapters. |
+| Source reading | Read the imported text chapter by chapter, adjust font size and theme, and highlight passages in four colours with notes and tags (up to 8 tags per highlight, 24 characters each, with suggestions from the tags already used in the book). Click an existing highlight to recolor it, edit its note, add or remove tags, or delete it. The toolbar also adds bookmarks per section, searches the whole book, and opens panels for contents, highlights, and bookmarks; the highlights panel filters by chapter and tag, and arrow keys move between sections. Highlights keep their chapter source and character offset so Feynman practice and AI review can check them against the original text; the Notes tab aggregates both highlights and bookmarks and filters notes by source (highlight, imported, manual) and tag. |
+| Highlight import | Use the official Readwise and Zotero APIs, or import official export text from WeChat Reading, Kindle, Apple Books, and similar apps. No cookie scraping or reverse-engineered integrations. |
 | Six learning phases | Explore background, overview, deep analysis, critical thinking, reception, and synthesis. Confirm each phase as complete to unlock the next. |
 | Teaching practice | Write an explanation of 200–20,000 characters. Review accuracy, completeness, clarity, overall score, original text, and feedback. |
 | Three-role Q&A | After passing teaching, use the default roles, a preset, or choose three roles yourself. Answer, evaluate, and retry individual questions. |
@@ -41,7 +43,7 @@ Explore the *Kite Runner* sample to try the complete learning flow, then sign in
 
 ![Six-phase reading with progress and background exploration](docs/product/screenshots/v0.2.1/reading-desktop.png)
 
-Phase learning, teaching practice, notes, and recommendations are four views of the same book. Analyses can be expanded or collapsed. Generating an analysis does not automatically mark its phase as complete.
+Source reading, phase learning, teaching practice, notes, and recommendations are five views of the same book. Analyses can be expanded or collapsed. Generating an analysis does not automatically mark its phase as complete.
 
 ### Teaching and Role Questions
 
@@ -169,7 +171,7 @@ Follow the [version and recovery guide](docs/operations/releases-and-rollback.md
 
 - Your library, notes, and practice records belong to your account. View and manage them in Account Center, with import, export, and a recycle bin to organize your learning material.
 - Saved account API keys are encrypted on the server; their plaintext is not returned to the browser or included in learning data exports. AI requests require consent to transfer relevant content.
-- Book documents support PDF, DOCX, TXT, Markdown, and JSON: up to 20 MB, 1,000 PDF pages, and one million parsed characters. Excel, legacy DOC, and image OCR are unsupported.
+- Book documents support PDF, DOCX / DOC (Word 97-2003 binary, parsed in-app with a built-in OLE reader), TXT, Markdown, and JSON: up to 20 MB, 1,000 PDF pages, and one million parsed characters. Excel, scanned/archive formats such as DJVU, CHM, and CBZ, and image OCR are unsupported.
 - Model costs vary with input, output, and route. Consult [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731); temporary offers are not permanent pricing promises.
 - Review suggestion cards are implemented. Voice transcription, OCR, fixed D1/D7/D21 schedules, and automatic reminders are not. The learning flow uses six sequential phases.
 

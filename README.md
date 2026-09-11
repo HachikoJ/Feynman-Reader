@@ -15,7 +15,7 @@
 
 费曼读书助手是基于费曼学习法的 AI 阅读工作台。围绕一本书建立六阶段阅读框架，用自己的话讲解，再通过评分和三个角色的追问发现理解漏洞。笔记、金句和费曼小助手把一次练习连接到后续阅读与复习。
 
-产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.2.5](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.2.5)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。
+产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.3.0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.3.0)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。每次上线的源码都在 GitHub 上留有 `deploy-` 快照标签，例如 [deploy-v0.2.7-f248026](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.2.7-f248026)。
 
 ![当前桌面书架，展示五本书、学习状态、得分与复习建议](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
@@ -25,7 +25,9 @@
 
 | 环节 | 当前版本的体验 |
 | --- | --- |
-| 书架与资料 | 创建书籍、编辑封面、管理标签与书单，或上传 PDF、DOCX、TXT、Markdown、JSON 作为阅读资料。 |
+| 书架与资料 | 创建书籍、编辑封面、管理标签与书单，或导入 EPUB、MOBI / AZW3、FB2、PDF、DOCX / DOC、HTML、RTF、TXT、Markdown、JSON 等格式；EPUB / MOBI 会自动带出书名、作者、封面与章节。 |
+| 原文阅读 | 在站内按章节阅读原文，调整字号与主题；选中原文可划四种颜色的线、写笔记、打标签（单个标签 24 字以内、每条划线最多 8 个，输入时有全书已有标签提示），点击已有划线能改色、补备注、增删标签或删除。工具栏支持书签（本节已标记时打开书签列表，可补备注改色）、全书关键词检索、目录与划线／书签面板，以及键盘左右方向键翻节；划线面板可按章节和标签筛选。划线保留章节出处与字符位置，可作为费曼复述与 AI 分析的核对依据；「我的笔记」里同时聚合划线与书签，并可按来源（原文划线／外部导入／手工笔记）和标签筛选。 |
+| 外部笔记导入 | 支持 Readwise、Zotero 官方 API，以及微信读书、Kindle、Apple Books 等平台的官方导出笔记导入；「平台支持说明」里列出各平台的导出步骤与官方链接，不采用任何 cookie 抓取或逆向方案。 |
 | 六阶段学习 | 按背景探索、全书概览、深度拆解、辩证分析、众声回响、融会贯通建立理解；确认完成当前阶段后解锁下一阶段。 |
 | 教学模拟 | 输入 200–20,000 字的个人讲解，查看准确度、完整度、清晰度与综合评分，以及原文和改进建议。 |
 | 三角色问答 | 教学通过后，使用默认组合、预设组合或自行选择三个角色；逐题回答、评估和重答。 |
@@ -41,7 +43,7 @@
 
 ![六阶段阅读页面，展示阶段进度与背景探索](docs/product/screenshots/v0.2.1/reading-desktop.png)
 
-阶段学习、费曼实践、我的笔记、相关推荐是同一本书的四个视图。分析结果可以折叠阅读，生成分析不会自动替你确认阶段完成。
+阅读原文、阶段学习、费曼实践、我的笔记、相关推荐是同一本书的五个视图。分析结果可以折叠阅读，生成分析不会自动替你确认阶段完成。
 
 ### 教学模拟与问答记录
 
@@ -169,7 +171,7 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=false
 
 - 个人书架、笔记和练习记录归属各自账号，可在账号中心查看和管理，并通过导入、导出及回收站整理自己的学习资料。
 - 账号中保存的 API Key 由服务端加密，不向浏览器返回其明文，也不进入学习数据导出；调用 AI 前需确认相关内容的数据传输。
-- 书籍文档支持 PDF、DOCX、TXT、Markdown、JSON；文件最多 20 MB，PDF 最多 1,000 页，解析文本最多 100 万字符。当前不支持 Excel、旧版 DOC 或图片 OCR。
+- 书籍文档支持 PDF、DOCX / DOC（Word 97-2003 二进制，内置 OLE 解析，不依赖额外依赖）、TXT、Markdown、JSON；文件最多 20 MB，PDF 最多 1,000 页，解析文本最多 100 万字符。当前不支持 Excel、DJVU / CHM / CBZ 等扫描或压缩包格式，以及图片 OCR。
 - AI 费用取决于输入、输出及所选线路，以 [TokenDance 实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)为准，不把限时活动视为固定价格承诺。
 - 书架已有复习建议卡片；语音转写、OCR、固定 D1/D7/D21 复习排程和自动提醒尚未实现。主学习流程统一为顺序六阶段。
 
