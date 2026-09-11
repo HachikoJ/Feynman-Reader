@@ -12,13 +12,14 @@ import {
   MAX_IMPORT_HIGHLIGHTS,
   PLATFORM_CAPABILITIES,
   PLATFORM_CAPABILITY_GROUP_ORDER,
+  findMatchingBook,
   fetchReadwiseBooks,
-  fetchZoteroAnnotations,
+  fetchZoteroBookCandidates,
   getPlatformCapability,
-  parseHighlightExport,
+  parseHighlightExportCandidates,
   toImportedNoteRecords
 } from '@/lib/importAdapters'
-import { flushPendingStoreWrites, getBook, getBooks, reloadBookFromPersistence, updateBook } from '@/lib/store'
+import { addBook, flushPendingStoreWrites, getBook, getBooks, reloadBookFromPersistence, updateBook } from '@/lib/store'
 import { MAX_NOTE_LENGTH } from '@/lib/dataLimits'
 import AppIcon from './AppIcon'
 import { useAccountAccess } from './AuthGuard'
@@ -76,6 +77,11 @@ function normalizeKey(value: string | undefined): string {
   return (value || '').replace(/\s+/g, ' ').trim()
 }
 
+function zhBookTitle(value: string): string {
+  const title = value.trim()
+  return /^《.+》$/.test(title) ? title : `《${title}》`
+}
+
 export default function HighlightImportDialog({ lang, targetBookId, onImported, onClose }: Props) {
   const { isAuthenticated, requestLogin } = useAccountAccess()
   const [tab, setTab] = useState<ImportTab>('api')
@@ -84,6 +90,8 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
   const [pending, setPending] = useState<ImportedHighlight[]>([])
   const [sourceKind, setSourceKind] = useState<SourceKind | null>(null)
   const [sourceLabel, setSourceLabel] = useState('')
+  const [bookTitle, setBookTitle] = useState('')
+  const [bookAuthor, setBookAuthor] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
@@ -98,11 +106,13 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
   const [zoteroKey, setZoteroKey] = useState('')
   const [zoteroUserId, setZoteroUserId] = useState('')
   const [zoteroLoading, setZoteroLoading] = useState(false)
+  const [zoteroBooks, setZoteroBooks] = useState<ImportBookCandidate[]>([])
 
   // 导入文本（笔记来源 + 粘贴 / 上传）
   const [textFormat, setTextFormat] = useState<HighlightExportFormat>('wechat')
   const [rawText, setRawText] = useState('')
   const [parsing, setParsing] = useState(false)
+  const [textBooks, setTextBooks] = useState<ImportBookCandidate[]>([])
 
   const abortRef = useRef<AbortController | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -119,16 +129,27 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
     [textFormat]
   )
 
-  useEffect(() => {
-    if (books.length === 0) return
-    if (targetId && books.some(book => book.id === targetId)) return
-    setTargetId(books[0].id)
-  }, [books, targetId])
-
   const resetPending = () => {
     setPending([])
     setSourceKind(null)
     setSourceLabel('')
+    setBookTitle('')
+    setBookAuthor('')
+  }
+
+  const selectCandidate = (candidate: ImportBookCandidate, kind: SourceKind, label: string) => {
+    const explicitTarget = targetBookId ? books.find(book => book.id === targetBookId) : undefined
+    const matched = explicitTarget || findMatchingBook(books, candidate.title, candidate.author)
+    setError(null)
+    setPending(candidate.highlights)
+    setSourceKind(kind)
+    setSourceLabel(label)
+    setBookTitle(candidate.title)
+    setBookAuthor(candidate.author || '')
+    setTargetId(matched?.id || '')
+    setNotice(lang === 'zh'
+      ? `已读取 ${candidate.highlights.length} 条划线 / 笔记，${matched ? `将自动关联到${zhBookTitle(matched.name)}` : candidate.title ? `书架中未找到对应书籍，将新建${zhBookTitle(candidate.title)}` : '请补充书名后导入'}。`
+      : `Loaded ${candidate.highlights.length} highlights/notes. ${matched ? `They will be linked to “${matched.name}”` : candidate.title ? `No matching book was found; “${candidate.title}” will be created` : 'Enter the book title before importing'}.`)
   }
 
   const handleError = (value: unknown, fallback: string) => {
@@ -175,15 +196,7 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
       setError(lang === 'zh' ? '这本书在 Readwise 里还没有划线。' : 'This book has no highlights in Readwise yet.')
       return
     }
-    setError(null)
-    setPending(candidate.highlights)
-    setSourceKind('readwise')
-    setSourceLabel(candidate.title)
-    const matched = books.find(book => normalizeKey(book.name) === normalizeKey(candidate.title))
-    if (matched) setTargetId(matched.id)
-    setNotice(lang === 'zh'
-      ? `已读取《${candidate.title}》的 ${candidate.highlights.length} 条划线，确认后导入。`
-      : `Loaded ${candidate.highlights.length} highlights from “${candidate.title}”. Confirm to import.`)
+    selectCandidate(candidate, 'readwise', candidate.title)
   }
 
   const handleLoadZotero = async () => {
@@ -195,22 +208,25 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
     abortRef.current = controller
     setZoteroLoading(true)
     try {
-      const highlights = await fetchZoteroAnnotations({
+      const candidates = await fetchZoteroBookCandidates({
         apiKey: zoteroKey,
         userId: zoteroUserId,
         signal: controller.signal
       })
       if (abortRef.current !== controller) return
-      if (highlights.length === 0) {
+      if (candidates.length === 0) {
         setNotice(lang === 'zh' ? '这个账号下没有找到批注。' : 'No annotations were found for this account.')
         return
       }
-      setPending(highlights)
-      setSourceKind('zotero')
-      setSourceLabel('Zotero')
-      setNotice(lang === 'zh'
-        ? `已读取 ${highlights.length} 条 Zotero 批注，确认后导入。`
-        : `Loaded ${highlights.length} Zotero annotations. Confirm to import.`)
+      setZoteroBooks(candidates)
+      if (candidates.length === 1) {
+        selectCandidate(candidates[0], 'zotero', candidates[0].title || 'Zotero')
+      } else {
+        resetPending()
+        setNotice(lang === 'zh'
+          ? `识别到 ${candidates.length} 本文档，请选择要导入的书籍。`
+          : `Found ${candidates.length} documents. Choose a book to import.`)
+      }
     } catch (loadError) {
       if (abortRef.current !== controller) return
       handleError(loadError, lang === 'zh' ? 'Zotero 读取失败，请检查网络后重试。' : 'Reading Zotero failed. Check your connection and retry.')
@@ -225,20 +241,23 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
   const handleText = (text: string, label: string) => {
     setError(null)
     setNotice(null)
-    const highlights = parseHighlightExport(text, textFormat)
-    if (highlights.length === 0) {
+    const candidates = parseHighlightExportCandidates(text, textFormat)
+    if (candidates.length === 0) {
       setPending([])
       setError(lang === 'zh'
         ? '没有解析到划线或笔记，请确认导出格式与所选的平台一致。'
         : 'No highlights or notes were parsed. Make sure the export format matches the selected platform.')
       return
     }
-    setPending(highlights)
-    setSourceKind('export')
-    setSourceLabel(label)
-    setNotice(lang === 'zh'
-      ? `已解析 ${highlights.length} 条划线 / 笔记，确认后导入。`
-      : `Parsed ${highlights.length} highlights/notes. Confirm to import.`)
+    setTextBooks(candidates)
+    if (candidates.length === 1) {
+      selectCandidate(candidates[0], 'export', label)
+    } else {
+      resetPending()
+      setNotice(lang === 'zh'
+        ? `识别到 ${candidates.length} 本书的笔记，请逐本选择并导入。`
+        : `Found notes for ${candidates.length} books. Choose and import one book at a time.`)
+    }
   }
 
   const handleTextFile = async (file: File) => {
@@ -268,12 +287,12 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
         : 'Sign in to import highlights into your library for Feynman practice.')
       return
     }
-    if (!targetId) {
-      setError(lang === 'zh' ? '请先选择要导入到哪本书。' : 'Choose the book to import into first.')
+    if (!targetId && !bookTitle.trim()) {
+      setError(lang === 'zh' ? '未能从笔记中识别书名，请先填写书名。' : 'The book title could not be detected. Enter it before importing.')
       return
     }
-    const book = getBook(targetId)
-    if (!book) {
+    let book = targetId ? getBook(targetId) : undefined
+    if (targetId && !book) {
       setError(lang === 'zh' ? '目标书籍不存在，请重新选择。' : 'The target book no longer exists. Please choose again.')
       setBooks(getBooks())
       return
@@ -287,8 +306,13 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
     setImporting(true)
     setError(null)
     setNotice(null)
+    let affectedBookId = targetId
     try {
-      const existing = new Set(book.noteRecords.map(record => normalizeKey(record.quote)).filter(Boolean))
+      if (book?._summaryOnly) {
+        book = await reloadBookFromPersistence(book.id)
+        if (!book) throw new Error('BOOK_NOT_FOUND_AFTER_RELOAD')
+      }
+      const existing = new Set((book?.noteRecords || []).map(record => normalizeKey(record.quote)).filter(Boolean))
       const fresh = pending.filter(highlight => {
         const key = normalizeKey(highlight.quote)
         if (!key) return Boolean(normalizeKey(highlight.note))
@@ -302,7 +326,7 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
       }
 
       const records = toImportedNoteRecords(fresh, {
-        chapters: book.chapters,
+        chapters: book?.chapters,
         maxRecords: MAX_IMPORT_HIGHLIGHTS
       }).map(record => ({
         ...record,
@@ -314,17 +338,28 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
         return
       }
 
-      updateBook(book.id, { noteRecords: [...book.noteRecords, ...records] })
+      const savedBook = book || addBook(
+        bookTitle.trim(),
+        bookAuthor.trim() || undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        records
+      )
+      affectedBookId = savedBook.id
+      if (book) updateBook(book.id, { noteRecords: [...book.noteRecords, ...records] })
       await flushPendingStoreWrites()
-      const persisted = getBook(book.id)
+      const persisted = getBook(savedBook.id)
       if (persisted) setBooks(getBooks())
-      onImported?.(book.id, records.length)
+      onImported?.(savedBook.id, records.length)
       setNotice(lang === 'zh'
-        ? `已把 ${records.length} 条划线 / 笔记导入《${book.name}》，可在「我的笔记」里查看并回到原文核对。`
-        : `Imported ${records.length} highlights/notes into “${book.name}”. Open Notes to review them against the source.`)
+        ? `已把 ${records.length} 条划线 / 笔记${book ? '关联并导入' : '导入新书'}${zhBookTitle(savedBook.name)}，可在「我的笔记」里查看。`
+        : `Imported ${records.length} highlights/notes into ${book ? '' : 'new book '}“${savedBook.name}”. Open Notes to review them.`)
       resetPending()
     } catch (importError) {
-      await reloadBookFromPersistence(targetId).catch(() => undefined)
+      if (affectedBookId) await reloadBookFromPersistence(affectedBookId).catch(() => undefined)
       setBooks(getBooks())
       logger.error('Highlight import save failed:', importError)
       setError(lang === 'zh'
@@ -485,6 +520,30 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
                     ? (lang === 'zh' ? '正在读取...' : 'Loading...')
                     : (lang === 'zh' ? '读取我的 Zotero 批注' : 'Load my Zotero annotations')}
                 </button>
+                {zoteroBooks.length > 0 && (
+                  <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
+                    {zoteroBooks.map(candidate => (
+                      <button
+                        key={candidate.externalId}
+                        type="button"
+                        onClick={() => selectCandidate(candidate, 'zotero', candidate.title || 'Zotero')}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-left text-sm hover:border-[var(--accent)]"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-[var(--text-primary)]">
+                            {candidate.title || (lang === 'zh' ? '未识别书名' : 'Unknown title')}
+                          </span>
+                          <span className="block truncate text-xs text-[var(--text-secondary)]">
+                            {[candidate.author, lang === 'zh'
+                              ? `${candidate.highlights.length} 条批注`
+                              : `${candidate.highlights.length} annotations`].filter(Boolean).join(' · ')}
+                          </span>
+                        </span>
+                        <AppIcon name="chevronRight" tone="muted" size={16} />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -586,6 +645,28 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
                   ? '导入的笔记只用于你自己的学习与 AI 核对。带有账号 Cookie、模拟登录或逆向抓取的第三方工具不符合平台条款，本项目不会接入；各平台的官方导出方式见「平台支持说明」。'
                   : 'Imported notes are used only for your own study and AI verification. Tools that rely on cookies, scripted logins, or scraping violate platform terms and are not supported. See “Platform support” for each official export path.'}
               </div>
+              {textBooks.length > 1 && (
+                <div className="product-dialog-section">
+                  <label className="product-dialog-label">
+                    {lang === 'zh' ? '选择识别到的书籍' : 'Choose a detected book'}
+                  </label>
+                  <div className="max-h-48 space-y-2 overflow-y-auto">
+                    {textBooks.map(candidate => (
+                      <button
+                        key={candidate.externalId}
+                        type="button"
+                        onClick={() => selectCandidate(candidate, 'export', candidate.title)}
+                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-left text-sm hover:border-[var(--accent)]"
+                      >
+                        <span className="min-w-0 truncate font-medium text-[var(--text-primary)]">{candidate.title}</span>
+                        <span className="shrink-0 text-xs text-[var(--text-secondary)]">
+                          {lang === 'zh' ? `${candidate.highlights.length} 条` : `${candidate.highlights.length}`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -679,24 +760,49 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
           )}
         </div>
 
-        <div className="product-dialog-footer">
-          <div className="mr-auto flex min-w-0 flex-1 items-center gap-2">
-            {tab !== 'platforms' && books.length > 0 && (
+        <div className="product-dialog-footer flex-wrap">
+          <div className="mr-auto flex w-full min-w-0 basis-full flex-1 flex-col gap-2 sm:w-auto sm:basis-auto sm:flex-row sm:items-center">
+            {tab !== 'platforms' && pending.length > 0 && (
               <>
                 <label htmlFor="highlight-import-target" className="shrink-0 text-xs text-[var(--text-secondary)]">
-                  {lang === 'zh' ? '导入到' : 'Import into'}
+                  {lang === 'zh' ? '关联书籍' : 'Linked book'}
                 </label>
                 <select
                   id="highlight-import-target"
-                  value={targetId}
-                  onChange={event => setTargetId(event.target.value)}
-                  className="input-field min-w-0 flex-1 truncate !py-1.5 text-sm"
+                  value={targetId || '__new__'}
+                  onChange={event => setTargetId(event.target.value === '__new__' ? '' : event.target.value)}
+                  className="input-field w-full min-w-0 flex-1 truncate !py-1.5 text-sm"
                 >
+                  <option value="__new__">
+                    {lang === 'zh'
+                      ? `新建书籍${bookTitle.trim() ? zhBookTitle(bookTitle) : ''}`
+                      : `Create ${bookTitle.trim() ? `“${bookTitle.trim()}”` : 'a book'}`}
+                  </option>
                   {books.map(book => (
                     <option key={book.id} value={book.id}>{book.name}</option>
                   ))}
                 </select>
               </>
+            )}
+            {tab !== 'platforms' && pending.length > 0 && !targetId && (
+              <div className="flex w-full min-w-0 flex-1 flex-col gap-2 md:flex-row">
+                <input
+                  type="text"
+                  value={bookTitle}
+                  onChange={event => setBookTitle(event.target.value)}
+                  className="input-field min-w-0 flex-1 !py-1.5 text-sm"
+                  placeholder={lang === 'zh' ? '书名（必填）' : 'Book title (required)'}
+                  aria-label={lang === 'zh' ? '新书书名' : 'New book title'}
+                />
+                <input
+                  type="text"
+                  value={bookAuthor}
+                  onChange={event => setBookAuthor(event.target.value)}
+                  className="input-field min-w-0 flex-1 !py-1.5 text-sm"
+                  placeholder={lang === 'zh' ? '作者（可选）' : 'Author (optional)'}
+                  aria-label={lang === 'zh' ? '新书作者' : 'New book author'}
+                />
+              </div>
             )}
           </div>
           <button type="button" onClick={onClose} disabled={importing} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50">
@@ -706,7 +812,7 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
             <button
               type="button"
               onClick={handleImport}
-              disabled={importing || pending.length === 0 || !targetBook}
+              disabled={importing || pending.length === 0 || (!targetBook && !bookTitle.trim())}
               className="btn-primary items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <AppIcon name="check" size={17} />

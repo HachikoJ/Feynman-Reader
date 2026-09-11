@@ -59,6 +59,14 @@ describe('bookshelf cover editing', () => {
   })
   afterEach(() => { globalThis.FileReader = originalReader })
 
+  it('keeps book-file import inside the single Add Book entry', () => {
+    render(<Bookshelf lang="zh" onSelectBook={jest.fn()} />)
+
+    expect(screen.queryByRole('button', { name: '导入书籍' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('add-book-button'))
+    expect(screen.getByRole('button', { name: '导入 EPUB / MOBI / PDF' })).toBeEnabled()
+  })
+
   it('sends explicit clearing values for cover, author, description, and all tags', async () => {
     openEditor()
     fireEvent.change(screen.getByDisplayValue('测试作者'), { target: { value: '' } })

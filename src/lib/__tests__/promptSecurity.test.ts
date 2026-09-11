@@ -49,4 +49,22 @@ describe('prompt security boundary', () => {
     expect(question.systemPrompt).not.toContain(injection)
     expect(question.userPrompt).toContain(JSON.stringify(injection))
   })
+
+  it('uses available reading behavior without making it a practice prerequisite', () => {
+    const withoutEvidence = generateReviewPrompt('测试书', '我的复述', 'zh', [], {
+      readingProgress: { currentPage: 7, totalPages: 20, percentage: 35 }
+    })
+    const withImportedNotes = generateReviewPrompt('测试书', '我的复述', 'zh', [{
+      quote: '一条外部划线',
+      note: '我的理解',
+      source: 'import'
+    }])
+
+    expect(withoutEvidence).toContain('"percentage":35')
+    expect(withoutEvidence).toContain('这不代表用户没有读过目标书')
+    expect(withoutEvidence).toContain('不能写成前置条件')
+    expect(withoutEvidence).not.toContain('请在 review 的第一句提醒用户')
+    expect(withImportedNotes).toContain('"source":"import"')
+    expect(withImportedNotes).toContain('下一步费曼学习方案')
+  })
 })

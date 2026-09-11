@@ -40,7 +40,44 @@ export interface ImportBookCandidate {
   highlights: ImportedHighlight[]
 }
 
+export interface MatchableBook {
+  id: string
+  name: string
+  author?: string
+}
+
 export const MAX_IMPORT_HIGHLIGHTS = 500
+
+/** Normalizes book metadata without collapsing distinct subtitles or editions. */
+export function normalizeBookIdentity(value: string | undefined): string {
+  return (value || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\.(?:pdf|epub|mobi|azw3?|docx?|txt)$/i, '')
+    .replace(/^[《〈「『“\"']+|[》〉」』”\"']+$/g, '')
+    .replace(/[\s\u00a0]+/g, '')
+    .toLocaleLowerCase()
+}
+
+export function findMatchingBook<T extends MatchableBook>(
+  books: T[],
+  title: string | undefined,
+  author?: string
+): T | undefined {
+  const normalizedTitle = normalizeBookIdentity(title)
+  if (!normalizedTitle) return undefined
+  const titleMatches = books.filter(book => normalizeBookIdentity(book.name) === normalizedTitle)
+  if (titleMatches.length === 0) return undefined
+
+  const normalizedAuthor = normalizeBookIdentity(author)
+  if (normalizedAuthor) {
+    const authorMatches = titleMatches.filter(book => normalizeBookIdentity(book.author) === normalizedAuthor)
+    if (authorMatches.length > 0) return authorMatches[0]
+    if (titleMatches.length === 1 && !normalizeBookIdentity(titleMatches[0].author)) return titleMatches[0]
+    return undefined
+  }
+  return titleMatches.length === 1 ? titleMatches[0] : undefined
+}
 
 export class ImportAdapterError extends Error {
   status?: number
@@ -183,7 +220,14 @@ export interface ZoteroParentItem {
     key?: string
     title?: string
     filename?: string
+    parentItem?: string
+    creators?: { firstName?: string; lastName?: string; name?: string }[]
   }
+}
+
+interface ZoteroBookMetadata {
+  title: string
+  author?: string
 }
 
 export interface FetchZoteroAnnotationsOptions {
@@ -241,7 +285,69 @@ export function zoteroAnnotationsToHighlights(
   })
 }
 
-export async function fetchZoteroAnnotations(options: FetchZoteroAnnotationsOptions): Promise<ImportedHighlight[]> {
+type ZoteroCreator = NonNullable<NonNullable<ZoteroParentItem['data']>['creators']>[number]
+
+function zoteroCreatorName(creator: ZoteroCreator): string {
+  return (creator.name || [creator.firstName, creator.lastName].filter(Boolean).join(' ')).trim()
+}
+
+export function zoteroAnnotationsToBookCandidates(
+  annotations: ZoteroAnnotationItem[],
+  parentMetadata: Map<string, ZoteroBookMetadata> = new Map()
+): ImportBookCandidate[] {
+  const grouped = new Map<string, ImportBookCandidate>()
+  for (const item of annotations) {
+    const data = item.data || {}
+    const quote = (data.annotationText || '').trim()
+    const note = (data.annotationComment || '').trim()
+    if (!quote && !note) continue
+    const parentKey = data.parentItem || ''
+    const metadata = parentMetadata.get(parentKey)
+    const groupKey = parentKey || 'unmatched'
+    const existing = grouped.get(groupKey) || {
+      externalId: groupKey,
+      title: metadata?.title || '',
+      ...(metadata?.author ? { author: metadata.author } : {}),
+      highlights: []
+    }
+    existing.highlights.push({
+      ...(quote ? { quote } : {}),
+      ...(note ? { note } : {}),
+      ...(data.annotationPageLabel ? { location: `p.${data.annotationPageLabel}` } : {}),
+      ...(parseTimestamp(data.dateAdded) ? { highlightedAt: parseTimestamp(data.dateAdded) } : {})
+    })
+    grouped.set(groupKey, existing)
+  }
+  return Array.from(grouped.values()).map(candidate => ({
+    ...candidate,
+    highlightCount: candidate.highlights.length,
+    highlights: dedupeImportedHighlights(candidate.highlights).slice(0, MAX_IMPORT_HIGHLIGHTS)
+  }))
+}
+
+async function fetchZoteroItems(
+  base: string,
+  keys: string[],
+  headers: Record<string, string>,
+  signal?: AbortSignal
+): Promise<ZoteroParentItem[]> {
+  if (keys.length === 0 || signal?.aborted) return []
+  const items: ZoteroParentItem[] = []
+  for (let index = 0; index < keys.length && !signal?.aborted; index += 50) {
+    const batch = keys.slice(index, index + 50)
+    const params = new URLSearchParams({ format: 'json', itemKey: batch.join(','), limit: String(batch.length) })
+    const response = await fetch(`${base}/items?${params.toString()}`, { headers, signal })
+    if (!response.ok) continue
+    const payload = await response.json() as ZoteroParentItem[]
+    if (Array.isArray(payload)) items.push(...payload)
+  }
+  return items
+}
+
+async function fetchZoteroAnnotationsWithMetadata(options: FetchZoteroAnnotationsOptions): Promise<{
+  annotations: ZoteroAnnotationItem[]
+  parentMetadata: Map<string, ZoteroBookMetadata>
+}> {
   if (!options.apiKey.trim()) throw new ImportAdapterError('请先填写 Zotero API Key。')
   const headers = {
     Accept: 'application/json',
@@ -256,37 +362,41 @@ export async function fetchZoteroAnnotations(options: FetchZoteroAnnotationsOpti
   }
   if (!response.ok) throw new ImportAdapterError(readErrorMessage(response.status, 'Zotero'), response.status)
   const annotations = await response.json() as ZoteroAnnotationItem[]
-  if (!Array.isArray(annotations) || annotations.length === 0) return []
-
-  const parentKeys = Array.from(new Set(annotations
-    .map(item => item.data?.parentItem)
-    .filter((key): key is string => Boolean(key))))
-  const parentTitles = new Map<string, string>()
-  if (parentKeys.length > 0 && !options.signal?.aborted) {
-    const params = new URLSearchParams({
-      format: 'json',
-      itemKey: parentKeys.slice(0, 50).join(','),
-      limit: '50'
-    })
-    try {
-      const parentResponse = await fetch(`${buildZoteroLibraryBase(options)}/items?${params.toString()}`, {
-        headers,
-        signal: options.signal
-      })
-      if (parentResponse.ok) {
-        const parents = await parentResponse.json() as ZoteroParentItem[]
-        for (const parent of parents) {
-          const key = parent.key || parent.data?.key
-          const title = parent.data?.title || parent.data?.filename
-          if (key && title) parentTitles.set(key, title)
-        }
-      }
-    } catch {
-      // 父条目只用于补充书名，失败时仍保留划线本身。
-    }
+  if (!Array.isArray(annotations) || annotations.length === 0) {
+    return { annotations: [], parentMetadata: new Map() }
   }
 
-  return zoteroAnnotationsToHighlights(annotations, parentTitles)
+  const base = buildZoteroLibraryBase(options)
+  const parentKeys = Array.from(new Set(annotations.map(item => item.data?.parentItem).filter((key): key is string => Boolean(key))))
+  const immediateParents = await fetchZoteroItems(base, parentKeys, headers, options.signal).catch(() => [])
+  const bibliographicKeys = Array.from(new Set(immediateParents.map(item => item.data?.parentItem).filter((key): key is string => Boolean(key))))
+  const bibliographicItems = await fetchZoteroItems(base, bibliographicKeys, headers, options.signal).catch(() => [])
+  const bibliographicByKey = new Map(bibliographicItems.flatMap(item => {
+    const key = item.key || item.data?.key
+    return key ? [[key, item] as const] : []
+  }))
+  const parentMetadata = new Map<string, ZoteroBookMetadata>()
+  for (const parent of immediateParents) {
+    const key = parent.key || parent.data?.key
+    if (!key) continue
+    const source = parent.data?.parentItem ? bibliographicByKey.get(parent.data.parentItem) || parent : parent
+    const title = (source.data?.title || source.data?.filename || parent.data?.title || parent.data?.filename || '').trim()
+    if (!title) continue
+    const author = (source.data?.creators || []).map(zoteroCreatorName).filter(Boolean).join('、')
+    parentMetadata.set(key, { title, ...(author ? { author } : {}) })
+  }
+  return { annotations, parentMetadata }
+}
+
+export async function fetchZoteroBookCandidates(options: FetchZoteroAnnotationsOptions): Promise<ImportBookCandidate[]> {
+  const result = await fetchZoteroAnnotationsWithMetadata(options)
+  return zoteroAnnotationsToBookCandidates(result.annotations, result.parentMetadata)
+}
+
+export async function fetchZoteroAnnotations(options: FetchZoteroAnnotationsOptions): Promise<ImportedHighlight[]> {
+  const result = await fetchZoteroAnnotationsWithMetadata(options)
+  const parentTitles = new Map(Array.from(result.parentMetadata, ([key, value]) => [key, value.title]))
+  return zoteroAnnotationsToHighlights(result.annotations, parentTitles)
 }
 
 // ========================================
@@ -620,6 +730,115 @@ export function parseHighlightExport(text: string, format?: HighlightExportForma
             ? parseMarkdownHighlights(source)
             : parsePlainTextHighlights(source)
   return dedupeImportedHighlights(highlights).slice(0, MAX_IMPORT_HIGHLIGHTS)
+}
+
+function splitKindleTitleAndAuthor(value: string): { title: string; author?: string } {
+  const match = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(value.trim())
+  if (!match || !match[1].trim()) return { title: value.trim() }
+  return { title: match[1].trim(), ...(match[2].trim() ? { author: match[2].trim() } : {}) }
+}
+
+function parseKindleBookCandidates(text: string): ImportBookCandidate[] {
+  const grouped = new Map<string, ImportBookCandidate>()
+  const blocks = text.replace(/\r\n?/g, '\n').split(/^={5,}\s*$/m)
+  for (const block of blocks) {
+    const lines = block.split('\n').map(line => line.trim()).filter(Boolean)
+    const metaIndex = lines.findIndex(line => /^-\s*(your|您|你的)/i.test(line))
+    if (metaIndex < 1) continue
+    const metadata = splitKindleTitleAndAuthor(lines[0])
+    const parsed = parseKindleClippings(`${block}\n==========`).map(highlight => {
+      if (highlight.chapterTitle !== lines[0]) return highlight
+      const { chapterTitle: _bookTitle, ...withoutBookTitle } = highlight
+      return withoutBookTitle
+    })
+    if (parsed.length === 0) continue
+    const key = `${normalizeBookIdentity(metadata.title)}\u0000${normalizeBookIdentity(metadata.author)}`
+    const existing = grouped.get(key) || {
+      externalId: key,
+      title: metadata.title,
+      ...(metadata.author ? { author: metadata.author } : {}),
+      highlights: []
+    }
+    existing.highlights.push(...parsed)
+    grouped.set(key, existing)
+  }
+  return Array.from(grouped.values()).map(candidate => ({
+    ...candidate,
+    highlightCount: candidate.highlights.length,
+    highlights: dedupeImportedHighlights(candidate.highlights).slice(0, MAX_IMPORT_HIGHLIGHTS)
+  }))
+}
+
+function parseCsvBookCandidates(text: string): ImportBookCandidate[] {
+  const rows = parseCsvRows(text).filter(row => row.some(cell => cell.trim()))
+  if (rows.length < 2) return []
+  const header = rows[0].map(cell => cell.trim().toLowerCase())
+  const titleIndex = header.findIndex(cell => ['book', 'book title', 'title', '书名', '书籍'].includes(cell))
+  if (titleIndex < 0) return []
+  const authorIndex = header.findIndex(cell => ['author', '作者'].includes(cell))
+  const groups = new Map<string, string[][]>()
+  for (const row of rows.slice(1)) {
+    const title = (row[titleIndex] || '').trim()
+    if (!title) continue
+    const author = authorIndex >= 0 ? (row[authorIndex] || '').trim() : ''
+    const key = `${normalizeBookIdentity(title)}\u0000${normalizeBookIdentity(author)}`
+    const current = groups.get(key) || [rows[0]]
+    current.push(row)
+    groups.set(key, current)
+  }
+  return Array.from(groups, ([key, rowsForBook]) => {
+    const first = rowsForBook[1]
+    const title = (first[titleIndex] || '').trim()
+    const author = authorIndex >= 0 ? (first[authorIndex] || '').trim() : ''
+    const highlights = parseCsvHighlights(rowsForBook.map(row => row.map(value => {
+      const escaped = value.replace(/"/g, '""')
+      return /[",\n]/.test(value) ? `"${escaped}"` : escaped
+    }).join(',')).join('\n'))
+    return {
+      externalId: key,
+      title,
+      ...(author ? { author } : {}),
+      highlightCount: highlights.length,
+      highlights
+    }
+  })
+}
+
+/** Parses one export into book-scoped batches so notes cannot be assigned across books. */
+export function parseHighlightExportCandidates(text: string, format?: HighlightExportFormat): ImportBookCandidate[] {
+  const source = text.replace(/^\uFEFF/, '')
+  if (!source.trim()) return []
+  const resolved = format || detectHighlightExportFormat(source)
+  if (resolved === 'kindle') return parseKindleBookCandidates(source)
+  if (resolved === 'csv') {
+    const candidates = parseCsvBookCandidates(source)
+    if (candidates.length > 0) return candidates
+  }
+
+  const highlights = parseHighlightExport(source, resolved)
+  if (highlights.length === 0) return []
+  let title = ''
+  let author = ''
+  if (resolved === 'wechat') {
+    title = (/^\s*《(.+?)》\s*$/m.exec(source)?.[1] || '').trim()
+    author = (/^\s*作者[:：]\s*(.+?)\s*$/m.exec(source)?.[1] || '').trim()
+  } else if (resolved === 'appleBooks') {
+    const lines = source.replace(/\r\n?/g, '\n').split('\n').map(line => line.trim()).filter(Boolean)
+    const titleLine = lines.find(line =>
+      !/^[“\"「『]/.test(line) &&
+      !/^(?:note|notes|笔记|批注|author|作者)[:：]/i.test(line) &&
+      !STRONG_CHAPTER_PATTERN.test(line)
+    )
+    title = titleLine || ''
+    author = (/^\s*(?:author|作者)[:：]\s*(.+?)\s*$/im.exec(source)?.[1] || '').trim()
+  }
+  return [{
+    externalId: `${resolved}:${normalizeBookIdentity(title) || 'unknown'}`,
+    title,
+    ...(author ? { author } : {}),
+    highlightCount: highlights.length,
+    highlights
+  }]
 }
 
 function highlightKey(highlight: ImportedHighlight): string {

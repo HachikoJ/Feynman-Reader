@@ -6,10 +6,12 @@ import {
   buildReadwiseBooksUrl,
   buildZoteroAnnotationsUrl,
   dedupeImportedHighlights,
+  findMatchingBook,
   fetchReadwiseBooks,
   getPlatformCapability,
   parseCsvHighlights,
   parseHighlightExport,
+  parseHighlightExportCandidates,
   parseKindleClippings,
   parseMarkdownHighlights,
   parsePlainTextHighlights,
@@ -18,6 +20,7 @@ import {
   readwiseBookToCandidate,
   toImportedNoteRecords,
   zoteroAnnotationsToHighlights,
+  zoteroAnnotationsToBookCandidates,
 } from '../importAdapters'
 
 const WECHAT_EXPORT = `《人类简史》
@@ -89,6 +92,32 @@ const CSV_EXPORT = `quote,note,chapter
 `
 
 describe('parseHighlightExport', () => {
+  it('extracts book metadata from WeChat Reading exports', () => {
+    expect(parseHighlightExportCandidates(WECHAT_EXPORT, 'wechat')).toEqual([
+      expect.objectContaining({
+        title: '人类简史',
+        author: '尤瓦尔·赫拉利',
+        highlightCount: 2,
+        highlights: expect.any(Array),
+      })
+    ])
+  })
+
+  it('splits Kindle exports by book before import', () => {
+    const candidates = parseHighlightExportCandidates(`${KINDLE_CLIPPINGS}\n另一部书 (另一位作者)\n- Your Highlight on page 2 | Location 20 | Added on Monday, January 6, 2020\n\n另一条划线\n\n==========`, 'kindle')
+    expect(candidates).toHaveLength(2)
+    expect(candidates[0]).toEqual(expect.objectContaining({
+      title: 'Sapiens',
+      author: 'Yuval Noah Harari',
+      highlightCount: 3,
+    }))
+    expect(candidates[1]).toEqual(expect.objectContaining({
+      title: '另一部书',
+      author: '另一位作者',
+      highlights: [{ quote: '另一条划线', location: '第 2 页 · 位置 20' }],
+    }))
+  })
+
   it('parses the official WeChat Reading notes export', () => {
     const highlights = parseWechatReadingExport(WECHAT_EXPORT)
     expect(highlights).toHaveLength(2)
@@ -167,6 +196,19 @@ describe('dedupeImportedHighlights', () => {
       { note: '批注' },
       { },
     ])).toEqual([{ quote: 'A  B' }, { note: '批注' }])
+  })
+})
+
+describe('book association', () => {
+  it('matches normalized titles and uses authors to disambiguate duplicates', () => {
+    const books = [
+      { id: 'a', name: '《人类简史》', author: '尤瓦尔·赫拉利' },
+      { id: 'b', name: '同名书', author: '作者甲' },
+      { id: 'c', name: '同名书', author: '作者乙' },
+    ]
+    expect(findMatchingBook(books, ' 《人类简史》.pdf ', '尤瓦尔·赫拉利')?.id).toBe('a')
+    expect(findMatchingBook(books, '同名书', '作者乙')?.id).toBe('c')
+    expect(findMatchingBook(books, '同名书')).toBeUndefined()
   })
 })
 
@@ -306,6 +348,21 @@ describe('Zotero official API adapter', () => {
       location: 'p.12',
       highlightedAt: Date.parse('2024-02-01T10:00:00Z')
     }])
+  })
+
+  it('keeps annotations grouped by their parent document', () => {
+    const candidates = zoteroAnnotationsToBookCandidates([
+      { data: { parentItem: 'P1', annotationText: '第一本的划线' } },
+      { data: { parentItem: 'P2', annotationText: '第二本的划线' } },
+      { data: { parentItem: 'P1', annotationComment: '第一本的笔记' } },
+    ], new Map([
+      ['P1', { title: '第一本书', author: '作者甲' }],
+      ['P2', { title: '第二本书', author: '作者乙' }],
+    ]))
+
+    expect(candidates).toHaveLength(2)
+    expect(candidates[0]).toEqual(expect.objectContaining({ title: '第一本书', author: '作者甲', highlightCount: 2 }))
+    expect(candidates[1]).toEqual(expect.objectContaining({ title: '第二本书', author: '作者乙', highlightCount: 1 }))
   })
 })
 

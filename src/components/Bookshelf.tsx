@@ -1108,9 +1108,6 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
             <AppIcon name="plus" size={17} />
             <span className="hidden lg:inline">{t(lang, 'bookshelf.addBook')}</span>
           </button>
-          <button onClick={() => setShowDocumentUpload(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '导入书籍' : 'Import book'} title={lang === 'zh' ? '导入书籍（EPUB、MOBI、PDF 等）' : 'Import a book (EPUB, MOBI, PDF, and more)'}>
-            <AppIcon name="upload" tone="blue" size={17} /><span className="hidden lg:inline">{lang === 'zh' ? '导入书籍' : 'Import Book'}</span>
-          </button>
           {books.length > 0 && (
             <button onClick={() => setShowHighlightImport(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '导入笔记' : 'Import notes'} title={lang === 'zh' ? '导入笔记（微信读书、Kindle、Readwise 等平台的划线与笔记）' : 'Import notes (highlights and notes from WeChat Reading, Kindle, Readwise, and more)'}>
               <AppIcon name="note" tone="amber" size={17} /><span className="hidden lg:inline">{lang === 'zh' ? '导入笔记' : 'Import Notes'}</span>

@@ -1170,7 +1170,8 @@ export function addBook(
   description?: string,
   tags?: BookTag[],
   documentContent?: string,
-  chapters?: BookChapter[]
+  chapters?: BookChapter[],
+  initialNoteRecords: NoteRecord[] = []
 ): Book {
   const now = Date.now()
   const newBook: Book = {
@@ -1184,7 +1185,7 @@ export function addBook(
     chapters,
     status: 'unread',
     currentPhase: 0,
-    noteRecords: [],
+    noteRecords: initialNoteRecords,
     responses: {},
     practiceRecords: [],
     qaPracticeRecords: [],

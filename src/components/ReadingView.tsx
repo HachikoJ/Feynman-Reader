@@ -201,9 +201,13 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     noteRecords.map(record => ({
       quote: record.quote,
       note: record.quote ? (record.content === record.quote ? undefined : record.content) : record.content,
-      chapterTitle: record.chapterTitle
+      chapterTitle: record.chapterTitle,
+      source: record.source
     }))
   )
+  const readingPercentage = Number.isFinite(book.readingProgress?.percentage)
+    ? Math.max(0, Math.min(100, Math.round(book.readingProgress!.percentage)))
+    : null
 
   const pushReadingStep = (nextTab: TabType, nextPhase: number) => {
     window.history.pushState(
@@ -710,13 +714,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
       requestLogin(lang === 'zh' ? '登录后才能使用 AI 点评并保存费曼实践记录。' : 'Sign in to use AI review and save Feynman practice records.')
       return
     }
-    // 阅读优先：有原文的书，先读、先划线，再复述，AI 才能真正核对理解。
-    if (book.documentContent && readingEvidence.length === 0) {
-      setPracticeError(lang === 'zh'
-        ? '先用「阅读原文」读完一节，并划下至少一处划线或笔记，再来做费曼复述。AI 会据此核对你的理解是否忠实于原文。'
-        : 'Read a section first and save at least one highlight or note. AI will then check your retelling against your own reading evidence.')
-      return
-    }
     if (teachingNote.length > MAX_AI_ANSWER_LENGTH) {
       setPracticeError(lang === 'zh'
         ? `教学内容不能超过 ${MAX_AI_ANSWER_LENGTH.toLocaleString()} 个字符。`
@@ -741,7 +738,9 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
     setPracticeStatus('evaluating')
     
     try {
-      const prompt = generateReviewPrompt(book.name, teachingNote, lang, readingEvidence)
+      const prompt = generateReviewPrompt(book.name, teachingNote, lang, readingEvidence, {
+        readingProgress: book.readingProgress
+      })
       const systemPrompt = generateSystemPrompt(book.name, lang)
       const sessionId = createLocalId()
       let response: string
@@ -1219,7 +1218,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
         ))}
       </div>
 
-      {/* Reader Tab：原文阅读 + 划线，费曼练习以这里的原文与笔记为依据 */}
+      {/* Reader Tab：原文阅读 + 划线；这些记录可增强费曼练习，但不是前置条件。 */}
       {activeTab === 'reader' && (
         <div className="animate-fade-in">
           <div className="card mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1230,8 +1229,8 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               </h2>
               <p className="mt-1 text-xs text-[var(--text-secondary)]">
                 {lang === 'zh'
-                  ? '先读原文，再让 AI 帮你核对与多角度理解；划线、书签与笔记都会保存在这本书里。'
-                  : 'Read first, then use AI to verify and widen your understanding. Highlights, bookmarks, and notes stay with the book.'}
+                  ? '你可以在这里阅读原文；划线、书签与笔记会保存在书中，并帮助 AI 更贴合你的阅读过程。'
+                  : 'You can read the source here. Highlights, bookmarks, and notes stay with the book and help AI adapt to your reading process.'}
               </p>
             </div>
             <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg bg-[var(--bg-secondary)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] sm:self-auto">
@@ -1667,32 +1666,43 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
             </div>
 
               <>
-                {book.documentContent && (
-                  <div className={`mb-4 rounded-xl border p-3 ${
-                    readingEvidence.length === 0
-                      ? 'border-amber-500/40 bg-amber-500/10'
-                      : 'border-[var(--border)] bg-[var(--bg-secondary)]'
-                  }`}>
+                <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="inline-flex items-center gap-2 text-sm font-medium">
-                        <AppIcon name={readingEvidence.length === 0 ? 'alert' : 'check'} tone={readingEvidence.length === 0 ? 'amber' : 'green'} size={16} />
+                        <AppIcon name={readingEvidence.length === 0 ? 'sparkles' : 'check'} tone={readingEvidence.length === 0 ? 'blue' : 'green'} size={16} />
                         {readingEvidence.length === 0
-                          ? (lang === 'zh' ? '先读原文并划线，AI 才有核对依据' : 'Read and highlight first so AI has evidence to check')
+                          ? (lang === 'zh'
+                              ? `${readingPercentage !== null ? `已记录站内阅读进度 ${readingPercentage}%；` : ''}可以直接开始，AI 将根据本次复述提供学习方案`
+                              : `${readingPercentage !== null ? `${readingPercentage}% in-app reading progress is recorded; ` : ''}you can start now and AI will adapt the learning plan to this retelling`)
                           : (lang === 'zh'
-                              ? `AI 将用你的 ${readingEvidence.length} 条划线 / 笔记核对复述`
-                              : `AI will check your retelling against ${readingEvidence.length} highlights/notes`)}
+                              ? `AI 将结合 ${readingEvidence.length} 条划线 / 笔记${readingPercentage !== null ? `和 ${readingPercentage}% 阅读进度` : ''}分析复述`
+                              : `AI will use ${readingEvidence.length} highlights/notes${readingPercentage !== null ? ` and ${readingPercentage}% reading progress` : ''} to analyze the retelling`)}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setReaderFocusChapter(null)
-                          handleTabChange('reader')
-                        }}
-                        className="btn-secondary min-h-10 gap-1.5 !px-3 !text-xs"
-                      >
-                        <AppIcon name="bookOpen" size={15} />
-                        {lang === 'zh' ? '去阅读原文' : 'Open the reader'}
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        {readingEvidence.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowHighlightImport(true)}
+                            className="btn-secondary min-h-10 gap-1.5 !px-3 !text-xs"
+                          >
+                            <AppIcon name="download" size={15} />
+                            {lang === 'zh' ? '导入已有笔记' : 'Import existing notes'}
+                          </button>
+                        )}
+                        {book.documentContent && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReaderFocusChapter(null)
+                              handleTabChange('reader')
+                            }}
+                            className="btn-secondary min-h-10 gap-1.5 !px-3 !text-xs"
+                          >
+                            <AppIcon name="bookOpen" size={15} />
+                            {lang === 'zh' ? '阅读原文（可选）' : 'Read source (optional)'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {readingEvidence.length > 0 && (
                       <ul className="mt-2 space-y-1 text-xs text-[var(--text-secondary)]">
@@ -1708,7 +1718,6 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                       </ul>
                     )}
                   </div>
-                )}
                 <h3 className="font-semibold mb-1">{t(lang, 'practice.teach')}</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-3">{t(lang, 'practice.teachDesc')}</p>
 

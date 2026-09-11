@@ -814,8 +814,8 @@ export default function BookReader({
         <h3 className="mb-2 text-lg font-bold">{zh ? '这本书还没有可阅读的原文' : 'No readable text yet'}</h3>
         <p className="mx-auto max-w-xl text-sm text-[var(--text-secondary)]">
           {zh
-            ? '回到书架，用「导入书籍」上传 EPUB、MOBI、AZW3、FB2、PDF、DOCX、HTML、RTF、TXT 或 Markdown 文件，就能在这里直接阅读原文、划线、写笔记并添加书签。手工创建的书籍不会自动拥有原文。'
-            : 'Go back to the library and use “Import Book” with an EPUB, MOBI, AZW3, FB2, PDF, DOCX, HTML, RTF, TXT, or Markdown file to read, highlight, annotate, and bookmark it here. Manually created books do not contain source text.'}
+            ? '回到书架，点击「添加书籍」并选择导入 EPUB、MOBI、AZW3、FB2、PDF、DOCX、HTML、RTF、TXT 或 Markdown 文件，就能在这里直接阅读原文、划线、写笔记并添加书签。手工创建的书籍不会自动拥有原文。'
+            : 'Go back to the library, choose “Add Book,” and import an EPUB, MOBI, AZW3, FB2, PDF, DOCX, HTML, RTF, TXT, or Markdown file to read, highlight, annotate, and bookmark it here. Manually created books do not contain source text.'}
         </p>
       </div>
     )

@@ -2,6 +2,20 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.4.0] - 2026-09-11
+
+### Added
+
+- Associate imported highlights and notes with bookshelf books automatically. Matching uses normalized book title and author metadata; unmatched imports create a new bookshelf book with the imported notes already attached.
+- Keep imports book-scoped for Kindle, Zotero, and multi-book CSV exports so notes from different books cannot be mixed.
+
+### Changed
+
+- Readwise, Zotero, and official text exports now show the detected book before import. Users can override the match or enter a title when an export does not include book metadata.
+- Cloud bookshelf summaries are reloaded before imported notes are appended, preserving full learning records in authenticated mode.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.4.0.md).
+
 ## [0.3.0] - 2026-09-11
 
 ### Added

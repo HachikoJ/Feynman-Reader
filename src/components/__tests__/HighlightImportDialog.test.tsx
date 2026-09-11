@@ -1,10 +1,55 @@
 /** @jest-environment jsdom */
 
 import 'openai/shims/node'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import HighlightImportDialog from '../HighlightImportDialog'
+import * as store from '@/lib/store'
 
-jest.mock('@/lib/store', () => ({ __esModule: true, ...jest.requireActual('@/lib/store') }))
+jest.mock('@/lib/store', () => ({
+  __esModule: true,
+  addBook: jest.fn(),
+  flushPendingStoreWrites: jest.fn(),
+  getBook: jest.fn(),
+  getBooks: jest.fn(),
+  reloadBookFromPersistence: jest.fn(),
+  updateBook: jest.fn(),
+}))
+
+const mockGetBooks = store.getBooks as jest.MockedFunction<typeof store.getBooks>
+const mockGetBook = store.getBook as jest.MockedFunction<typeof store.getBook>
+const mockAddBook = store.addBook as jest.MockedFunction<typeof store.addBook>
+const mockUpdateBook = store.updateBook as jest.MockedFunction<typeof store.updateBook>
+const mockFlushWrites = store.flushPendingStoreWrites as jest.MockedFunction<typeof store.flushPendingStoreWrites>
+
+const WECHAT_NOTES = `《人类简史》
+作者：尤瓦尔·赫拉利
+
+◆ 第一章 认知革命
+
+虚构故事让智人得以大规模协作。
+`
+
+const existingBook = {
+  id: 'existing-book',
+  name: '《人类简史》',
+  author: '尤瓦尔·赫拉利',
+  status: 'reading' as const,
+  currentPhase: 0,
+  noteRecords: [],
+  responses: {},
+  practiceRecords: [],
+  qaPracticeRecords: [],
+  bestScore: 0,
+  createdAt: 1,
+  updatedAt: 1,
+}
+
+beforeEach(() => {
+  jest.clearAllMocks()
+  mockGetBooks.mockReturnValue([])
+  mockGetBook.mockReturnValue(undefined)
+  mockFlushWrites.mockResolvedValue(undefined)
+})
 
 function renderDialog() {
   return render(<HighlightImportDialog lang="zh" onClose={jest.fn()} />)
@@ -66,5 +111,66 @@ describe('HighlightImportDialog platform support tab', () => {
       expect(screen.queryByText(name, { exact: true })).not.toBeInTheDocument()
     }
     expect(screen.getByText(/不使用 cookie 抓取/)).toBeInTheDocument()
+  })
+})
+
+describe('HighlightImportDialog book association', () => {
+  function parseWechatNotes() {
+    fireEvent.click(screen.getByRole('button', { name: /导入文本/ }))
+    fireEvent.change(screen.getByLabelText('粘贴笔记内容'), { target: { value: WECHAT_NOTES } })
+    fireEvent.click(screen.getByRole('button', { name: '解析内容' }))
+  }
+
+  it('automatically links notes to a matching bookshelf book', async () => {
+    mockGetBooks.mockReturnValue([existingBook])
+    mockGetBook.mockImplementation(id => id === existingBook.id ? existingBook : undefined)
+    renderDialog()
+
+    parseWechatNotes()
+
+    expect(screen.getByRole('status')).toHaveTextContent('将自动关联到《人类简史》')
+    expect(screen.getByLabelText('关联书籍')).toHaveValue(existingBook.id)
+    fireEvent.click(screen.getByRole('button', { name: '导入 1 条' }))
+
+    await waitFor(() => expect(mockUpdateBook).toHaveBeenCalledWith(existingBook.id, expect.objectContaining({
+      noteRecords: [expect.objectContaining({ source: 'import', quote: '虚构故事让智人得以大规模协作。' })]
+    })))
+    expect(mockAddBook).not.toHaveBeenCalled()
+  })
+
+  it('creates a new bookshelf book with notes when no match exists', async () => {
+    const created = { ...existingBook, id: 'new-book', name: '人类简史', status: 'unread' as const }
+    mockAddBook.mockReturnValue(created)
+    mockGetBook.mockImplementation(id => id === created.id ? created : undefined)
+    renderDialog()
+
+    parseWechatNotes()
+
+    expect(screen.getByRole('status')).toHaveTextContent('将新建《人类简史》')
+    expect(screen.getByLabelText('关联书籍')).toHaveValue('__new__')
+    fireEvent.click(screen.getByRole('button', { name: '导入 1 条' }))
+
+    await waitFor(() => expect(mockAddBook).toHaveBeenCalledWith(
+      '人类简史',
+      '尤瓦尔·赫拉利',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [expect.objectContaining({ source: 'import', quote: '虚构故事让智人得以大规模协作。' })]
+    ))
+    expect(mockUpdateBook).not.toHaveBeenCalled()
+  })
+
+  it('uses the reading-page target before metadata matching', () => {
+    const currentBook = { ...existingBook, id: 'current-book', name: '当前阅读书' }
+    mockGetBooks.mockReturnValue([currentBook])
+    render(<HighlightImportDialog lang="zh" targetBookId={currentBook.id} onClose={jest.fn()} />)
+
+    parseWechatNotes()
+
+    expect(screen.getByLabelText('关联书籍')).toHaveValue(currentBook.id)
+    expect(screen.getByRole('status')).toHaveTextContent('将自动关联到《当前阅读书》')
   })
 })

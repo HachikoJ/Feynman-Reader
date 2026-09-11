@@ -50,8 +50,8 @@ describe('ReadingView practice submission feedback', () => {
 
   afterEach(() => jest.restoreAllMocks())
 
-  async function openPractice() {
-    render(<ReadingView book={book} apiKey="server-managed" lang="zh" onBack={jest.fn()} onOpenSettings={jest.fn()} />)
+  async function openPractice(targetBook: Book = book) {
+    render(<ReadingView book={targetBook} apiKey="server-managed" lang="zh" onBack={jest.fn()} onOpenSettings={jest.fn()} />)
     await act(async () => { await Promise.resolve() })
     fireEvent.click(screen.getByTestId('reading-tab-practice'))
     const input = screen.getByRole('textbox') as HTMLTextAreaElement
@@ -111,6 +111,25 @@ describe('ReadingView practice submission feedback', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('保存记录失败')
     expect(input).toHaveValue(teaching)
     expect(screen.getByRole('region', { name: '本次评估结果' })).toHaveTextContent('核心观点准确')
+  })
+
+  it('allows practice with source text but no in-app reading or highlights', async () => {
+    const sourceBook: Book = {
+      ...book,
+      documentContent: '这是一段用于核对理解的原文。'.repeat(40),
+      readingProgress: undefined,
+      noteRecords: [],
+    }
+    await openPractice(sourceBook)
+
+    expect(screen.getByText('可以直接开始，AI 将根据本次复述提供学习方案')).toBeVisible()
+    expect(screen.getByRole('button', { name: '阅读原文（可选）' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: '提交评估' }))
+
+    await waitFor(() => expect(deepseek.chatJson).toHaveBeenCalled())
+    const reviewPrompt = jest.mocked(deepseek.chatJson).mock.calls[0][2]
+    expect(reviewPrompt).toContain('这不代表用户没有读过目标书')
+    expect(reviewPrompt).toContain('不得要求用户先阅读、划线或记笔记才能进行费曼实践')
   })
 })
 
