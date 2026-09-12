@@ -2,6 +2,17 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.4.1] - 2026-09-12
+
+### Improved
+
+- Improve imported document cleanup and reading layout across EPUB, MOBI / AZW, FB2, PDF, DOCX / DOC, HTML, RTF, TXT, Markdown, and JSON.
+- Restore EPUB 3 navigation and EPUB 2 NCX labels, preserve footnote references, and remove invisible extraction noise before chapter offsets are indexed.
+- Recover FB2 binary covers and PDF metadata, outlines, two-column ordering, and a first-page cover fallback when available.
+- Give the in-app reader a stable reading column, typography rhythm, and safer handling for tables, code blocks, quotes, headings, and chapter continuation pages.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.4.1.md).
+
 ## [0.4.0] - 2026-09-11
 
 ### Added

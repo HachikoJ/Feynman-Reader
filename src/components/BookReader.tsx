@@ -1002,12 +1002,12 @@ export default function BookReader({
             event.stopPropagation()
             captureSelection()
           }}
-          className={`rounded-xl border border-[var(--border)] px-4 py-6 shadow-sm sm:px-8 sm:py-10 ${THEME_CLASSES[theme]}`}
+          className={`reader-page rounded-xl border border-[var(--border)] px-4 py-6 shadow-sm sm:px-8 sm:py-10 ${THEME_CLASSES[theme]}`}
         >
           <h3 className="mb-4 text-lg font-bold">{sectionLabel}</h3>
           <div
             ref={readerBodyRef}
-            className="reader-document-body break-words"
+            className="reader-document-body reader-typography break-words"
             data-reader-theme={theme}
             data-active-search-offset={activeMatchOffset ?? undefined}
             style={{ fontSize: `${fontSize}px`, lineHeight: 1.9 }}
@@ -1032,7 +1032,7 @@ export default function BookReader({
           >
             <MarkdownRenderer content={annotatedMarkdown} className="reader-structured-markdown" lang={lang} />
           </div>
-          <p className={`mt-8 text-xs ${THEME_MUTED_CLASSES[theme]}`}>
+          <p className={`reader-help mt-8 text-xs ${THEME_MUTED_CLASSES[theme]}`}>
             {zh
               ? '选中原文即可划线或写笔记；点击已有划线可以改颜色、补备注、打标签或删除，划线面板支持按章节与标签筛选。划线、书签都会进入「我的笔记」，与费曼练习、AI 多视角分析相互印证。'
               : 'Select text to highlight or annotate. Click an existing highlight to recolor, edit, tag, or delete it; the highlights panel filters by chapter and tag. Highlights and bookmarks feed your Feynman practice and AI analysis.'}

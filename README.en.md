@@ -15,7 +15,7 @@
 
 Feynman Reader is an AI reading workspace built around the Feynman technique. Build a six-phase understanding of a book, teach it in your own words, and use feedback and questions from three roles to identify gaps. Notes, quotes, and the Feynman Assistant connect each practice session to future reading and review.
 
-Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.3.0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.3.0). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md). Every deployment keeps its source on GitHub under a `deploy-` snapshot tag, for example [deploy-v0.2.7-f248026](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.2.7-f248026).
+Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.4.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.1). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md). Every deployment keeps its source on GitHub under a `deploy-` snapshot tag, for example [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0).
 
 ![Current desktop bookshelf with five books, learning status, scores, and a review suggestion](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 

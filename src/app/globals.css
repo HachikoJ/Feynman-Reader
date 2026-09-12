@@ -1302,6 +1302,54 @@ canvas {
   min-width: 0;
 }
 
+/* 原文阅读列：统一不同来源文档的行长、段落节奏和特殊块溢出行为。 */
+.reader-page {
+  background: var(--bg-card);
+}
+
+.reader-typography {
+  max-width: 72ch;
+  margin-inline: auto;
+  font-family: Georgia, 'Noto Serif SC', 'Source Han Serif SC', serif;
+  letter-spacing: 0;
+}
+
+.reader-typography .markdown-content,
+.reader-typography .markdown-content p {
+  line-height: 1.95;
+}
+
+.reader-typography .markdown-content p {
+  margin-block: 1em;
+  text-align: start;
+  text-wrap: pretty;
+}
+
+.reader-typography .markdown-content h1,
+.reader-typography .markdown-content h2,
+.reader-typography .markdown-content h3,
+.reader-typography .markdown-content h4 {
+  line-height: 1.4;
+  text-wrap: balance;
+  scroll-margin-top: 5rem;
+}
+
+.reader-typography .markdown-content blockquote {
+  margin-block: 1.25em;
+  break-inside: avoid;
+}
+
+.reader-typography .markdown-content .markdown-table-wrap,
+.reader-typography .markdown-content .markdown-code-wrap {
+  margin-block: 1.25em;
+  break-inside: avoid;
+}
+
+.reader-help {
+  max-width: 72ch;
+  margin-inline: auto;
+}
+
 .markdown-math-inline {
   display: inline-block;
   max-width: 100%;

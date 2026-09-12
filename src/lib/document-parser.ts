@@ -175,6 +175,20 @@ function normalizeStructuredText(input: string): string {
     .trim()
 }
 
+/**
+ * 清理解析器常见的不可见噪声。该函数只在章节内容已经生成后运行，
+ * 因而章节索引会基于清洗后的最终文本建立，不会留下失真的 offset。
+ */
+export function cleanExtractedText(input: string): string {
+  return normalizeStructuredText(input
+    .replace(/^\uFEFF/u, '')
+    .replace(/[\u200B-\u200D\u2060\u2061\u2062\u2063\u2064\u206A\u206B\u206C\u206D\u206E\u206F]/gu, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '')
+    .replace(/\u00AD/gu, '')
+    .replace(/[\uE000-\uF8FF\u{F0000}-\u{FFFFD}]/gu, '')
+    .replace(/\uFFFD/gu, ''))
+}
+
 function stripMarkup(input: string): string {
   return decodeHtmlEntities(input.replace(/<[^>]*>/g, ' '))
     .replace(/\s+/g, ' ')
@@ -215,6 +229,7 @@ interface PdfLayoutLine {
   fontSize: number
   pageIndex: number
   position: 'top' | 'middle' | 'bottom'
+  column: number
 }
 
 function isCjkCharacter(value: string): boolean {
@@ -270,18 +285,35 @@ export function reconstructPdfText(pages: PdfTextItemLike[][]): string {
       .map(item => ({ item, metrics: pdfItemMetrics(item) }))
       .filter(({ item }) => typeof item.str === 'string' && item.str.trim().length > 0)
     const lines: PdfLayoutLine[] = []
-    usable.sort((a, b) => b.metrics.y - a.metrics.y || a.metrics.x - b.metrics.x)
+    // 双栏 PDF 的绘制顺序通常是按 y 轴交错的。先按 x 轴聚类，再在每栏内按 y 轴阅读，
+    // 可避免左栏末尾和右栏开头被拼成同一段。
+    const xs = usable.map(({ metrics }) => metrics.x)
+    const minX = Math.min(...xs)
+    const maxX = Math.max(...xs)
+    const splitX = minX + (maxX - minX) / 2
+    const leftCount = usable.filter(({ metrics }) => metrics.x <= splitX).length
+    const rightCount = usable.length - leftCount
+    const twoColumns = maxX - minX > 180 && leftCount >= 3 && rightCount >= 3
+    usable.sort((a, b) => {
+      if (twoColumns) {
+        const columnA = a.metrics.x <= splitX ? 0 : 1
+        const columnB = b.metrics.x <= splitX ? 0 : 1
+        if (columnA !== columnB) return columnA - columnB
+      }
+      return b.metrics.y - a.metrics.y || a.metrics.x - b.metrics.x
+    })
     usable.forEach(({ item, metrics }) => {
       const text = normalizePdfLine(item.str)
       if (!text) return
+      const column = twoColumns && metrics.x > splitX ? 1 : 0
       const previous = lines[lines.length - 1]
       const tolerance = Math.max(2, Math.min(metrics.fontSize, previous?.fontSize ?? metrics.fontSize) * 0.45)
-      if (previous && Math.abs(previous.y - metrics.y) <= tolerance) {
+      if (previous && previous.column === column && Math.abs(previous.y - metrics.y) <= tolerance) {
         previous.text = joinPdfFragments(previous.text, text, Math.max(0, metrics.x - previous.endX), metrics.fontSize)
         previous.endX = Math.max(previous.endX, metrics.x + metrics.width)
         previous.fontSize = Math.max(previous.fontSize, metrics.fontSize)
       } else {
-        lines.push({ text, x: metrics.x, endX: metrics.x + metrics.width, y: metrics.y, fontSize: metrics.fontSize, pageIndex, position: 'middle' })
+        lines.push({ text, x: metrics.x, endX: metrics.x + metrics.width, y: metrics.y, fontSize: metrics.fontSize, pageIndex, position: 'middle', column })
       }
     })
     lines.forEach((line, index) => {
@@ -316,7 +348,7 @@ export function reconstructPdfText(pages: PdfTextItemLike[][]): string {
       const isHeading = line.text.length <= 90 && (line.fontSize >= 16 || /^(?:第.{1,20}[章节篇]|Chapter\s+\d+)/iu.test(line.text))
       const pageBreak = previous.pageIndex !== line.pageIndex
       const pageParagraphBreak = pageBreak && /[。！？.!?]$/u.test(previous.text)
-      const paragraphBreak = isList || isHeading || pageParagraphBreak || (!pageBreak && gap > expected * 1.45)
+      const paragraphBreak = isList || isHeading || pageParagraphBreak || previous.column !== line.column || (!pageBreak && gap > expected * 1.45)
       if (paragraphBreak) output.push(`\n${line.text}`)
       else output[output.length - 1] = joinPdfLines(output[output.length - 1], line.text)
       previous = line
@@ -356,6 +388,14 @@ export function htmlToPlainText(html: string): string {
     }
     return rows.length > 0 ? `\n\n${rows.join('\n')}\n\n` : '\n\n'
   })
+  // 脚注标记不能在清洗时消失；保留为可读的 [注: ...]，正文脚注区另行折叠成段落。
+  source = source
+    .replace(/<\s*(?:sup|a)\b[^>]*(?:epub:type=["']noteref["']|role=["']doc-noteref["']|class=["'][^"']*footnote[^"']*["'])[^>]*>([\s\S]*?)<\s*\/\s*(?:sup|a)\s*>/gi, (_match, body: string) => ` [注: ${stripMarkup(body)}] `)
+    .replace(/<\s*sup\b[^>]*>([\s\S]*?)<\s*\/\s*sup\s*>/gi, (_match, body: string) => ` [${stripMarkup(body)}] `)
+    .replace(/<\s*(?:aside|section|div)\b[^>]*(?:epub:type|class)=["'][^"']*(?:footnote|footnotes|endnote|endnotes)[^"']*["'][^>]*>([\s\S]*?)<\s*\/\s*(?:aside|section|div)\s*>/gi, (_match, body: string) => {
+      const note = stripMarkup(body)
+      return note ? `\n\n> 脚注：${note}\n\n` : '\n\n'
+    })
   source = source.replace(/<\s*blockquote\b[^>]*>([\s\S]*?)<\s*\/\s*blockquote\s*>/gi, (_match, body: string) => {
     const quote = stripMarkup(body)
     return quote ? `\n\n> ${quote}\n\n` : '\n\n'
@@ -396,7 +436,7 @@ export function htmlToPlainText(html: string): string {
   codeBlocks.forEach((block, index) => {
     output = output.replace(`\uE000CODE${index}\uE001`, block)
   })
-  return output
+  return cleanExtractedText(output)
 }
 
 function firstMatch(source: string, pattern: RegExp): string | undefined {
@@ -539,7 +579,8 @@ async function parseHtmlFile(file: File): Promise<{
 // ========================================
 
 function resolveZipPath(base: string, relative: string): string {
-  const clean = decodeURIComponent(relative.split('#')[0].split('?')[0])
+  let clean = relative.split('#')[0].split('?')[0]
+  try { clean = decodeURIComponent(clean) } catch { /* 保留原始路径 */ }
   if (!clean) return base
   const stack = base ? base.split('/').filter(Boolean) : []
   for (const part of clean.split('/')) {
@@ -608,6 +649,35 @@ export async function parseEpub(file: File): Promise<{
   const spine = spineIds.map(id => manifest.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item))
   if (spine.length === 0) throw new Error('EPUB 内容为空：书脊（spine）没有可读取的章节')
 
+  const tocLabels = new Map<string, string>()
+  const registerTocLabel = (href: string, label: string) => {
+    const clean = href.split('#')[0]
+    tocLabels.set(clean, label)
+    tocLabels.set(resolveZipPath(opfDir, clean), label)
+  }
+  const navItem = [...manifest.values()].find(item => /nav/i.test(item.properties) || /nav/i.test(item.href))
+  if (navItem) {
+    const navFile = zip.file(resolveZipPath(opfDir, navItem.href))
+    if (navFile) {
+      const nav = await navFile.async('text')
+      for (const match of nav.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+        const label = stripMarkup(match[2])
+        if (label) registerTocLabel(match[1], label)
+      }
+    }
+  }
+  const ncxItem = [...manifest.values()].find(item => /application\/x-dtbncx\+xml/i.test(item.mediaType) || /\.ncx$/i.test(item.href))
+  if (ncxItem) {
+    const ncxFile = zip.file(resolveZipPath(opfDir, ncxItem.href))
+    if (ncxFile) {
+      const ncx = await ncxFile.async('text')
+      for (const match of ncx.matchAll(/<navPoint\b[\s\S]*?<text>([\s\S]*?)<\/text>[\s\S]*?<content\b[^>]*src=["']([^"']+)["']/gi)) {
+        const label = stripMarkup(match[1])
+        if (label) registerTocLabel(match[2], label)
+      }
+    }
+  }
+
   const chapters: ParsedChapter[] = []
   for (const item of spine) {
     if (!/html|xml/i.test(item.mediaType) && !/\.(x?html?|xml)$/i.test(item.href)) continue
@@ -617,7 +687,7 @@ export async function parseEpub(file: File): Promise<{
     let content = htmlToPlainText(html)
     if (!content) continue
     const heading = firstMatch(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)
-    const chapterTitle = normalizeChapterTitle(heading || '', `第 ${chapters.length + 1} 节`)
+    const chapterTitle = normalizeChapterTitle(tocLabels.get(item.href) || tocLabels.get(resolveZipPath(opfDir, item.href)) || heading || '', `第 ${chapters.length + 1} 节`)
     content = removeLeadingHeading(content, chapterTitle)
     if (content) chapters.push({ title: chapterTitle, content })
   }
@@ -629,12 +699,14 @@ export async function parseEpub(file: File): Promise<{
     const coverId = opf.match(/<meta[^>]*name="cover"[^>]*content="([^"]*)"/i)?.[1]
     coverHref = coverId ? manifest.get(coverId)?.href : undefined
   }
+  if (!coverHref) coverHref = [...manifest.values()].find(item => /image\//i.test(item.mediaType) && /cover|封面/i.test(item.href))?.href
   let cover: string | undefined
   if (coverHref) {
     const entry = zip.file(resolveZipPath(opfDir, coverHref))
     if (entry) {
       const bytes = new Uint8Array(await entry.async('uint8array'))
-      cover = bytesToDataUrl(bytes, extToMime(coverHref))
+      const mime = manifest.get([...manifest.keys()].find(id => manifest.get(id)?.href === coverHref) || '')?.mediaType || extToMime(coverHref)
+      cover = bytesToDataUrl(bytes, mime)
     }
   }
 
@@ -776,6 +848,7 @@ export async function parseFb2(file: File): Promise<{
   title?: string
   author?: string
   description?: string
+  cover?: string
   chapters: ParsedChapter[]
 }> {
   const xml = await file.text()
@@ -788,6 +861,24 @@ export async function parseFb2(file: File): Promise<{
     ? firstNames.map((firstName, index) => `${firstName} ${lastNames[index] || ''}`.trim()).filter(Boolean).join('、')
     : undefined
   const description = firstMatch(xml, /<annotation[^>]*>([\s\S]*?)<\/annotation>/i)
+
+  let cover: string | undefined
+  const coverId = xml.match(/<coverpage>[\s\S]*?<image\b[^>]*(?:l:)?href=["']#([^"']+)["'][^>]*\/?>(?:[\s\S]*?<\/coverpage>)/i)?.[1]
+  if (coverId) {
+    const binary = xml.match(new RegExp(`<binary\\b[^>]*id=["']${coverId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*>([\\s\\S]*?)<\\/binary>`, 'i'))
+    const encoded = binary?.[1]?.replace(/\s+/gu, '')
+    if (encoded) {
+      try {
+        const bytes = typeof atob === 'function'
+          ? Uint8Array.from(atob(encoded), char => char.charCodeAt(0))
+          : new Uint8Array(Buffer.from(encoded, 'base64'))
+        const mime = binary?.[0].match(/content-type=["']([^"']+)["']/i)?.[1] || 'image/jpeg'
+        cover = bytesToDataUrl(bytes, mime)
+      } catch (error) {
+        logger.debug('FB2 封面读取失败:', error)
+      }
+    }
+  }
 
   const bodyMatch = xml.match(/<body(?:\s[^>]*)?>([\s\S]*?)<\/body>/i)
   const body = bodyMatch?.[1] || xml
@@ -805,7 +896,7 @@ export async function parseFb2(file: File): Promise<{
   if (!title && !author && chapters.length === 0) throw new Error('FB2 解析失败：缺少可读内容')
 
   const content = chapters.map(chapter => `${chapter.title}\n\n${chapter.content}`).join('\n\n')
-  return { content, title, author, description, chapters }
+  return { content, title, author, description, cover, chapters }
 }
 
 // ========================================
@@ -987,7 +1078,7 @@ async function parseRtfFile(file: File): Promise<{ content: string; chapters?: P
 // 解析：PDF / DOCX
 // ========================================
 
-async function parsePDF(file: File): Promise<{ content: string; chapters?: ParsedChapter[] }> {
+async function parsePDF(file: File): Promise<{ content: string; title?: string; cover?: string; chapters?: ParsedChapter[] }> {
   try {
     const pdfjsLib = await import('pdfjs-dist')
 
@@ -1006,8 +1097,10 @@ async function parsePDF(file: File): Promise<{ content: string; chapters?: Parse
 
     logger.debug(`PDF 共 ${numPages} 页`)
 
+    let firstPage: Awaited<ReturnType<typeof pdf.getPage>> | undefined
     for (let i = 1; i <= numPages; i++) {
       const page = await pdf.getPage(i)
+      if (i === 1) firstPage = page
       const textContent = await page.getTextContent()
       pageItems.push(textContent.items.filter(item => 'str' in item).map(item => ({
         str: item.str || '',
@@ -1031,7 +1124,55 @@ async function parsePDF(file: File): Promise<{ content: string; chapters?: Parse
     if (privateUseCount > 0 && privateUseCount / Math.max(1, content.length) > 0.2) {
       throw new Error('这个 PDF 使用了无法映射到 Unicode 的私有字体编码，已停止导入以避免乱码。请换用带文字层的 PDF 或先导出为 EPUB / DOCX。')
     }
-    return { content, chapters: [{ title: '正文', content }] }
+    const metadata = await pdf.getMetadata().catch(() => undefined)
+    const info = (metadata?.info || {}) as Record<string, unknown>
+    const title = typeof info.Title === 'string' && info.Title.trim() ? info.Title.trim() : undefined
+
+    // PDF 没有统一的封面字段，优先把第一页按原比例渲染成小图，失败时保持无封面但不影响正文。
+    let cover: string | undefined
+    try {
+      if (firstPage && typeof document !== 'undefined') {
+        const viewport = firstPage.getViewport({ scale: 0.45 })
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(viewport.width))
+        canvas.height = Math.max(1, Math.round(viewport.height))
+        const context = canvas.getContext('2d')
+        if (context) {
+          await firstPage.render({ canvasContext: context, viewport }).promise
+          const renderedCover = canvas.toDataURL('image/jpeg', 0.78)
+          // data URL 约四分之一是编码开销，按原始封面上限估算，避免把书架快照撑大。
+          if (renderedCover.length <= Math.ceil(MAX_COVER_BYTES * 1.4)) cover = renderedCover
+        }
+      }
+    } catch (error) {
+      logger.debug('PDF 封面渲染失败:', error)
+    }
+
+    const outline = await pdf.getOutline().catch(() => null)
+    const outlineTitles: string[] = []
+    const walkOutline = (items: unknown) => {
+      if (!Array.isArray(items)) return
+      items.forEach(item => {
+        const value = item as { title?: unknown; items?: unknown }
+        if (typeof value.title === 'string' && value.title.trim()) outlineTitles.push(value.title.trim())
+        walkOutline(value.items)
+      })
+    }
+    walkOutline(outline)
+    const chapters: ParsedChapter[] = []
+    let cursor = 0
+    outlineTitles.forEach((heading, index) => {
+      const start = content.indexOf(heading, cursor)
+      if (start < 0) return
+      if (start > cursor && !chapters.length) chapters.push({ title: '序', content: content.slice(cursor, start).trim() })
+      const nextHeading = outlineTitles.slice(index + 1).map(item => content.indexOf(item, start + heading.length)).find(value => value >= 0)
+      const end = nextHeading ?? content.length
+      const body = content.slice(start + heading.length, end).trim()
+      if (body) chapters.push({ title: heading, content: body })
+      cursor = end
+    })
+    if (chapters.length === 0) chapters.push({ title: title || '正文', content })
+    return { content, title, cover, chapters }
   } catch (error) {
     logger.error('PDF 解析错误:', error)
     throw new Error(`PDF 解析失败: ${error instanceof Error ? error.message : '请确保文件未加密且格式正确'}`)
@@ -1174,14 +1315,14 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
   const chapters = parsed.chapters
     ?.map((chapter, index) => ({
       title: normalizeChapterTitle(chapter.title, `第 ${index + 1} 节`),
-      content: normalizeStructuredText(chapter.content)
+      content: cleanExtractedText(chapter.content)
     }))
     .filter(chapter => chapter.content.length > 0)
   // DocumentUpload 的章节定位按 `标题\n\n正文` 建索引；这里统一由章节反向合成全文，
   // 防止不同格式返回的 content 与 chapters 偏移不一致，造成跳章、划线和引用错位。
   const content = chapters && chapters.length > 0
     ? composeChapters(chapters)
-    : normalizeStructuredText(parsed.content)
+    : cleanExtractedText(parsed.content)
   logger.debug(`文件解析成功，内容长度: ${content.length} 字符`)
 
   if (!content) {

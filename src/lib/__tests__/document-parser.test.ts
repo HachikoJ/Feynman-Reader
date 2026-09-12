@@ -5,6 +5,7 @@ import {
   MAX_DOCUMENT_TEXT_LENGTH,
   describeUnsupportedFormat,
   htmlToPlainText,
+  cleanExtractedText,
   parseDocument,
   reconstructPdfText,
   rtfToPlainText,
@@ -206,6 +207,14 @@ describe('structured ebook formats', () => {
     expectChapterComposition(parsed)
   })
 
+  it('extracts a FB2 cover from a self-closing image reference', async () => {
+    const coverBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+    const base64 = Buffer.from(coverBytes).toString('base64')
+    const fb2 = `<FictionBook><description><title-info><book-title>封面书</book-title></title-info></description><coverpage><image l:href="#cover"/></coverpage><body><section><p>正文</p></section></body><binary id="cover" content-type="image/jpeg">${base64}</binary></FictionBook>`
+    const parsed = await parseDocument(makeFile('cover.fb2', fb2))
+    expect(parsed.cover?.startsWith('data:image/jpeg;base64,')).toBe(true)
+  })
+
   it('parses an EPUB package with metadata, spine order and cover', async () => {
     const JSZip = (await import('jszip')).default
     const zip = new JSZip()
@@ -246,6 +255,20 @@ describe('structured ebook formats', () => {
     expect(parsed.chapters?.map(chapter => chapter.title)).toEqual(['系统一', '系统二'])
     expect(parsed.content).toContain('快速直觉')
     expectChapterComposition(parsed)
+  })
+
+  it('uses EPUB navigation labels when chapter pages have no headings', async () => {
+    const JSZip = (await import('jszip')).default
+    const zip = new JSZip()
+    zip.file('META-INF/container.xml', '<container><rootfiles><rootfile full-path="OEBPS/book.opf"/></rootfiles></container>')
+    zip.file('OEBPS/book.opf', `<package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>目录测试</dc:title></metadata><manifest>
+      <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>
+    </manifest><spine><itemref idref="c1"/></spine></package>`)
+    zip.file('OEBPS/nav.xhtml', '<nav epub:type="toc"><ol><li><a href="text/ch1.xhtml">第一部分 · 导航标题</a></li></ol></nav>')
+    zip.file('OEBPS/text/ch1.xhtml', '<html><body><p>没有页面标题，但有正文。</p></body></html>')
+    const bytes = await zip.generateAsync({ type: 'uint8array' })
+    const parsed = await parseDocument({ name: 'nav.epub', size: bytes.length, arrayBuffer: async () => bytes.buffer } as unknown as File)
+    expect(parsed.chapters?.[0].title).toBe('第一部分 · 导航标题')
   })
 
   it('rejects DRM protected EPUB files without crashing', async () => {
@@ -295,5 +318,13 @@ describe('htmlToPlainText', () => {
     expect(text).toContain('你好 世界!')
     expect(text).toContain('要点一')
     expect(text).not.toContain('<')
+  })
+
+  it('keeps footnote references readable and removes invisible extraction noise', () => {
+    const text = htmlToPlainText('<p>正文<sup>1</sup></p><aside epub:type="footnote"><p>1 说明文字</p></aside>\u200B')
+    expect(text).toContain('正文 [1]')
+    expect(text).toContain('脚注：1 说明文字')
+    expect(text).not.toContain('\u200B')
+    expect(cleanExtractedText('\uFEFF甲\u0000乙\uE000丙')).toBe('甲乙丙')
   })
 })

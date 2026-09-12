@@ -15,7 +15,7 @@
 
 费曼读书助手是基于费曼学习法的 AI 阅读工作台。围绕一本书建立六阶段阅读框架，用自己的话讲解，再通过评分和三个角色的追问发现理解漏洞。笔记、金句和费曼小助手把一次练习连接到后续阅读与复习。
 
-产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.3.0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.3.0)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。每次上线的源码都在 GitHub 上留有 `deploy-` 快照标签，例如 [deploy-v0.2.7-f248026](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.2.7-f248026)。
+产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.4.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.1)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。每次上线的源码都在 GitHub 上留有 `deploy-` 快照标签，例如 [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0)。
 
 ![当前桌面书架，展示五本书、学习状态、得分与复习建议](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
