@@ -8,6 +8,7 @@ import {
   cleanExtractedText,
   parseDocument,
   reconstructPdfText,
+  getPdfSamplePageNumbers,
   rtfToPlainText,
 } from '../document-parser'
 
@@ -72,6 +73,13 @@ describe('parseDocument upload boundaries', () => {
 })
 
 describe('structured ebook formats', () => {
+  it('keeps PDF text-layer preflight bounded to four representative pages', () => {
+    expect(getPdfSamplePageNumbers(1)).toEqual([1])
+    expect(getPdfSamplePageNumbers(2)).toEqual([1, 2])
+    expect(getPdfSamplePageNumbers(10)).toEqual([1, 2, 5, 10])
+    expect(getPdfSamplePageNumbers(0)).toEqual([])
+  })
+
   it('reconstructs PDF lines without inserting spaces into Chinese and preserves paragraphs', () => {
     const parsed = reconstructPdfText([
       [

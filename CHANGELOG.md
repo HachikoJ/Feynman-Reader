@@ -2,6 +2,15 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.4.2] - 2026-09-13
+
+### Improved
+
+- Preflight PDF text layers by reading at most four representative pages before the full extraction pass.
+- Reject scan-only PDFs early with a clear message; no automatic OCR, image rendering, third-party upload, or heavy OCR dependency is used.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.4.2.md).
+
 ## [0.4.1] - 2026-09-12
 
 ### Improved

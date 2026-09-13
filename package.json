@@ -1,6 +1,6 @@
 {
   "name": "feynman-reader",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack -p 8080",

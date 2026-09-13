@@ -358,6 +358,16 @@ export function reconstructPdfText(pages: PdfTextItemLike[][]): string {
 }
 
 /**
+ * Select a tiny, evenly distributed set of pages for a cheap PDF text-layer
+ * preflight. This intentionally does not render pages or run OCR.
+ */
+export function getPdfSamplePageNumbers(numPages: number): number[] {
+  if (!Number.isInteger(numPages) || numPages < 1) return []
+  return [...new Set([1, Math.min(2, numPages), Math.ceil(numPages / 2), numPages])]
+    .filter(pageNumber => pageNumber >= 1 && pageNumber <= numPages)
+}
+
+/**
  * 把 HTML / XHTML 片段转换为带轻量语义的纯文本。输出采用 Markdown 兼容标记，
  * 不保留来源 HTML，避免脚本和不可信属性进入阅读器。
  */
@@ -1088,7 +1098,6 @@ async function parsePDF(file: File): Promise<{ content: string; title?: string; 
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false })
     const pdf = await loadingTask.promise
 
-    const pageItems: PdfTextItemLike[][] = []
     const numPages = pdf.numPages
 
     if (numPages > MAX_DOCUMENT_PAGES) {
@@ -1097,10 +1106,37 @@ async function parsePDF(file: File): Promise<{ content: string; title?: string; 
 
     logger.debug(`PDF 共 ${numPages} 页`)
 
+    // 扫描型 PDF 通常只有图片，没有任何文字层。先抽样少量页面，避免为
+    // 这类文件完整遍历上千页并把所有文本项暂存在内存中；这里不做 OCR。
+    const samplePageNumbers = getPdfSamplePageNumbers(numPages)
+    const sampledItems = new Map<number, PdfTextItemLike[]>()
+    for (const pageNumber of samplePageNumbers) {
+      const page = await pdf.getPage(pageNumber)
+      const textContent = await page.getTextContent()
+      sampledItems.set(pageNumber, textContent.items.filter(item => 'str' in item).map(item => ({
+        str: item.str || '',
+        transform: item.transform,
+        width: item.width,
+        height: item.height,
+        hasEOL: item.hasEOL
+      })))
+    }
+    const sampledText = reconstructPdfText(samplePageNumbers.map(pageNumber => sampledItems.get(pageNumber) || []))
+    const sampledReadableCount = (sampledText.match(/[\p{L}\p{N}\p{P}\p{S}]/gu) || []).length
+    if (!sampledText || sampledReadableCount < 2) {
+      throw new Error('这个 PDF 没有可提取的文字层，可能是扫描件。为避免高资源 OCR，平台不会自动识别图片文字；请先使用 OCR 生成可搜索 PDF 后重试。')
+    }
+
+    const pageItems: PdfTextItemLike[][] = []
     let firstPage: Awaited<ReturnType<typeof pdf.getPage>> | undefined
     for (let i = 1; i <= numPages; i++) {
+      const sampled = sampledItems.get(i)
+      if (sampled) {
+        pageItems.push(sampled)
+        if (i === 1) firstPage = await pdf.getPage(i)
+        continue
+      }
       const page = await pdf.getPage(i)
-      if (i === 1) firstPage = page
       const textContent = await page.getTextContent()
       pageItems.push(textContent.items.filter(item => 'str' in item).map(item => ({
         str: item.str || '',
@@ -1109,6 +1145,7 @@ async function parsePDF(file: File): Promise<{ content: string; title?: string; 
         height: item.height,
         hasEOL: item.hasEOL
       })))
+      if (i === 1) firstPage = page
     }
 
     const content = reconstructPdfText(pageItems)
@@ -1116,7 +1153,7 @@ async function parsePDF(file: File): Promise<{ content: string; title?: string; 
     const privateUseCount = (content.match(/[\u{e000}-\u{f8ff}\u{f0000}-\u{ffffd}]/gu) || []).length
     const readableCount = (content.match(/[\p{L}\p{N}\p{P}\p{S}]/gu) || []).length
     if (!content || readableCount < 2) {
-      throw new Error('这个 PDF 没有可提取的文字层，可能是扫描件。请先使用 OCR 生成可搜索 PDF 后重试。')
+      throw new Error('这个 PDF 没有可提取的文字层，可能是扫描件。为避免高资源 OCR，平台不会自动识别图片文字；请先使用 OCR 生成可搜索 PDF 后重试。')
     }
     if (replacementCount > 0 && replacementCount / Math.max(1, content.length) > 0.02) {
       throw new Error('这个 PDF 的字体编码无法可靠还原文字，已停止导入以避免乱码。请换用带文字层的 PDF 或先导出为 EPUB / DOCX。')

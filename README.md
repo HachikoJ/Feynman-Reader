@@ -15,7 +15,7 @@
 
 费曼读书助手是基于费曼学习法的 AI 阅读工作台。围绕一本书建立六阶段阅读框架，用自己的话讲解，再通过评分和三个角色的追问发现理解漏洞。笔记、金句和费曼小助手把一次练习连接到后续阅读与复习。
 
-产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.4.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.1)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。每次上线的源码都在 GitHub 上留有 `deploy-` 快照标签，例如 [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0)。
+产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.4.2](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.2)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。每次上线的源码都在 GitHub 上留有 `deploy-` 快照标签，例如 [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0)。
 
 ![当前桌面书架，展示五本书、学习状态、得分与复习建议](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
@@ -171,7 +171,7 @@ NEXT_PUBLIC_FEYNMAN_LOCAL_AUTH_BYPASS=false
 
 - 个人书架、笔记和练习记录归属各自账号，可在账号中心查看和管理，并通过导入、导出及回收站整理自己的学习资料。
 - 账号中保存的 API Key 由服务端加密，不向浏览器返回其明文，也不进入学习数据导出；调用 AI 前需确认相关内容的数据传输。
-- 书籍文档支持 PDF、DOCX / DOC（Word 97-2003 二进制，内置 OLE 解析，不依赖额外依赖）、TXT、Markdown、JSON；文件最多 20 MB，PDF 最多 1,000 页，解析文本最多 100 万字符。当前不支持 Excel、DJVU / CHM / CBZ 等扫描或压缩包格式，以及图片 OCR。
+- 书籍文档支持 PDF、DOCX / DOC（Word 97-2003 二进制，内置 OLE 解析，不依赖额外依赖）、TXT、Markdown、JSON；文件最多 20 MB，PDF 最多 1,000 页，解析文本最多 100 万字符。PDF 会先抽样最多 4 页检查文字层；扫描型 PDF 会快速提示转换，不自动 OCR。当前不支持 Excel、DJVU / CHM / CBZ 等扫描或压缩包格式，以及图片 OCR。
 - AI 费用取决于输入、输出及所选线路，以 [TokenDance 实时价目](https://tokendance.space/models/deepseek-v4-flash-0731)为准，不把限时活动视为固定价格承诺。
 - 书架已有复习建议卡片；语音转写、OCR、固定 D1/D7/D21 复习排程和自动提醒尚未实现。主学习流程统一为顺序六阶段。
 

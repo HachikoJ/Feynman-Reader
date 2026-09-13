@@ -15,7 +15,7 @@
 
 Feynman Reader is an AI reading workspace built around the Feynman technique. Build a six-phase understanding of a book, teach it in your own words, and use feedback and questions from three roles to identify gaps. Notes, quotes, and the Feynman Assistant connect each practice session to future reading and review.
 
-Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.4.1](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.1). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md). Every deployment keeps its source on GitHub under a `deploy-` snapshot tag, for example [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0).
+Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.4.2](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.2). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md). Every deployment keeps its source on GitHub under a `deploy-` snapshot tag, for example [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0).
 
 ![Current desktop bookshelf with five books, learning status, scores, and a review suggestion](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
@@ -171,7 +171,7 @@ Follow the [version and recovery guide](docs/operations/releases-and-rollback.md
 
 - Your library, notes, and practice records belong to your account. View and manage them in Account Center, with import, export, and a recycle bin to organize your learning material.
 - Saved account API keys are encrypted on the server; their plaintext is not returned to the browser or included in learning data exports. AI requests require consent to transfer relevant content.
-- Book documents support PDF, DOCX / DOC (Word 97-2003 binary, parsed in-app with a built-in OLE reader), TXT, Markdown, and JSON: up to 20 MB, 1,000 PDF pages, and one million parsed characters. Excel, scanned/archive formats such as DJVU, CHM, and CBZ, and image OCR are unsupported.
+- Book documents support PDF, DOCX / DOC (Word 97-2003 binary, parsed in-app with a built-in OLE reader), TXT, Markdown, and JSON: up to 20 MB, 1,000 PDF pages, and one million parsed characters. PDFs preflight at most four representative pages for a text layer; scan-only PDFs fail quickly without automatic OCR. Excel, scanned/archive formats such as DJVU, CHM, and CBZ, and image OCR are unsupported.
 - Model costs vary with input, output, and route. Consult [TokenDance live pricing](https://tokendance.space/models/deepseek-v4-flash-0731); temporary offers are not permanent pricing promises.
 - Review suggestion cards are implemented. Voice transcription, OCR, fixed D1/D7/D21 schedules, and automatic reminders are not. The learning flow uses six sequential phases.
 
