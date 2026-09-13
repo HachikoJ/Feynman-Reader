@@ -32,13 +32,18 @@ interface Props {
 type UploadStep = 'upload' | 'analyzing' | 'confirm'
 
 /** 把解析出的章节转换成只保存偏移量的定位表，避免快照里重复存正文。 */
-function buildChapterIndex(chapters: { title: string; content: string }[] | undefined): BookChapter[] | undefined {
+function buildChapterIndex(chapters: { title: string; content: string; level?: number }[] | undefined): BookChapter[] | undefined {
   if (!chapters || chapters.length === 0) return undefined
   const index: BookChapter[] = []
   let cursor = 0
   for (const chapter of chapters) {
     const block = `${chapter.title}\n\n${chapter.content}`
-    index.push({ title: chapter.title, start: cursor, length: block.length })
+    index.push({
+      title: chapter.title,
+      start: cursor,
+      length: block.length,
+      ...(chapter.level ? { level: chapter.level } : {})
+    })
     cursor += block.length + 2
   }
   return index

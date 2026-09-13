@@ -82,6 +82,11 @@ export interface BookChapter {
   title: string
   start: number
   length: number
+  /**
+   * 标题层级（1-6）：1 为卷 / 部，2 为章，3 为节，依此类推。
+   * 目录按它呈现章节、标题、子标题的层次；旧数据缺省时由阅读器按标题文本推断。
+   */
+  level?: number
 }
 
 /**

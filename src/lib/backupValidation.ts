@@ -211,10 +211,15 @@ function normalizeChapters(value: unknown, path: string): BookChapter[] {
   if (value.length > MAX_CHAPTERS_PER_BOOK) fail(path, `最多允许 ${MAX_CHAPTERS_PER_BOOK} 个章节`)
   return value.map((raw, index) => {
     const item = record(raw, `${path}[${index}]`)
+    // 旧备份没有 level 字段，保持兼容；有值时必须是 1-6 的整数。
+    const level = item.level === undefined
+      ? undefined
+      : finiteNumber(item.level, `${path}[${index}].level`, 1, 6, true)
     return {
       title: stringValue(item.title, `${path}[${index}].title`, MAX_CHAPTER_TITLE_LENGTH)!,
       start: finiteNumber(item.start, `${path}[${index}].start`, 0, MAX_DOCUMENT_TEXT_LENGTH, true),
-      length: finiteNumber(item.length, `${path}[${index}].length`, 0, MAX_DOCUMENT_TEXT_LENGTH, true)
+      length: finiteNumber(item.length, `${path}[${index}].length`, 0, MAX_DOCUMENT_TEXT_LENGTH, true),
+      ...(level !== undefined ? { level } : {})
     }
   })
 }

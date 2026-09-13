@@ -649,12 +649,95 @@ export function parsePlainTextHighlights(text: string): ImportedHighlight[] {
     .map(block => ({ quote: block }))
 }
 
-function parseCsvRows(text: string): string[][] {
+type CsvDelimiter = ',' | '\t' | ';'
+
+const CSV_QUOTE_HEADERS = [
+  'quote', 'quoted text', 'highlight', 'highlights', 'highlighted text',
+  'text', 'content', 'excerpt', 'annotation', 'annotation text', 'original',
+  '原文', '划线', '划线内容', '高亮', '高亮内容', '摘录', '内容', '标注', '书摘'
+]
+
+const CSV_NOTE_HEADERS = [
+  'note', 'notes', 'comment', 'comments', 'annotation note', 'user note',
+  'remark', 'memo', '笔记', '想法', '批注', '备注', '评论', '注释', '读后感'
+]
+
+const CSV_CHAPTER_HEADERS = [
+  'chapter', 'section', 'chapter title', 'section title', 'chapter name',
+  'section name', '章节', '章节标题', '章节名称', '章名'
+]
+
+const CSV_BOOK_TITLE_HEADERS = [
+  'book', 'book title', 'book name', 'title', 'work title', 'ebook title',
+  '书名', '书籍', '书籍名称', '图书', '图书名称', '作品名称'
+]
+
+const CSV_BOOK_AUTHOR_HEADERS = [
+  'author', 'authors', 'book author', 'writer', '作者', '书籍作者'
+]
+
+const CSV_LOCATION_TYPE_HEADERS = ['location type', 'position type', '位置类型']
+const CSV_LOCATION_HEADERS = [
+  'location', 'position', 'page', 'page number', '页码', '位置', '定位', '地点'
+]
+const CSV_HIGHLIGHTED_AT_HEADERS = [
+  'highlighted at', 'highlight date', 'highlighted date', 'created at', 'created',
+  '标注时间', '划线时间', '时间', '日期', '创建时间'
+]
+
+function normalizeCsvHeader(value: string): string {
+  return value
+    .replace(/^\uFEFF/, '')
+    .normalize('NFKC')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\s_-]+/g, '')
+    .replace(/[：:]/g, '')
+}
+
+function findCsvColumn(header: string[], aliases: string[]): number {
+  const normalizedAliases = new Set(aliases.map(normalizeCsvHeader))
+  return header.findIndex(cell => normalizedAliases.has(normalizeCsvHeader(cell)))
+}
+
+function countUnquotedDelimiters(line: string, delimiter: CsvDelimiter): number {
+  let count = 0
+  let quoted = false
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    if (char === '"') {
+      if (quoted && line[index + 1] === '"') {
+        index += 1
+      } else {
+        quoted = !quoted
+      }
+    } else if (!quoted && char === delimiter) {
+      count += 1
+    }
+  }
+  return count
+}
+
+function detectCsvDelimiter(source: string): CsvDelimiter {
+  const firstLine = source.split('\n').find(line => line.trim()) || ''
+  const delimiters: CsvDelimiter[] = [',', '\t', ';']
+  let best: CsvDelimiter = ','
+  let bestCount = 0
+  for (const delimiter of delimiters) {
+    const count = countUnquotedDelimiters(firstLine, delimiter)
+    if (count > bestCount) {
+      best = delimiter
+      bestCount = count
+    }
+  }
+  return best
+}
+
+function parseDelimitedRows(source: string, delimiter: CsvDelimiter): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let field = ''
   let quoted = false
-  const source = text.replace(/\r\n?/g, '\n')
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index]
     if (quoted) {
@@ -668,9 +751,10 @@ function parseCsvRows(text: string): string[][] {
       }
       continue
     }
-    if (char === '"') {
+    if (char === '"' && !field.trim()) {
+      field = ''
       quoted = true
-    } else if (char === ',') {
+    } else if (char === delimiter) {
       row.push(field)
       field = ''
     } else if (char === '\n') {
@@ -689,26 +773,67 @@ function parseCsvRows(text: string): string[][] {
   return rows
 }
 
-/** CSV 表头包含 quote / note / chapter 时的通用导入。 */
-export function parseCsvHighlights(text: string): ImportedHighlight[] {
-  const rows = parseCsvRows(text).filter(row => row.some(cell => cell.trim()))
+function parseCsvRows(text: string): string[][] {
+  let source = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n')
+  const separator = /^sep=(.)\n/i.exec(source)
+  if (separator) {
+    const declaredDelimiter = separator[1]
+    if (declaredDelimiter === ',' || declaredDelimiter === '\t' || declaredDelimiter === ';') {
+      source = source.slice(separator[0].length)
+      return parseDelimitedRows(source, declaredDelimiter)
+    }
+  }
+  return parseDelimitedRows(source, detectCsvDelimiter(source))
+}
+
+interface CsvHighlightSchema {
+  quoteIndex: number
+  noteIndex: number
+  chapterIndex: number
+  locationTypeIndex: number
+  locationIndex: number
+  highlightedAtIndex: number
+}
+
+function readCsvHighlightSchema(header: string[]): CsvHighlightSchema {
+  return {
+    quoteIndex: findCsvColumn(header, CSV_QUOTE_HEADERS),
+    noteIndex: findCsvColumn(header, CSV_NOTE_HEADERS),
+    chapterIndex: findCsvColumn(header, CSV_CHAPTER_HEADERS),
+    locationTypeIndex: findCsvColumn(header, CSV_LOCATION_TYPE_HEADERS),
+    locationIndex: findCsvColumn(header, CSV_LOCATION_HEADERS),
+    highlightedAtIndex: findCsvColumn(header, CSV_HIGHLIGHTED_AT_HEADERS)
+  }
+}
+
+function parseCsvHighlightRows(rows: string[][]): ImportedHighlight[] {
   if (rows.length < 2) return []
-  const header = rows[0].map(cell => cell.trim().toLowerCase())
-  const quoteIndex = header.findIndex(cell => cell === 'quote' || cell === 'text' || cell === '原文' || cell === '划线')
-  const noteIndex = header.findIndex(cell => cell === 'note' || cell === 'comment' || cell === '笔记' || cell === '想法')
-  const chapterIndex = header.findIndex(cell => cell === 'chapter' || cell === 'section' || cell === '章节')
-  if (quoteIndex < 0 && noteIndex < 0) return []
+  const schema = readCsvHighlightSchema(rows[0])
+  if (schema.quoteIndex < 0 && schema.noteIndex < 0) return []
   return rows.slice(1, MAX_IMPORT_HIGHLIGHTS + 1).flatMap(row => {
-    const quote = quoteIndex >= 0 ? (row[quoteIndex] || '').trim() : ''
-    const note = noteIndex >= 0 ? (row[noteIndex] || '').trim() : ''
-    const chapterTitle = chapterIndex >= 0 ? (row[chapterIndex] || '').trim() : ''
+    const quote = schema.quoteIndex >= 0 ? (row[schema.quoteIndex] || '').trim() : ''
+    const note = schema.noteIndex >= 0 ? (row[schema.noteIndex] || '').trim() : ''
+    const chapterTitle = schema.chapterIndex >= 0 ? (row[schema.chapterIndex] || '').trim() : ''
+    const locationType = schema.locationTypeIndex >= 0 ? (row[schema.locationTypeIndex] || '').trim() : ''
+    const locationValue = schema.locationIndex >= 0 ? (row[schema.locationIndex] || '').trim() : ''
+    const location = [locationType, locationValue].filter(Boolean).join(' ')
+    const highlightedAt = schema.highlightedAtIndex >= 0
+      ? parseTimestamp((row[schema.highlightedAtIndex] || '').trim())
+      : undefined
     if (!quote && !note) return []
     return [{
       ...(quote ? { quote } : {}),
       ...(note ? { note } : {}),
-      ...(chapterTitle ? { chapterTitle } : {})
+      ...(chapterTitle ? { chapterTitle } : {}),
+      ...(location ? { location } : {}),
+      ...(highlightedAt !== undefined ? { highlightedAt } : {})
     } satisfies ImportedHighlight]
   })
+}
+
+/** CSV / TSV 表头的常见中英文别名通用导入。 */
+export function parseCsvHighlights(text: string): ImportedHighlight[] {
+  return parseCsvHighlightRows(parseCsvRows(text).filter(row => row.some(cell => cell.trim())))
 }
 
 /**
@@ -772,10 +897,10 @@ function parseKindleBookCandidates(text: string): ImportBookCandidate[] {
 function parseCsvBookCandidates(text: string): ImportBookCandidate[] {
   const rows = parseCsvRows(text).filter(row => row.some(cell => cell.trim()))
   if (rows.length < 2) return []
-  const header = rows[0].map(cell => cell.trim().toLowerCase())
-  const titleIndex = header.findIndex(cell => ['book', 'book title', 'title', '书名', '书籍'].includes(cell))
+  const header = rows[0]
+  const titleIndex = findCsvColumn(header, CSV_BOOK_TITLE_HEADERS)
   if (titleIndex < 0) return []
-  const authorIndex = header.findIndex(cell => ['author', '作者'].includes(cell))
+  const authorIndex = findCsvColumn(header, CSV_BOOK_AUTHOR_HEADERS)
   const groups = new Map<string, string[][]>()
   for (const row of rows.slice(1)) {
     const title = (row[titleIndex] || '').trim()
@@ -790,10 +915,7 @@ function parseCsvBookCandidates(text: string): ImportBookCandidate[] {
     const first = rowsForBook[1]
     const title = (first[titleIndex] || '').trim()
     const author = authorIndex >= 0 ? (first[authorIndex] || '').trim() : ''
-    const highlights = parseCsvHighlights(rowsForBook.map(row => row.map(value => {
-      const escaped = value.replace(/"/g, '""')
-      return /[",\n]/.test(value) ? `"${escaped}"` : escaped
-    }).join(',')).join('\n'))
+    const highlights = parseCsvHighlightRows(rowsForBook)
     return {
       externalId: key,
       title,

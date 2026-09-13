@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { Book, HighlightColor, NoteRecord } from '@/lib/store'
 import type { Language } from '@/lib/i18n'
 import { MAX_BOOKMARKS_PER_BOOK, MAX_NOTE_TAG_LENGTH, MAX_NOTE_TAGS } from '@/lib/dataLimits'
@@ -10,8 +10,10 @@ import { openAssistantWithSelection } from '@/lib/assistantEvents'
 import { createSelectionSource } from '@/lib/selectionSources'
 import {
   buildReaderSections,
+  buildReaderToc,
   extractSectionBody,
   findSectionIndexForOffset,
+  flattenReaderToc,
   getReaderProgressPercentage,
   getSectionBodyStart,
   MAX_HIGHLIGHT_QUOTE_CHARS
@@ -30,6 +32,7 @@ import {
   type SearchMatch,
   type TextSegment
 } from '@/lib/readerAnnotations'
+import { scanMarkdownHeadings } from '@/lib/markdownSyntax'
 import AppIcon from './AppIcon'
 import HighlightColorPicker, { HIGHLIGHT_DOT_CLASSES } from './HighlightColorPicker'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -318,6 +321,11 @@ export default function BookReader({
     () => buildReaderSections({ documentContent: content, chapters: book.chapters }),
     [content, book.chapters]
   )
+  const tocItems = useMemo(
+    () => buildReaderToc({ documentContent: content, chapters: book.chapters }, sections),
+    [content, book.chapters, sections]
+  )
+  const flatTocItems = useMemo(() => flattenReaderToc(tocItems), [tocItems])
 
   const [sectionIndex, setSectionIndex] = useState(0)
   const [fontSize, setFontSize] = useState(MIN_FONT_SIZE)
@@ -341,6 +349,10 @@ export default function BookReader({
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
   const [activeMatchOffset, setActiveMatchOffset] = useState<number | null>(null)
+  /** 当前已越过正文顶部阈值的最后一个标题偏移，用于目录当前项高亮。 */
+  const [activeHeadingOffset, setActiveHeadingOffset] = useState<number | null>(null)
+  /** 目录点击后待滚动到的全书标题偏移；跨分节时先切节，渲染出标题锚点后再滚动。 */
+  const [pendingHeadingOffset, setPendingHeadingOffset] = useState<number | null>(null)
 
   const articleRef = useRef<HTMLDivElement>(null)
   const readerBodyRef = useRef<HTMLDivElement>(null)
@@ -435,6 +447,15 @@ export default function BookReader({
     () => (section ? getSectionBodyStart(content, section) : 0),
     [content, section]
   )
+  const headingOffsets = useMemo(
+    () => scanMarkdownHeadings(body).map(heading => heading.start + bodyStart),
+    [body, bodyStart]
+  )
+  /**
+   * 正文渲染时传给标题锚点的全书基准偏移。
+   * 章节标题行已从正文剥离时分节起点不计入 Markdown 行，需要以正文起点重新计数。
+   */
+  const headingOffsetBase = bodyStart
   const highlights = useMemo(
     () => (book.noteRecords || []).filter(record => Boolean(record.quote && record.quote.trim())),
     [book.noteRecords]
@@ -496,6 +517,21 @@ export default function BookReader({
   }, [highlightTags, tagFilter])
 
   const progressPercentage = getReaderProgressPercentage(sectionIndex, sections.length)
+  /**
+   * 目录高亮按真实标题锚点计算，避免字号、图片、表格等改变高度后字符比例失真。
+   * 当前分节尚未越过第一个标题时，仍高亮该章节在目录中的入口。
+   */
+  const activeTocIndex = useMemo(() => {
+    const fallbackOffset = sections[sectionIndex]?.start ?? 0
+    const targetOffset = activeHeadingOffset ?? fallbackOffset
+    let active = -1
+    for (let index = 0; index < flatTocItems.length; index += 1) {
+      const item = flatTocItems[index]
+      if (item.sectionIndex > sectionIndex) break
+      if (item.sectionIndex < sectionIndex || item.offset <= targetOffset) active = index
+    }
+    return active >= 0 ? active : 0
+  }, [activeHeadingOffset, flatTocItems, sectionIndex, sections])
 
   const highlightRanges = useMemo(
     () => buildHighlightRanges(body, highlights, { bodyStart }),
@@ -510,6 +546,48 @@ export default function BookReader({
     [body, highlightRanges, searchRanges, bodyStart]
   )
   const annotatedMarkdown = useMemo(() => buildAnnotatedReaderMarkdown(segments, activeMatchOffset), [activeMatchOffset, segments])
+
+  // 读取已越过正文阅读阈值的最新标题，供目录高亮；滚动过程中不在事件回调里做布局写入。
+  // 依赖最终 Markdown，确保划线、检索标记或批注改变正文高度后重新校准当前标题。
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let frame = 0
+    const readActiveHeading = () => {
+      const container = readerBodyRef.current
+      if (!container) return
+      const headings = container.querySelectorAll<HTMLElement>('[data-reader-heading][data-reader-offset]')
+      if (headings.length === 0) {
+        setActiveHeadingOffset(null)
+        return
+      }
+      const threshold = Math.min(180, Math.max(96, window.innerHeight * 0.25))
+      let nextOffset: number | null = null
+      headings.forEach(heading => {
+        if (heading.getBoundingClientRect().top > threshold) return
+        const offset = Number(heading.dataset.readerOffset)
+        if (Number.isFinite(offset)) nextOffset = offset
+      })
+      setActiveHeadingOffset(nextOffset)
+    }
+    const handleScroll = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        readActiveHeading()
+      })
+    }
+    frame = window.requestAnimationFrame(() => {
+      frame = 0
+      readActiveHeading()
+    })
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [annotatedMarkdown, fontSize, headingOffsets, sectionIndex])
 
   const currentSectionBookmark = useMemo(
     () => (section ? bookmarks.find(item => item.offset >= section.start && item.offset < section.end) ?? null : null),
@@ -530,13 +608,13 @@ export default function BookReader({
     }
   }, [])
 
-  const goToSection = useCallback((index: number) => {
+  const goToSection = useCallback((index: number, resetScroll = true) => {
     if (sections.length === 0) return
     setSectionIndex(Math.min(Math.max(0, index), sections.length - 1))
     setSelection(null)
     setNoteComposerOpen(false)
     setMarkEditor(null)
-    if (typeof window !== 'undefined') {
+    if (resetScroll && typeof window !== 'undefined') {
       window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }))
     }
   }, [sections.length])
@@ -544,6 +622,28 @@ export default function BookReader({
   const goToOffset = useCallback((offset: number) => {
     goToSection(findSectionIndexForOffset(sections, offset))
   }, [goToSection, sections])
+
+  /** 目录跳转：章节切到对应分节，标题再滚动到带同偏移锚点的标题节点。 */
+  const goToTocItem = useCallback((targetSectionIndex: number, targetOffset: number) => {
+    const target = sections[Math.min(Math.max(0, targetSectionIndex), Math.max(0, sections.length - 1))]
+    setPendingHeadingOffset(targetOffset)
+    setActiveHeadingOffset(targetOffset)
+    if (target?.index !== sectionIndex) goToSection(targetSectionIndex, false)
+  }, [goToSection, sectionIndex, sections])
+
+  useLayoutEffect(() => {
+    const currentSection = sections[sectionIndex]
+    if (pendingHeadingOffset === null || typeof window === 'undefined' || !currentSection) return
+    const frame = window.requestAnimationFrame(() => {
+      const anchor = readerBodyRef.current?.querySelector<HTMLElement>(
+        `[data-reader-heading][data-reader-offset="${pendingHeadingOffset}"]`
+      )
+      if (anchor) anchor.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      else window.scrollTo({ top: 0, behavior: 'smooth' })
+      setPendingHeadingOffset(null)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [pendingHeadingOffset, sectionIndex, sections])
 
   const goPrevious = useCallback(() => goToSection(sectionIndex - 1), [goToSection, sectionIndex])
   const goNext = useCallback(() => goToSection(sectionIndex + 1), [goToSection, sectionIndex])
@@ -886,7 +986,7 @@ export default function BookReader({
     : (zh ? `第 ${sectionIndex + 1} 页` : `Page ${sectionIndex + 1}`)
 
   const panelTabs: Array<{ key: PanelTab; label: string }> = [
-    { key: 'toc', label: zh ? `目录（${sections.length}）` : `Contents (${sections.length})` },
+    { key: 'toc', label: zh ? `目录（${flatTocItems.length}）` : `Contents (${flatTocItems.length})` },
     { key: 'highlights', label: zh ? `划线（${highlights.length}）` : `Highlights (${highlights.length})` },
     { key: 'bookmarks', label: zh ? `书签（${bookmarks.length}）` : `Bookmarks (${bookmarks.length})` },
     { key: 'search', label: zh ? '检索' : 'Search' }
@@ -1030,7 +1130,13 @@ export default function BookReader({
               if (record) openMarkEditor(record, marker)
             }}
           >
-            <MarkdownRenderer content={annotatedMarkdown} className="reader-structured-markdown" lang={lang} />
+            <MarkdownRenderer
+              content={annotatedMarkdown}
+              className="reader-structured-markdown"
+              lang={lang}
+              headingOffsetBase={headingOffsetBase}
+              headingOffsets={headingOffsets}
+            />
           </div>
           <p className={`reader-help mt-8 text-xs ${THEME_MUTED_CLASSES[theme]}`}>
             {zh
@@ -1067,25 +1173,26 @@ export default function BookReader({
             </div>
             <div className="max-h-[60vh] overflow-y-auto p-2">
               {panelTab === 'toc' && (
-                <ul className="space-y-1">
-                  {sections.slice(0, TOC_RENDER_LIMIT).map(item => (
-                    <li key={item.index}>
+                <ul className="space-y-0.5">
+                  {flatTocItems.slice(0, TOC_RENDER_LIMIT).map((item, index) => (
+                    <li key={`${item.chapterIndex}-${item.sectionIndex}-${index}`}>
                       <button
                         type="button"
                         onClick={() => {
-                          goToSection(item.index)
+                          goToTocItem(item.sectionIndex, item.offset)
                           closePanel()
                         }}
-                        className={`w-full rounded-lg px-3 py-2 text-left text-sm ${item.index === sectionIndex ? 'bg-[var(--accent)]/15 font-semibold text-[var(--accent)]' : 'hover:bg-[var(--bg-secondary)]'}`}
+                        aria-current={index === activeTocIndex ? 'location' : undefined}
+                        style={{ paddingLeft: `${12 + Math.min(item.depth, 5) * 14}px` }}
+                        className={`w-full rounded-lg py-2 pr-3 text-left leading-snug ${item.depth === 0 ? 'text-sm font-medium' : 'text-[13px]'} ${index === activeTocIndex ? 'bg-[var(--accent)]/15 font-semibold text-[var(--accent)]' : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'}`}
                       >
-                        <span className="mr-2 text-xs text-[var(--text-secondary)]">{item.index + 1}</span>
-                        {item.title ? (item.continued ? `${item.title}${zh ? '（续）' : ' (cont.)'}` : item.title) : (zh ? '正文' : 'Text')}
+                        {item.title || (zh ? '正文' : 'Text')}
                       </button>
                     </li>
                   ))}
-                  {sections.length > TOC_RENDER_LIMIT && (
+                  {flatTocItems.length > TOC_RENDER_LIMIT && (
                     <li className="px-3 py-2 text-xs text-[var(--text-secondary)]">
-                      {zh ? `仅显示前 ${TOC_RENDER_LIMIT} 节，可用左右方向键继续翻页。` : `Showing the first ${TOC_RENDER_LIMIT} sections. Use the arrow keys to keep reading.`}
+                      {zh ? `仅显示前 ${TOC_RENDER_LIMIT} 条目录，可用左右方向键继续翻页。` : `Showing the first ${TOC_RENDER_LIMIT} entries. Use the arrow keys to keep reading.`}
                     </li>
                   )}
                 </ul>

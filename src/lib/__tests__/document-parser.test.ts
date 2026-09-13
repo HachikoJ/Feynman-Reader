@@ -128,6 +128,39 @@ describe('structured ebook formats', () => {
     expect(parsed.chapters?.[0].content).toContain('# 这是代码')
   })
 
+  it('keeps H1-H6 levels and spaceless headings so the reader can build a nested contents tree', async () => {
+    const markdown = '# 卷一\n\n## 第一章 起源\n\n正文甲。\n\n####无空格小标题\n\n正文乙。'
+    const parsed = await parseDocument(makeFile('levels.md', markdown))
+
+    expect(parsed.chapters).toEqual([
+      // 只有标题的卷分隔页要保留，它是后续章节的上级目录节点。
+      { title: '卷一', content: '', level: 1 },
+      { title: '第一章 起源', content: '正文甲。', level: 2 },
+      { title: '无空格小标题', content: '正文乙。', level: 4 }
+    ])
+    expectChapterComposition(parsed)
+  })
+
+  it('honours explicit ordered-list start values when converting HTML', () => {
+    const text = htmlToPlainText('<p>步骤</p><ol start="4"><li>观察</li><li>解释</li></ol>')
+    expect(text).toContain('4. 观察')
+    expect(text).toContain('5. 解释')
+  })
+
+  it('keeps headings that have no body text instead of silently deleting them', async () => {
+    const markdown = '# 第一章 起\n\n正文甲。\n\n## 第二章 空章\n\n## 第三章 续\n\n正文乙。'
+    const parsed = await parseDocument(makeFile('empty-chapters.md', markdown))
+
+    expect(parsed.chapters?.map(chapter => [chapter.title, chapter.content])).toEqual([
+      ['第一章 起', '正文甲。'],
+      ['第二章 空章', ''],
+      ['第三章 续', '正文乙。']
+    ])
+    // 没有正文的标题必须留在原文里，不能只存在于章节标题中。
+    expect(parsed.content).toContain('第二章 空章')
+    expectChapterComposition(parsed)
+  })
+
   it('preserves HTML headings, lists, quotes, tables and code as safe semantic text', async () => {
     const html = `<html><head><title>论学习</title><style>p{color:red}</style></head><body>
       <h1>论学习</h1><p>第一段&amp;<strong>重点</strong></p>
@@ -277,6 +310,51 @@ describe('structured ebook formats', () => {
     const bytes = await zip.generateAsync({ type: 'uint8array' })
     const parsed = await parseDocument({ name: 'nav.epub', size: bytes.length, arrayBuffer: async () => bytes.buffer } as unknown as File)
     expect(parsed.chapters?.[0].title).toBe('第一部分 · 导航标题')
+  })
+
+  it('reads nested EPUB3 navigation lists as heading levels', async () => {
+    const JSZip = (await import('jszip')).default
+    const zip = new JSZip()
+    zip.file('META-INF/container.xml', '<container><rootfiles><rootfile full-path="OEBPS/book.opf"/></rootfiles></container>')
+    zip.file('OEBPS/book.opf', `<package xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><dc:title>层级目录</dc:title></metadata><manifest>
+      <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>
+    </manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>`)
+    zip.file('OEBPS/nav.xhtml', '<nav epub:type="toc"><ul><li><a href="text/ch1.xhtml">第一部 起源</a><ul><li><a href="text/ch2.xhtml">第一章 认知</a></li></ul></li></ul></nav>')
+    zip.file('OEBPS/text/ch1.xhtml', '<html><body><p>卷首说明。</p></body></html>')
+    zip.file('OEBPS/text/ch2.xhtml', '<html><body><p>正文。</p></body></html>')
+    const bytes = await zip.generateAsync({ type: 'uint8array' })
+    const parsed = await parseDocument({ name: 'nested-nav.epub', size: bytes.length, arrayBuffer: async () => bytes.buffer } as unknown as File)
+
+    expect(parsed.chapters?.map(chapter => [chapter.title, chapter.level])).toEqual([
+      ['第一部 起源', 1],
+      ['第一章 认知', 2]
+    ])
+    expectChapterComposition(parsed)
+  })
+
+  it('reads nested EPUB2 NCX navPoints as heading levels', async () => {
+    const JSZip = (await import('jszip')).default
+    const zip = new JSZip()
+    zip.file('META-INF/container.xml', '<container><rootfiles><rootfile full-path="OEBPS/book.opf"/></rootfiles></container>')
+    zip.file('OEBPS/book.opf', `<package xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0"><metadata><dc:title>NCX 层级</dc:title></metadata><manifest>
+      <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="c1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>
+    </manifest><spine toc="ncx"><itemref idref="c1"/><itemref idref="c2"/></spine></package>`)
+    zip.file('OEBPS/toc.ncx', `<?xml version="1.0"?>
+<ncx><navMap>
+  <navPoint id="n1" playOrder="1"><navLabel><text>第一部 起源</text></navLabel><content src="text/ch1.xhtml"/>
+    <navPoint id="n2" playOrder="2"><navLabel><text>第一章 认知</text></navLabel><content src="text/ch2.xhtml"/></navPoint>
+  </navPoint>
+</navMap></ncx>`)
+    zip.file('OEBPS/text/ch1.xhtml', '<html><body><p>卷首说明。</p></body></html>')
+    zip.file('OEBPS/text/ch2.xhtml', '<html><body><p>正文。</p></body></html>')
+    const bytes = await zip.generateAsync({ type: 'uint8array' })
+    const parsed = await parseDocument({ name: 'nested-ncx.epub', size: bytes.length, arrayBuffer: async () => bytes.buffer } as unknown as File)
+
+    expect(parsed.chapters?.map(chapter => [chapter.title, chapter.level])).toEqual([
+      ['第一部 起源', 1],
+      ['第一章 认知', 2]
+    ])
+    expectChapterComposition(parsed)
   })
 
   it('rejects DRM protected EPUB files without crashing', async () => {

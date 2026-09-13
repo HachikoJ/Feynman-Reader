@@ -87,6 +87,26 @@ function renderReader(book: Book, handlers: Handlers = createHandlers()) {
   return { ...view, handlers }
 }
 
+/** 按 DocumentUpload 的 `标题\n\n正文` 规则生成章节定位表，还原真实导入的书。 */
+function indexChapters(chapters: Array<{ title: string; body: string; level?: number }>): { documentContent: string; chapters: Book['chapters'] } {
+  let cursor = 0
+  const index = chapters.map(chapter => {
+    const block = `${chapter.title}\n\n${chapter.body}`
+    const entry = {
+      title: chapter.title,
+      start: cursor,
+      length: block.length,
+      ...(chapter.level ? { level: chapter.level } : {})
+    }
+    cursor += block.length + 2
+    return entry
+  })
+  return {
+    documentContent: chapters.map(chapter => `${chapter.title}\n\n${chapter.body}`).join('\n\n'),
+    chapters: index
+  }
+}
+
 beforeEach(() => {
   window.scrollTo = jest.fn()
   window.localStorage.clear()
@@ -128,6 +148,20 @@ describe('BookReader reading surface', () => {
     expect(screen.getByText('第 2/2 节 · 已读 100%')).toBeInTheDocument()
   })
 
+  it('renders deep headings from imported markdown as real heading levels', () => {
+    renderReader(createBook({
+      documentContent: '#### 四级标题\n\n##### 五级标题\n\n###### 六级标题\n\n正文。',
+      chapters: undefined,
+      bookmarks: [],
+      noteRecords: []
+    }))
+
+    expect(screen.getByRole('heading', { level: 5, name: '四级标题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 6, name: '五级标题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 6, name: '六级标题' })).toBeInTheDocument()
+    expect(screen.queryByText(/####/)).not.toBeInTheDocument()
+  })
+
 
   it('opens the assistant with the exact original-text offset', () => {
     renderReader(createBook())
@@ -157,6 +191,83 @@ describe('BookReader reading surface', () => {
     })
     window.removeEventListener('feynman-open-assistant', listener)
     selectionSpy.mockRestore()
+  })
+})
+
+describe('BookReader table of contents', () => {
+  const outline = indexChapters([
+    { title: '第一部 起源', body: '', level: 1 },
+    { title: '第一章 认知革命', body: '正文甲。\n\n### 小节一\n\n正文乙。', level: 2 }
+  ])
+
+  it('indents volumes, chapters and subheadings by level instead of padding the list with continuations', () => {
+    renderReader(createBook({ ...outline, bookmarks: [], noteRecords: [] }))
+    fireEvent.click(screen.getByRole('button', { name: '目录与笔记' }))
+
+    const panel = screen.getByTestId('reader-panel')
+    const entries = [...panel.querySelectorAll<HTMLButtonElement>('ul button')]
+    expect(entries.map(entry => entry.textContent)).toEqual(['第一部 起源', '第一章 认知革命', '小节一'])
+    // depth 0 / 1 / 2 各缩进 14px，层级一眼可辨。
+    expect(entries.map(entry => entry.style.paddingLeft)).toEqual(['12px', '26px', '40px'])
+    expect(within(panel).getByRole('button', { name: '目录（3）' })).toBeInTheDocument()
+    expect(within(panel).queryByText(/（续）/)).not.toBeInTheDocument()
+  })
+
+  it('lists a long chapter once and never turns continuation pages into contents entries', () => {
+    const longBody = `${'长'.repeat(99)}\n`.repeat(120)
+    const book = createBook({
+      ...indexChapters([{ title: '长章节', body: longBody, level: 1 }]),
+      bookmarks: [],
+      noteRecords: []
+    })
+    renderReader(book)
+
+    const pageLabel = screen.getByText(/^第 1\/\d+ 节 · 已读/)
+    expect(Number(pageLabel.textContent?.match(/第 1\/(\d+) 节/)?.[1])).toBeGreaterThan(1)
+
+    fireEvent.click(screen.getByRole('button', { name: '目录与笔记' }))
+    const panel = screen.getByTestId('reader-panel')
+    const entries = [...panel.querySelectorAll<HTMLButtonElement>('ul button')]
+    expect(entries.map(entry => entry.textContent)).toEqual(['长章节'])
+    expect(within(panel).queryByText(/（续）/)).not.toBeInTheDocument()
+  })
+
+  it('scrolls to the exact subheading anchor when a contents entry is picked', async () => {
+    const scrolled: HTMLElement[] = []
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      writable: true,
+      value: jest.fn(function mockScrollIntoView(this: HTMLElement) {
+        scrolled.push(this)
+      })
+    })
+
+    try {
+      renderReader(createBook({ ...outline, bookmarks: [], noteRecords: [] }))
+      fireEvent.click(screen.getByRole('button', { name: '目录与笔记' }))
+      fireEvent.click(within(screen.getByTestId('reader-panel')).getByRole('button', { name: '小节一' }))
+
+      await waitFor(() => expect(scrolled).toHaveLength(1))
+      expect(scrolled[0].getAttribute('data-reader-offset'))
+        .toBe(String(outline.documentContent.indexOf('### 小节一')))
+      expect(scrolled[0].textContent).toBe('小节一')
+      expect(screen.getByRole('heading', { name: '第一章 认知革命' })).toBeInTheDocument()
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    }
+  })
+
+  it('marks the contents entry covering the current reading position', () => {
+    renderReader(createBook({ ...outline, bookmarks: [], noteRecords: [] }))
+    fireEvent.click(screen.getByRole('button', { name: '目录与笔记' }))
+
+    const panel = screen.getByTestId('reader-panel')
+    expect(within(panel).getByRole('button', { name: '第一部 起源' }))
+      .toHaveAttribute('aria-current', 'location')
+    expect(within(panel).getByRole('button', { name: '第一章 认知革命' }))
+      .not.toHaveAttribute('aria-current')
+    expect(within(panel).getByRole('button', { name: '小节一' }))
+      .not.toHaveAttribute('aria-current')
   })
 })
 

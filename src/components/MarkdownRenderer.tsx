@@ -1,12 +1,13 @@
 'use client'
 
 import { Check, Copy, Download } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useState, type CSSProperties } from 'react'
 import type { Language } from '@/lib/i18n'
 import type { AssistantSource } from '@/lib/assistantSources'
-import { getSafeLinkHref } from '@/lib/safeUrl'
+import { getSafeImageSrc, getSafeLinkHref } from '@/lib/safeUrl'
 import { downloadMarkdownAsWord, downloadTableAsExcel } from '@/lib/markdownExport'
 import { findMathExpressions } from '@/lib/mathRendering'
+import { parseMarkdownHeading } from '@/lib/markdownSyntax'
 import AppIcon from './AppIcon'
 import HtmlFragment from './HtmlFragment'
 import MathFormula from './MathFormula'
@@ -20,6 +21,16 @@ interface Props {
   onQuoteSelected?: (text: string) => Promise<void> | void
   selectionSource?: AssistantSource | ((text: string) => AssistantSource)
   lang?: Language
+  /**
+   * 正文在全书中的起始字符偏移。传入时每个标题会带上 `data-reader-offset`，
+   * 目录、书签等全书级定位可以据此滚动到标题本身，而不是只跳到所在分节顶部。
+  */
+  headingOffsetBase?: number
+  /**
+   * 由 `scanMarkdownHeadings` 预先扫描出的标题全书偏移，按正文标题出现顺序消费。
+   * 正文注入高亮或检索标记后不能再用渲染后文本计算偏移，因此优先使用这组原始偏移。
+   */
+  headingOffsets?: number[]
 }
 
 function CopyCodeButton({ value, inline = false }: { value: string; inline?: boolean }) {
@@ -76,7 +87,7 @@ function splitTableRow(line: string): string[] {
 
 function isTableDivider(line: string): boolean {
   const cells = splitTableRow(line)
-  return cells.length > 0 && cells.every(cell => /^:?-{3,}:?$/.test(cell))
+  return cells.length > 0 && cells.every(cell => /^:?-+:?$/.test(cell))
 }
 
 function tableAlignment(cell: string): 'left' | 'center' | 'right' | undefined {
@@ -87,15 +98,51 @@ function tableAlignment(cell: string): 'left' | 'center' | 'right' | undefined {
   return undefined
 }
 
-export default function MarkdownRenderer({ content, className = '', showWordDownload = false, onQuoteSelected, selectionSource, lang = 'zh' }: Props) {
+/**
+ * Markdown 的 H1-H6 依次映射到页面里的 h2-h6（H5/H6 都落到 h6），
+ * 让正文标题始终位于阅读页的章节标题之下，同时保持逐级递进。
+ */
+const HEADING_TAGS = ['h2', 'h3', 'h4', 'h5', 'h6', 'h6'] as const
+const HEADING_CLASSES = [
+  'mt-6 mb-3 text-2xl font-bold leading-tight text-[var(--text-primary)]',
+  'mt-6 mb-3 border-l-2 border-[var(--accent)] pl-3 text-xl font-bold leading-tight text-[var(--text-primary)]',
+  'mt-5 mb-2 flex items-center gap-2 text-lg font-semibold leading-snug text-[var(--text-primary)]',
+  'mt-4 mb-2 flex items-center gap-2 text-base font-semibold leading-snug text-[var(--text-primary)]',
+  'mt-3.5 mb-1.5 text-sm font-semibold leading-snug text-[var(--text-primary)]',
+  'mt-3 mb-1 text-[13px] font-semibold leading-snug text-[var(--text-secondary)]'
+]
+
+/** 分隔线：`---`、`***`、`_ _ _` 等三种以上符号的整行。 */
+function isThematicBreak(line: string): boolean {
+  const trimmed = line.trim()
+  if (!trimmed) return false
+  if (/^(?:\*[ \t]*){3,}$/.test(trimmed)) return true
+  if (/^(?:-[ \t]*){3,}$/.test(trimmed)) return true
+  return /^(?:_[ \t]*){3,}$/.test(trimmed)
+}
+
+function isListLine(line: string): boolean {
+  if (isThematicBreak(line)) return false
+  return /^\s*(?:[-*+•◦▪▸►]\s+|\d+[.、)]\s*)/.test(line)
+}
+
+/** 空行后如果还是列表项，说明这是一个松散列表，不能被拆成多个编号都从 1 开始的小列表。 */
+function nextNonEmptyLineIsList(lines: string[], from: number): boolean {
+  for (let index = from; index < lines.length; index += 1) {
+    if (lines[index].trim()) return isListLine(lines[index])
+  }
+  return false
+}
+
+export default function MarkdownRenderer({ content, className = '', showWordDownload = false, onQuoteSelected, selectionSource, lang = 'zh', headingOffsetBase, headingOffsets }: Props) {
   const parseMarkdown = (text: string): JSX.Element[] => {
     const lines = text.split('\n')
     const elements: JSX.Element[] = []
-    type ListItem = { content: string; checked?: boolean; depth: number; type: 'ordered' | 'unordered' }
+    type ListItem = { content: string; checked?: boolean; depth: number; type: 'ordered' | 'unordered'; start?: number }
     type ListNode = { item: ListItem; children: ListNode[] }
     let listItems: ListItem[] = []
     let blockquoteLines: string[] = []
-    let codeBlock: { lang: string; lines: string[]; fence: '`' | '~' } | null = null
+    let codeBlock: { lang: string; lines: string[]; fence: '`' | '~'; fenceLength: number } | null = null
 
     const flushTable = (header: string[], divider: string[], body: string[][]) => {
       const columnCount = Math.max(header.length, divider.length, ...body.map(row => row.length))
@@ -133,10 +180,18 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
           stack.push({ depth: item.depth, node })
         })
 
-        const renderNodes = (nodes: ListNode[], key: string): JSX.Element => {
+        const renderListGroup = (nodes: ListNode[], key: string): JSX.Element => {
           const type = nodes[0]?.item.type === 'ordered' ? 'ol' : 'ul'
           const ListTag = type === 'ol' ? 'ol' : 'ul'
-          return <ListTag key={key} className={type === 'ol' ? 'my-2 list-decimal space-y-2 pl-6 marker:font-semibold marker:text-[var(--accent)]' : 'my-2 list-disc space-y-2 pl-6 marker:text-[var(--accent)]'}>
+          // 有序列表记录显式起始序号：编号样式用 CSS 计数器绘制，起始值通过自定义属性传给样式表。
+          const orderedStart = nodes[0]?.item.start
+          const listProps = (type === 'ol'
+            ? {
+                start: orderedStart ?? 1,
+                style: { '--list-start': String(Math.max(0, (orderedStart ?? 1) - 1)) } as CSSProperties
+              }
+            : {}) as JSX.IntrinsicElements['ol']
+          return <ListTag key={key} {...listProps} className={type === 'ol' ? 'my-2 list-decimal space-y-2 pl-6 marker:font-semibold marker:text-[var(--accent)]' : 'my-2 list-disc space-y-2 pl-6 marker:text-[var(--accent)]'}>
             {nodes.map((node, index) => (
               <li key={`${key}-${index}`} className="min-w-0 text-[var(--text-secondary)] leading-relaxed">
                 <span className={node.item.checked !== undefined ? 'inline-flex min-w-0 items-start gap-2' : 'min-w-0'}>
@@ -148,21 +203,83 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
             ))}
           </ListTag>
         }
+
+        // 同一层里有序与无序项混排时按类型分组，避免后一种类型的条目被渲染成前一种。
+        const renderNodes = (nodes: ListNode[], key: string): JSX.Element => {
+          const groups: ListNode[][] = []
+          nodes.forEach(node => {
+            const current = groups[groups.length - 1]
+            if (current && current[0].item.type === node.item.type) current.push(node)
+            else groups.push([node])
+          })
+          if (groups.length === 1) return renderListGroup(groups[0], key)
+          return (
+            <Fragment key={key}>
+              {groups.map((group, index) => renderListGroup(group, `${key}-${index}`))}
+            </Fragment>
+          )
+        }
+
         elements.push(<div key={`list-${elements.length}`} className="my-3">{renderNodes(roots, `list-${elements.length}`)}</div>)
         listItems = []
       }
     }
 
+    const renderBlockquoteContent = (lines: string[], key: string): JSX.Element[] => {
+      const parsedLines = lines.map(line => {
+        let depth = 0
+        let text = line
+        let match = text.match(/^ {0,3}>[ \t]?/)
+        while (match) {
+          depth += 1
+          text = text.slice(match[0].length)
+          match = text.match(/^ {0,3}>[ \t]?/)
+        }
+        return { depth, text }
+      })
+      const result: JSX.Element[] = []
+
+      for (let index = 0; index < parsedLines.length;) {
+        const current = parsedLines[index]
+        if (current.depth === 0) {
+          if (current.text.trim()) {
+            result.push(
+              <p key={`${key}-p-${index}`} className="text-[var(--text-primary)] italic leading-relaxed">
+                {parseInline(current.text)}
+              </p>
+            )
+          }
+          index += 1
+          continue
+        }
+
+        const nested: string[] = []
+        while (index < parsedLines.length && parsedLines[index].depth >= current.depth) {
+          const line = parsedLines[index]
+          nested.push(`${'>'.repeat(line.depth - current.depth)}${line.depth > current.depth ? ' ' : ''}${line.text}`)
+          index += 1
+        }
+        result.push(
+          <blockquote
+            key={`${key}-nested-${index}`}
+            className="my-3 border-l-2 border-[var(--border)] pl-3 text-[var(--text-secondary)]"
+          >
+            {renderBlockquoteContent(nested, `${key}-nested-${index}`)}
+          </blockquote>
+        )
+      }
+
+      return result
+    }
+
     const flushBlockquote = () => {
       if (blockquoteLines.length > 0) {
         elements.push(
-          <blockquote 
+          <blockquote
             key={`quote-${elements.length}`}
-            className="my-4 pl-4 border-l-4 border-[var(--accent)] bg-[var(--accent)]/5 py-3 pr-4 rounded-r-lg"
+            className="my-4 rounded-r-lg border-l-4 border-[var(--accent)] bg-[var(--accent)]/5 py-3 pl-4 pr-4"
           >
-            {blockquoteLines.map((line, i) => (
-              <p key={i} className="text-[var(--text-primary)] italic leading-relaxed">{parseInline(line)}</p>
-            ))}
+            {renderBlockquoteContent(blockquoteLines, `quote-${elements.length}`)}
           </blockquote>
         )
         blockquoteLines = []
@@ -216,7 +333,9 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
 
       // Scan for the next token so mixed inline styles (for example bold plus
       // highlights in one sentence) are parsed independently.
-      const tokenPattern = /==([^=\n]+)==|\*\*([^*\n]+)\*\*|__([^_\n]+)__|~~([^~\n]+)~~|`([^`\n]+)`|\[([^\]]+)\]\(([^)\n]+)\)|\*([^*\n]+)\*|_([^_\n]+)_/
+      // Images must precede plain links: otherwise `![alt](src)` first matches
+      // the link alternative at the `[`, leaving a stray `!` behind.
+      const tokenPattern = /==([^=\n]+)==|\*\*([^*\n]+)\*\*|__([^_\n]+)__|~~([^~\n]+)~~|`([^`\n]+)`|!\[([^\]\n]*)\]\(([^)\n]+)\)|\[([^\]]+)\]\(([^)\n]+)\)|\*([^*\n]+)\*|_([^_\n]+)_/
       let offset = 0
       while (offset < text.length) {
         const match = tokenPattern.exec(text.slice(offset))
@@ -240,15 +359,41 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
               <CopyCodeButton value={match[5]} inline />
             </span>
           )
-        } else if (match[6] && match[7]) {
-          const safeHref = getSafeLinkHref(match[7])
+        } else if (match[8] && match[9]) {
+          const safeHref = getSafeLinkHref(match[9])
           result.push(safeHref ? (
             <a key={`a-${keyIndex++}`} href={safeHref} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
-              {match[6]}
+              {match[8]}
             </a>
-          ) : <span key={`a-${keyIndex++}`}>{match[6]}</span>)
-        } else if (match[8] || match[9]) {
-          result.push(<em key={`e-${keyIndex++}`} className="italic text-[var(--accent)]">{match[8] || match[9]}</em>)
+          ) : <span key={`a-${keyIndex++}`}>{match[8]}</span>)
+        } else if (match[10] || match[11]) {
+          result.push(<em key={`e-${keyIndex++}`} className="italic text-[var(--accent)]">{match[10] || match[11]}</em>)
+        } else if (match[6] !== undefined) {
+          // 图片：仅有内嵌 data: 图片与站内路径直接渲染，其余远程图片降级为链接，避免加载外部资源。
+          const alt = match[6].trim()
+          const safeSrc = getSafeImageSrc(match[7])
+          const inlineSrc = safeSrc && (safeSrc.startsWith('data:image/') || safeSrc.startsWith('/')) ? safeSrc : null
+          if (inlineSrc) {
+            result.push(
+              // eslint-disable-next-line @next/next/no-img-element -- 文档内嵌图片是 data URI 或站内路径，无需 Next 图片优化
+              <img
+                key={`img-${keyIndex++}`}
+                src={inlineSrc}
+                alt={alt}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="my-2 max-h-96 w-auto max-w-full rounded-lg border border-[var(--border)]"
+              />
+            )
+          } else if (safeSrc) {
+            result.push(
+              <a key={`a-${keyIndex++}`} href={safeSrc} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+                {alt || safeSrc}
+              </a>
+            )
+          } else {
+            result.push(alt || match[0])
+          }
         }
         offset = start + match[0].length
       }
@@ -256,24 +401,70 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
       return result
     }
 
+    // 逐行累加偏移，标题锚点与 `scanMarkdownHeadings` 使用同一套行扫描口径。
+    let lineBaseOffset = 0
+    const lineStartOffsets: number[] = []
+    for (const textLine of lines) {
+      lineStartOffsets.push(lineBaseOffset)
+      lineBaseOffset += textLine.length + 1
+    }
+
+    let headingOrdinal = 0
+    const renderHeading = (level: number, title: string, keySeed: number, lineIndex: number): JSX.Element => {
+      const index = Math.min(6, Math.max(1, level)) - 1
+      const HeadingTag = HEADING_TAGS[index]
+      const icon = level === 3 ? 'sparkles' : level === 4 ? 'chevronRight' : null
+      const suppliedOffset = headingOffsets?.[headingOrdinal]
+      const fallbackOffset = typeof lineStartOffsets[lineIndex] === 'number' && typeof headingOffsetBase === 'number'
+        ? headingOffsetBase + lineStartOffsets[lineIndex]
+        : undefined
+      const offset = typeof suppliedOffset === 'number' && Number.isFinite(suppliedOffset)
+        ? suppliedOffset
+        : fallbackOffset
+      return (
+        <HeadingTag
+          key={`h${level}-${keySeed}`}
+          className={HEADING_CLASSES[index]}
+          data-reader-heading="true"
+          {...(typeof offset === 'number'
+            ? { 'data-reader-offset': String(offset) }
+            : {})}
+        >
+          {icon && <AppIcon name={icon} tone="accent" size={16} />}
+          {parseInline(title)}
+        </HeadingTag>
+      )
+    }
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
 
-      // 代码块
-      const fenceMatch = line.match(/^\s*(`{3,}|~{3,})(.*)$/)
-      if (fenceMatch) {
-        if (codeBlock) {
-          if (fenceMatch[1][0] === codeBlock.fence) flushCodeBlock()
-        } else {
-          flushList()
-          flushBlockquote()
-          codeBlock = { lang: fenceMatch[2].trim(), lines: [], fence: fenceMatch[1][0] as '`' | '~' }
+      // 代码块：闭合围栏必须同符号、不短于起始围栏且不带语言标记，
+      // 否则围栏样式的行只是代码内容，不能丢。
+      const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/)
+      if (codeBlock) {
+        const closing = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)
+        const closes = Boolean(
+          closing &&
+          closing[1][0] === codeBlock.fence &&
+          closing[1].length >= codeBlock.fenceLength
+        )
+        if (closes) {
+          flushCodeBlock()
+          continue
         }
+        codeBlock.lines.push(line)
         continue
       }
-
-      if (codeBlock) {
-        codeBlock.lines.push(line)
+      if (fenceMatch) {
+        flushList()
+        flushBlockquote()
+        codeBlock = {
+          lang: fenceMatch[2].trim(),
+          lines: [],
+          fence: fenceMatch[1][0] as '`' | '~',
+          fenceLength: fenceMatch[1].length
+        }
         continue
       }
 
@@ -320,7 +511,13 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
       }
 
       // GitHub-flavoured Markdown table: header, divider, then optional rows.
-      if (i + 1 < lines.length && line.includes('|') && isTableDivider(lines[i + 1])) {
+      if (
+        i + 1 < lines.length &&
+        line.includes('|') &&
+        // 分隔行本身也要有竖线，否则 `文本 | 文本` + `---` 会被误当成表格。
+        lines[i + 1].includes('|') &&
+        isTableDivider(lines[i + 1])
+      ) {
         flushList()
         flushBlockquote()
         const header = splitTableRow(line)
@@ -338,64 +535,46 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
 
       // 空行
       if (!line.trim()) {
-        flushList()
         flushBlockquote()
+        // 松散列表允许列表项之间出现空行：只有后面不再是列表项时才结束当前列表，
+        // 否则同一组编号会被拆成多个 ol，序号全部从 1 重新开始。
+        if (listItems.length > 0 && !nextNonEmptyLineIsList(lines, i + 1)) flushList()
         continue
       }
 
-      // 引用
-      if (line.startsWith('> ')) {
+      // 引用：嵌套引用的多余 `>` 前缀不渲染成正文
+      const blockquoteMatch = line.match(/^ {0,3}>[ \t]?(.*)$/)
+      if (blockquoteMatch) {
         flushList()
-        blockquoteLines.push(line.slice(2))
+        blockquoteLines.push(blockquoteMatch[1])
         continue
       } else {
         flushBlockquote()
       }
 
-      // 标题
-      if (line.startsWith('# ')) {
+      // 标题：ATX（# - ######，支持缩进、无空格写法与结尾 #）与 Setext（下一行 === / ---）
+      const heading = parseMarkdownHeading(line, lines[i + 1])
+      if (heading) {
         flushList()
-        elements.push(
-          <h2 key={`h2-${elements.length}`} className="mt-5 mb-3 text-xl font-bold leading-tight text-[var(--text-primary)]">
-            {parseInline(line.slice(2))}
-          </h2>
-        )
+        const headingLineIndex = i
+        // Setext 标题占两行，下一行的下划线要一起消费掉。
+        if (heading.lineCount === 2) i += 1
+        elements.push(renderHeading(heading.level, heading.title, elements.length, headingLineIndex))
+        headingOrdinal += 1
         continue
       }
-      if (line.startsWith('## ')) {
+
+      // 分隔线（`---`、`***`、`_ _ _` 等），要在列表之前判断
+      if (isThematicBreak(line)) {
         flushList()
-        elements.push(
-          <h3 key={`h2-${elements.length}`} className="mt-5 mb-2.5 border-l-2 border-[var(--accent)] pl-3 text-base font-semibold text-[var(--text-primary)]">
-            {parseInline(line.slice(3))}
-          </h3>
-        )
-        continue
-      }
-      if (line.startsWith('### ')) {
-        flushList()
-        elements.push(
-          <h3 key={`h3-${elements.length}`} className="text-lg font-semibold mt-5 mb-2 text-[var(--text-primary)] flex items-center gap-2">
-            <AppIcon name="sparkles" tone="accent" size={16} />
-            {parseInline(line.slice(4))}
-          </h3>
-        )
-        continue
-      }
-      if (line.startsWith('#### ')) {
-        flushList()
-        elements.push(
-          <h4 key={`h4-${elements.length}`} className="font-semibold mt-4 mb-1.5 text-[var(--text-primary)] flex items-center gap-2">
-            <AppIcon name="chevronRight" tone="accent" size={16} />
-            {parseInline(line.slice(5))}
-          </h4>
-        )
+        elements.push(<hr key={`hr-${elements.length}`} className="my-4 border-[var(--border)]" />)
         continue
       }
 
       // 无序列表（支持多种符号）
       const taskMatch = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/)
       const unorderedMatch = line.match(/^\s*[-*+•◦▪▸►]\s+(.*)$/)
-      const orderedMatch = line.match(/^\s*\d+[.、)]\s*(.*)$/)
+      const orderedMatch = line.match(/^(\s*)(\d+)[.、)]\s*(.*)$/)
       const listMatch = unorderedMatch || orderedMatch
       if (taskMatch || listMatch) {
         const nextType = taskMatch || unorderedMatch ? 'unordered' : 'ordered'
@@ -404,7 +583,8 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
         const lastRoot = [...listItems].reverse().find(item => item.depth === 0)
         if (depth === 0 && lastRoot && lastRoot.type !== nextType) flushList()
         if (taskMatch) listItems.push({ content: taskMatch[2], checked: taskMatch[1].toLowerCase() === 'x', depth, type: nextType })
-        else listItems.push({ content: listMatch?.[1] || '', depth, type: nextType })
+        else if (unorderedMatch) listItems.push({ content: unorderedMatch[1], depth, type: nextType })
+        else listItems.push({ content: orderedMatch?.[3] || '', depth, type: nextType, start: Number(orderedMatch?.[2]) || 1 })
         continue
       }
 
@@ -412,13 +592,6 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
       const continuation = line.match(/^\s{2,}(\S.*)$/)
       if (continuation && listItems.length) {
         listItems[listItems.length - 1].content += `\n${continuation[1]}`
-        continue
-      }
-
-      // 分隔线
-      if (line.match(/^[-*_]{3,}$/)) {
-        flushList()
-        elements.push(<hr key={`hr-${elements.length}`} className="my-4 border-[var(--border)]" />)
         continue
       }
 

@@ -39,6 +39,134 @@ describe('MarkdownRenderer', () => {
     expect(screen.getByText('const answer = 42')).toBeInTheDocument()
   })
 
+  it('renders H1-H6 without letting code fences produce headings or anchor offsets', () => {
+    const content = [
+      '# 一级标题',
+      '##二级标题',
+      '### 三级标题 ###',
+      '#### 四级标题',
+      '##### 五级标题',
+      '###### 六级标题',
+      '',
+      '```md',
+      '# 代码里的伪标题',
+      '```'
+    ].join('\n')
+    const { container } = render(<MarkdownRenderer content={content} />)
+
+    expect(screen.getByRole('heading', { level: 2, name: '一级标题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: '二级标题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 4, name: '三级标题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 5, name: '四级标题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 6, name: '五级标题' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 6, name: '六级标题' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '代码里的伪标题' })).not.toBeInTheDocument()
+    expect(screen.getByText('# 代码里的伪标题')).toBeInTheDocument()
+    // 同一分节里的标题各自带遍历行偏移，目录、书签才能区分同名章节下的多个子标题。
+    expect(container.querySelectorAll('[data-reader-heading]')).toHaveLength(6)
+  })
+
+  it('adds book-level heading offsets when a base offset is provided', () => {
+    const content = '# 一级\n\n正文\n\n#### 无空格\n\n结尾。'
+    const { container } = render(<MarkdownRenderer content={content} headingOffsetBase={100} />)
+
+    const headings = [...container.querySelectorAll<HTMLElement>('[data-reader-heading]')]
+    expect(headings.map(node => node.getAttribute('data-reader-offset')))
+      .toEqual(['100', String(100 + content.indexOf('#### 无空格'))])
+  })
+
+  it('renders inline images before link syntax without leaking a stray bang', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const { container } = render(
+      <MarkdownRenderer content={`说明：![内嵌占位图片](${png})**粗体**与[普通链接](https://example.com)。`} />
+    )
+
+    const image = screen.getByAltText('内嵌占位图片')
+    expect(image).toBeInTheDocument()
+    expect(image.tagName).toBe('IMG')
+    expect(image).toHaveAttribute('src', png)
+    expect(screen.getByRole('link', { name: '普通链接' })).toHaveAttribute('href', 'https://example.com')
+    expect(screen.getByText('粗体')).toHaveClass('font-semibold')
+    // 图片曾被普通链接分支抢先匹配，留下一个孤立的 `!`。
+    expect(container.textContent).not.toContain('!')
+  })
+
+  it('degrades remote images to safe links and keeps unsupported sources as text', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'![远程图片](https://example.com/a.png) 和 ![危险图片](javascript:alert(1))'} />
+    )
+
+    const remote = screen.getByRole('link', { name: '远程图片' })
+    expect(remote).toHaveAttribute('href', 'https://example.com/a.png')
+    expect(container.querySelectorAll('img')).toHaveLength(0)
+    expect(screen.queryByText('!')).not.toBeInTheDocument()
+    expect(container.textContent).toContain('危险图片')
+    expect(container.textContent).not.toContain('javascript:')
+  })
+
+  it('keeps ordered list numbering continuous across loose lists and honours explicit starts', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'3. 第三步\n\n4. 第四步\n\n普通段落\n\n5) 第五步\n6) 第六步'} />
+    )
+
+    const lists = [...container.querySelectorAll('ol')]
+    expect(lists.map(list => list.getAttribute('start'))).toEqual(['3', '5'])
+    expect(lists.map(list => (list as HTMLElement).style.getPropertyValue('--list-start'))).toEqual(['2', '4'])
+  })
+
+  it('maps H1-H6 to decreasing heading levels and sizes without leaking hash markers', () => {
+    const content = [1, 2, 3, 4, 5, 6]
+      .map(level => `${'#'.repeat(level)} ${level} 级标题`)
+      .join('\n\n')
+    const { container } = render(<MarkdownRenderer content={content} />)
+
+    const headings = [...container.querySelectorAll<HTMLElement>('[data-reader-heading]')]
+    expect(headings.map(node => node.tagName)).toEqual(['H2', 'H3', 'H4', 'H5', 'H6', 'H6'])
+    ;['text-2xl', 'text-xl', 'text-lg', 'text-base', 'text-sm', 'text-[13px]'].forEach((size, index) => {
+      expect(headings[index]).toHaveClass(size)
+    })
+    expect(screen.queryByText(/#+ \d 级标题/)).not.toBeInTheDocument()
+  })
+
+  it('keeps raw heading anchors when annotations inject highlight markers above them', () => {
+    const raw = '# 第一章\n\n这里有重点。\n\n## 第一节\n\n正文。'
+    const annotated = raw.replace('这里有重点。', '这里有<mark data-highlight-id="n1">重点</mark>。')
+    // 注入标记后按渲染文本回推的偏移会整体后移，锚点必须沿用原始扫描结果。
+    expect(annotated.indexOf('## 第一节')).toBeGreaterThan(raw.indexOf('## 第一节'))
+
+    const { container } = render(
+      <MarkdownRenderer
+        content={annotated}
+        headingOffsetBase={0}
+        headingOffsets={[0, raw.indexOf('## 第一节')]}
+      />
+    )
+    const headings = [...container.querySelectorAll<HTMLElement>('[data-reader-heading]')]
+    expect(headings.map(node => node.getAttribute('data-reader-offset')))
+      .toEqual(['0', String(raw.indexOf('## 第一节'))])
+  })
+
+  it('renders highlight markers inside a heading title without exposing the markup', () => {
+    const content = '# 第一<mark data-highlight-id="n1">章</mark> 认知\n\n正文。'
+    const { container } = render(<MarkdownRenderer content={content} headingOffsetBase={0} headingOffsets={[0]} />)
+
+    // 行内 HTML 片段会让无障碍名称按元素边界断词，可见文本仍是「第一章 认知」。
+    expect(screen.getByRole('heading', { level: 2, name: /第一\s*章\s*认知/ })).toBeInTheDocument()
+    expect(container.querySelector('h2')).toHaveAttribute('data-reader-offset', '0')
+    expect(container.textContent).not.toContain('<mark')
+  })
+
+  it('anchors Setext headings at the title line and consumes the underline row', () => {
+    const content = '正文段落。\n\n标题一\n===\n\n标题二\n---\n\n结尾。'
+    const { container } = render(<MarkdownRenderer content={content} headingOffsetBase={50} />)
+
+    const headings = [...container.querySelectorAll<HTMLElement>('[data-reader-heading]')]
+    expect(headings.map(node => node.tagName)).toEqual(['H2', 'H3'])
+    expect(headings.map(node => node.getAttribute('data-reader-offset')))
+      .toEqual([String(50 + content.indexOf('标题一')), String(50 + content.indexOf('标题二'))])
+    expect(container.textContent).not.toContain('===')
+  })
+
   it('filters unsafe links while preserving safe external links', () => {
     render(
       <MarkdownRenderer
@@ -75,6 +203,18 @@ describe('MarkdownRenderer', () => {
     expect(screen.getByLabelText('已完成')).toHaveTextContent('✓')
     expect(screen.getByLabelText('未完成')).toHaveTextContent('')
     expect(screen.queryByText('[x]')).not.toBeInTheDocument()
+  })
+
+  it('preserves nested blockquote levels instead of flattening them', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'> 第一层引用\n>\n> > 第二层引用\n>\n> 回到第一层引用'} />
+    )
+
+    const outer = container.querySelector('blockquote')
+    expect(outer).toHaveTextContent('第一层引用')
+    expect(outer?.querySelector('blockquote')).toHaveTextContent('第二层引用')
+    expect(outer?.querySelectorAll(':scope > p')).toHaveLength(2)
+    expect(container.textContent).not.toContain('> 第二层引用')
   })
 
   it('copies the exact inline code or code block value', async () => {

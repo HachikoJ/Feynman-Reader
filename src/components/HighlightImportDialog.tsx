@@ -353,11 +353,12 @@ export default function HighlightImportDialog({ lang, targetBookId, onImported, 
       await flushPendingStoreWrites()
       const persisted = getBook(savedBook.id)
       if (persisted) setBooks(getBooks())
-      onImported?.(savedBook.id, records.length)
       setNotice(lang === 'zh'
         ? `已把 ${records.length} 条划线 / 笔记${book ? '关联并导入' : '导入新书'}${zhBookTitle(savedBook.name)}，可在「我的笔记」里查看。`
         : `Imported ${records.length} highlights/notes into ${book ? '' : 'new book '}“${savedBook.name}”. Open Notes to review them.`)
       resetPending()
+      onClose()
+      onImported?.(savedBook.id, records.length)
     } catch (importError) {
       if (affectedBookId) await reloadBookFromPersistence(affectedBookId).catch(() => undefined)
       setBooks(getBooks())

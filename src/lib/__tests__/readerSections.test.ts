@@ -2,8 +2,10 @@ import {
   READER_PAGE_CHARS,
   READER_SECTION_CHARS,
   buildReaderSections,
+  buildReaderToc,
   extractSectionBody,
   findSectionIndexForOffset,
+  flattenReaderToc,
   getSectionBodyStart,
   getReaderProgressPercentage,
 } from '../readerSections'
@@ -82,6 +84,22 @@ describe('buildReaderSections', () => {
     expect(sections[0]).toEqual(expect.objectContaining({ title: '第一章', chapterIndex: 0, start: 0, end: 100 }))
   })
 
+  it('keeps exactly adjacent chapter ranges as separate sections', () => {
+    const content = 'A'.repeat(100)
+    const sections = buildReaderSections({
+      documentContent: content,
+      chapters: [
+        { title: '第一章', start: 0, length: 50 },
+        { title: '第二章', start: 50, length: 50 },
+      ],
+    })
+
+    expect(sections).toHaveLength(2)
+    expect(sections.map(section => section.title)).toEqual(['第一章', '第二章'])
+    expect(sections.map(section => section.chapterIndex)).toEqual([0, 1])
+    expect(sections.map(section => [section.start, section.end])).toEqual([[0, 50], [50, 100]])
+  })
+
   it('paginates books without a chapter index', () => {
     const content = `${'字'.repeat(READER_PAGE_CHARS)}\n${'词'.repeat(READER_PAGE_CHARS)}`
     const sections = buildReaderSections({ documentContent: content })
@@ -98,6 +116,79 @@ describe('getReaderProgressPercentage', () => {
     expect(getReaderProgressPercentage(9, 4)).toBe(100)
     expect(getReaderProgressPercentage(-3, 4)).toBe(25)
     expect(getReaderProgressPercentage(0, 0)).toBe(0)
+  })
+})
+
+describe('buildReaderToc', () => {
+  it('keeps one entry per chapter, uses chapter levels for the tree and records heading offsets', () => {
+    const body = '开头说明。'
+    const content = `第一章 认知革命\n\n${body}\n\n### 第一节 故事\n\n正文甲。\n\n### 第二节 协作\n\n正文乙。`
+    const book = {
+      documentContent: content,
+      chapters: [{ title: '第一章 认知革命', start: 0, length: content.length, level: 2 }]
+    }
+    const sections = buildReaderSections(book)
+    const flat = flattenReaderToc(buildReaderToc(book, sections))
+
+    expect(flat.map(item => item.title)).toEqual([
+      '第一章 认知革命',
+      '第一节 故事',
+      '第二节 协作'
+    ])
+    expect(flat.map(item => item.level)).toEqual([2, 3, 3])
+    expect(flat.map(item => item.depth)).toEqual([0, 1, 1])
+    expect(flat[1].offset).toBe(content.indexOf('### 第一节 故事'))
+    expect(flat[2].offset).toBe(content.indexOf('### 第二节 协作'))
+    expect(flat[1].sectionIndex).toBe(flat[2].sectionIndex)
+    expect(flat.every(item => item.sectionIndex === 0)).toBe(true)
+  })
+
+  it('lists a long chapter once and does not add continued pages to the table of contents', () => {
+    const paragraph = `${'长'.repeat(99)}\n`
+    const longChapter = paragraph.repeat(120)
+    const book = {
+      documentContent: longChapter,
+      chapters: [{ title: '长章节', start: 0, length: longChapter.length, level: 1 }]
+    }
+    const sections = buildReaderSections(book)
+    const items = flattenReaderToc(buildReaderToc(book, sections))
+
+    expect(sections.length).toBeGreaterThan(1)
+    expect(items).toHaveLength(1)
+    expect(items[0].title).toBe('长章节')
+    expect(items[0].sectionIndex).toBe(0)
+  })
+
+  it('infers levels for legacy chapters without a level field', () => {
+    const first = '第一部 起源\n\n正文。'
+    const second = '第一章 认知\n\n正文。'
+    const content = `${first}\n\n${second}`
+    const book = {
+      documentContent: content,
+      chapters: [
+        { title: '第一部 起源', start: 0, length: first.length },
+        { title: '第一章 认知', start: first.length + 2, length: second.length }
+      ]
+    }
+    const flat = flattenReaderToc(buildReaderToc(book, buildReaderSections(book)))
+    expect(flat.map(item => item.level)).toEqual([1, 2])
+    expect(flat[1].depth).toBe(1)
+  })
+
+  it('keeps a repeated subheading with the same text as its chapter', () => {
+    const body = '正文甲。\n\n## 第一部分\n\n小节内容。'
+    const content = `第一部分\n\n${body}\n\n第二部分\n\n正文乙。`
+    const first = `第一部分\n\n${body}`
+    const book = {
+      documentContent: content,
+      chapters: [
+        { title: '第一部分', start: 0, length: first.length, level: 1 },
+        { title: '第二部分', start: first.length + 2, length: content.length - first.length - 2, level: 1 }
+      ]
+    }
+    const flat = flattenReaderToc(buildReaderToc(book, buildReaderSections(book)))
+    expect(flat.map(item => item.title)).toEqual(['第一部分', '第一部分', '第二部分'])
+    expect(flat[1].offset).toBe(content.indexOf('## 第一部分'))
   })
 })
 

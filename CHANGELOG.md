@@ -2,6 +2,22 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.4.3] - 2026-09-13
+
+### Fixed
+
+- Rebuild the reading table of contents as a 卷 / 章 / 节 / 子标题 tree instead of a flat list with `（续）` continuation entries. EPUB 3 navigation, EPUB 2 NCX, and MOBI table-of-contents depth are preserved; extra Markdown headings inside a chapter become sub-entries; books without a stored level infer it from 「第 X 卷 / 章 / 节」and `1.2.3`-style numbering.
+- Render Markdown headings correctly in the reading page. Levels H1-H6 map to distinct heading sizes, and `###`, `####`, `#####` appear as headings instead of literal hash text. Closing hashes, up to three leading spaces, spaceless `###标题` and Setext (`===` / `---`) headings are supported, while fenced code, shebangs, colour values and `#include` stay plain text.
+- Keep ordered-list numbering continuous across loose lists and section boundaries, honour explicit list starts, and render mixed ordered / unordered siblings as separate lists. Nested blockquotes, task lists, thematic breaks, table dividers and image syntax were corrected in the same pass; inline and in-app images render, and remote images degrade to links.
+- Accept Readwise and Kindle style CSV / TSV pasted exports: localized and case-insensitive header aliases, BOM, `sep=` declarations, comma, semicolon and tab delimiters, quoted multi-line fields, plus location and highlight-time columns.
+
+### Changed
+
+- Clicking a table-of-contents entry now switches to the owning section and scrolls to the heading itself, and the current heading stays highlighted while scrolling.
+- Importing pasted highlights closes the import dialog and returns to the bookshelf after the records are saved.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.4.3.md).
+
 ## [0.4.2] - 2026-09-13
 
 ### Improved

@@ -91,6 +91,12 @@ const CSV_EXPORT = `quote,note,chapter
 "农业革命是史上最大的骗局。","","农业革命"
 `
 
+const READWISE_CSV_EXPORT = `Highlight,Book Title,Book Author,Note,Location Type,Location,Highlighted at
+"虚构故事让智人得以大规模协作。
+虚构故事也依赖共同想象。","Sapiens","Yuval Noah Harari","与《自私的基因》对照","page","42","2024-01-01T00:00:00Z"
+"农业革命是史上最大的骗局。","Sapiens","Yuval Noah Harari","","page","43",""
+`
+
 describe('parseHighlightExport', () => {
   it('extracts book metadata from WeChat Reading exports', () => {
     expect(parseHighlightExportCandidates(WECHAT_EXPORT, 'wechat')).toEqual([
@@ -172,6 +178,51 @@ describe('parseHighlightExport', () => {
     expect(parsePlainTextHighlights('第一段\n仍然属于第一段\n\n第二段')).toEqual([
       { quote: '第一段\n仍然属于第一段' },
       { quote: '第二段' }
+    ])
+  })
+
+  it('parses standard Readwise and Kindle CSV headers with notes, locations, and timestamps', () => {
+    const candidates = parseHighlightExportCandidates(READWISE_CSV_EXPORT, 'csv')
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        title: 'Sapiens',
+        author: 'Yuval Noah Harari',
+        highlightCount: 2,
+        highlights: [
+          {
+            quote: '虚构故事让智人得以大规模协作。\n虚构故事也依赖共同想象。',
+            note: '与《自私的基因》对照',
+            location: 'page 42',
+            highlightedAt: Date.parse('2024-01-01T00:00:00Z')
+          },
+          {
+            quote: '农业革命是史上最大的骗局。',
+            location: 'page 43'
+          }
+        ]
+      })
+    ])
+  })
+
+  it('normalizes localized CSV headers and accepts semicolon and tab delimiters', () => {
+    const localized = `\uFEFF书名;书籍作者;章节标题;划线内容;想法;位置
+《人类简史》;尤瓦尔·赫拉利;第一章 认知革命;虚构故事;关键前提;12`
+    const tabSeparated = `Highlight\tBook Title\tNote
+农业革命\t人类简史\t值得重读`
+
+    expect(parseHighlightExportCandidates(localized, 'csv')[0]).toEqual(expect.objectContaining({
+      title: '《人类简史》',
+      author: '尤瓦尔·赫拉利',
+      highlights: [{
+        quote: '虚构故事',
+        note: '关键前提',
+        chapterTitle: '第一章 认知革命',
+        location: '12'
+      }]
+    }))
+    expect(parseCsvHighlights(tabSeparated)).toEqual([
+      { quote: '农业革命', note: '值得重读' }
     ])
   })
 

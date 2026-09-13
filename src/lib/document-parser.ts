@@ -4,10 +4,13 @@
 import { logger } from './logger'
 import { MAX_DOCUMENT_FILE_SIZE, MAX_DOCUMENT_PAGES, MAX_DOCUMENT_TEXT_LENGTH } from './dataLimits'
 import { extractLegacyWordText, isCompoundFile } from './legacyWord'
+import { inferHeadingLevels, scanMarkdownHeadings } from './markdownSyntax'
 
 export interface ParsedChapter {
   title: string
   content: string
+  /** 标题层级（1-6），用于在目录里呈现章节 / 标题 / 子标题的层次。 */
+  level?: number
 }
 
 export interface ParsedDocument {
@@ -199,6 +202,12 @@ function normalizeChapterTitle(input: string, fallback: string): string {
   return stripMarkup(input).replace(/[\r\n]+/g, ' ').trim() || fallback
 }
 
+/** 标题层级只接受 1-6 的整数，其余取值按「没有层级」处理，由阅读器自行推断。 */
+function normalizeChapterLevel(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return Math.min(6, Math.max(1, Math.round(value)))
+}
+
 function composeChapters(chapters: ParsedChapter[]): string {
   return chapters.map(chapter => `${chapter.title}\n\n${chapter.content}`).join('\n\n')
 }
@@ -207,7 +216,8 @@ function removeLeadingHeading(content: string, title: string): string {
   const lines = content.split('\n')
   const firstContentLine = lines.findIndex(line => line.trim().length > 0)
   if (firstContentLine < 0) return ''
-  const heading = lines[firstContentLine].replace(/^#{1,6}\s+/, '').trim()
+  // 兼容无空格（`####标题`）与结尾井号（`#### 标题 ####`）的 ATX 写法。
+  const heading = lines[firstContentLine].replace(/^ {0,3}#{1,6}\s*/, '').replace(/\s*#+$/, '').trim()
   if (heading !== title.trim()) return content
   lines.splice(firstContentLine, 1)
   return normalizeStructuredText(lines.join('\n'))
@@ -412,12 +422,17 @@ export function htmlToPlainText(html: string): string {
   })
 
   source = source.replace(/<\s*(ol|ul)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/gi, (_match, kind: string, body: string) => {
-    let index = 0
+    const ordered = kind.toLowerCase() === 'ol'
+    const startAttribute = ordered ? _match.match(/\bstart=["']?(\d+)["']?/i)?.[1] : undefined
+    const parsedStart = startAttribute === undefined ? 1 : Number.parseInt(startAttribute, 10)
+    let index = Number.isFinite(parsedStart) ? Math.max(0, parsedStart) : 1
     const items = [...body.matchAll(/<\s*li\b[^>]*>([\s\S]*?)<\s*\/\s*li\s*>/gi)]
       .map(item => {
-        index += 1
         const text = stripMarkup(item[1])
-        return text ? `${kind.toLowerCase() === 'ol' ? `${index}.` : '-'} ${text}` : ''
+        if (!text) return ''
+        const prefix = ordered ? `${index}.` : '-'
+        index += 1
+        return `${prefix} ${text}`
       })
       .filter(Boolean)
     return items.length > 0 ? `\n\n${items.join('\n')}\n\n` : '\n\n'
@@ -455,6 +470,14 @@ function firstMatch(source: string, pattern: RegExp): string | undefined {
   return value || undefined
 }
 
+/** 读取页面里第一个 h1-h6 的文本与层级，用作没有目录信息时的章节标题。 */
+function firstHtmlHeading(source: string): { title: string; level: number } | undefined {
+  const match = source.match(/<\s*h([1-6])\b[^>]*>([\s\S]*?)<\s*\/\s*h\1\s*>/i)
+  if (!match) return undefined
+  const title = stripMarkup(match[2])
+  return title ? { title, level: Number(match[1]) } : undefined
+}
+
 function extToMime(path: string): string {
   const ext = getFileExtension(path)
   return COVER_MIME_BY_EXT[ext] || 'image/jpeg'
@@ -490,32 +513,36 @@ async function blobUrlToDataUrl(url: string, fallbackMime: string): Promise<stri
   }
 }
 
+/**
+ * 按 Markdown 标题切分章节：支持 H1-H6、最多三个空格的缩进标题、结尾 # 与 Setext 标题，
+ * 并保留标题层级供目录呈现层级结构。每个标题的正文取到下一个标题之前。
+ */
 function splitMarkdownChapters(text: string): ParsedChapter[] {
-  const lines = normalizeStructuredText(text).split('\n')
+  const normalized = normalizeStructuredText(text)
+  const headings = scanMarkdownHeadings(normalized)
+
+  if (headings.length === 0) {
+    const body = normalized.trim()
+    return body ? [{ title: '正文', content: body, level: 1 }] : []
+  }
+
   const chapters: ParsedChapter[] = []
-  let title = ''
-  let buffer: string[] = []
-  let inFence = false
+  const preface = normalized.slice(0, headings[0].start).trim()
+  if (preface) chapters.push({ title: '正文', content: preface, level: 1 })
 
-  const flush = () => {
-    const body = buffer.join('\n').trim()
-    if (!title && !body) return
-    chapters.push({ title: title || `第 ${chapters.length + 1} 节`, content: body })
-    buffer = []
-  }
-
-  for (const line of lines) {
-    if (/^\s*```/.test(line)) inFence = !inFence
-    const heading = inFence ? null : line.match(/^#{1,3}\s+(.+?)\s*#*\s*$/)
-    if (heading) {
-      flush()
-      title = heading[1].replace(/[*_`~]/g, '').trim()
-      continue
-    }
-    buffer.push(line)
-  }
-  flush()
-  return chapters.filter(chapter => chapter.content.length > 0)
+  headings.forEach((heading, index) => {
+    const bodyEnd = index + 1 < headings.length ? headings[index + 1].start : normalized.length
+    const content = normalized.slice(heading.end, bodyEnd).trim()
+    const title = heading.title.replace(/[*_`~]/g, '').trim()
+    // 只有标题、没有正文的章节（部 / 卷分隔页、连续标题）同样要保留：
+    // 标题本身就是正文内容，丢弃它会让书里少一段文字。
+    chapters.push({
+      title: title || `第 ${chapters.length + 1} 节`,
+      content,
+      level: heading.level
+    })
+  })
+  return chapters
 }
 
 const TXT_CHAPTER_PATTERN = /^\s*(?:第\s*[0-9一二三四五六七八九十百千万]+\s*[章节回卷篇](?:\s+|[:：、.-])?.*|Chapter\s+(?:\d+|[IVXLC]+)\b.*)$/i
@@ -526,7 +553,11 @@ function splitPlainTextChapters(text: string): ParsedChapter[] {
   lines.forEach((line, index) => {
     if (TXT_CHAPTER_PATTERN.test(line) && line.trim().length <= 60) starts.push(index)
   })
-  if (starts.length < 2) return [{ title: '正文', content: text.trim() }]
+  if (starts.length < 2) {
+    const body = text.trim()
+    // 空白文件没有章节，交给上层按「内容为空」拦截，不要造出一个空章节。
+    return body ? [{ title: '正文', content: body }] : []
+  }
 
   const chapters: ParsedChapter[] = []
   const preface = lines.slice(0, starts[0]).join('\n').trim()
@@ -538,7 +569,20 @@ function splitPlainTextChapters(text: string): ParsedChapter[] {
     const content = block.slice(1).join('\n').trim()
     if (content) chapters.push({ title, content })
   })
-  return chapters
+
+  // 纯文本没有显式层级，只有标题文本里同时出现多种结构线索（卷 + 章 + 节）时才标注层级。
+  const levels = inferHeadingLevels(chapters.map(chapter => chapter.title))
+  return chapters.map((chapter, index) => (
+    levels[index] > 1 ? { ...chapter, level: levels[index] } : chapter
+  ))
+}
+
+/** 转换出来的正文带 Markdown 标题时按标题切分，否则退回纯文本章节识别。 */
+function splitExtractedChapters(content: string): ParsedChapter[] {
+  const markdownChapters = splitMarkdownChapters(content)
+  return scanMarkdownHeadings(content).length > 0
+    ? markdownChapters
+    : splitPlainTextChapters(content)
 }
 
 // ========================================
@@ -659,20 +703,27 @@ export async function parseEpub(file: File): Promise<{
   const spine = spineIds.map(id => manifest.get(id)).filter((item): item is NonNullable<typeof item> => Boolean(item))
   if (spine.length === 0) throw new Error('EPUB 内容为空：书脊（spine）没有可读取的章节')
 
-  const tocLabels = new Map<string, string>()
-  const registerTocLabel = (href: string, label: string) => {
+  const tocLabels = new Map<string, { label: string; depth: number }>()
+  const registerTocLabel = (href: string, label: string, depth: number) => {
     const clean = href.split('#')[0]
-    tocLabels.set(clean, label)
-    tocLabels.set(resolveZipPath(opfDir, clean), label)
+    const entry = { label, depth: Math.min(5, Math.max(0, depth)) }
+    tocLabels.set(clean, entry)
+    tocLabels.set(resolveZipPath(opfDir, clean), entry)
   }
   const navItem = [...manifest.values()].find(item => /nav/i.test(item.properties) || /nav/i.test(item.href))
   if (navItem) {
     const navFile = zip.file(resolveZipPath(opfDir, navItem.href))
     if (navFile) {
       const nav = await navFile.async('text')
-      for (const match of nav.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
-        const label = stripMarkup(match[2])
-        if (label) registerTocLabel(match[1], label)
+      let navDepth = 0
+      // EPUB3 导航目录的层级可能写在 ol 或 ul 里，两者都要计入深度。
+      for (const match of nav.matchAll(/<\s*(\/?)\s*(?:ol|ul)\b[^>]*>|<\s*a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\s*\/\s*a\s*>/gi)) {
+        if (match[1] !== undefined) {
+          navDepth = match[1] ? Math.max(0, navDepth - 1) : navDepth + 1
+          continue
+        }
+        const label = stripMarkup(match[3] || '')
+        if (label && match[2]) registerTocLabel(match[2], label, navDepth - 1)
       }
     }
   }
@@ -681,9 +732,18 @@ export async function parseEpub(file: File): Promise<{
     const ncxFile = zip.file(resolveZipPath(opfDir, ncxItem.href))
     if (ncxFile) {
       const ncx = await ncxFile.async('text')
-      for (const match of ncx.matchAll(/<navPoint\b[\s\S]*?<text>([\s\S]*?)<\/text>[\s\S]*?<content\b[^>]*src=["']([^"']+)["']/gi)) {
-        const label = stripMarkup(match[1])
-        if (label) registerTocLabel(match[2], label)
+      let ncxDepth = 0
+      let pendingLabel = ''
+      for (const match of ncx.matchAll(/<\s*(\/?)\s*navPoint\b[^>]*>|<\s*text\b[^>]*>([\s\S]*?)<\s*\/\s*text\s*>|<\s*content\b[^>]*src=["']([^"']+)["'][^>]*>/gi)) {
+        if (match[1] !== undefined) {
+          ncxDepth = match[1] ? Math.max(0, ncxDepth - 1) : ncxDepth + 1
+          continue
+        }
+        if (match[2] !== undefined) {
+          pendingLabel = stripMarkup(match[2])
+          continue
+        }
+        if (pendingLabel && match[3]) registerTocLabel(match[3], pendingLabel, ncxDepth - 1)
       }
     }
   }
@@ -696,10 +756,12 @@ export async function parseEpub(file: File): Promise<{
     const html = await entry.async('text')
     let content = htmlToPlainText(html)
     if (!content) continue
-    const heading = firstMatch(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)
-    const chapterTitle = normalizeChapterTitle(tocLabels.get(item.href) || tocLabels.get(resolveZipPath(opfDir, item.href)) || heading || '', `第 ${chapters.length + 1} 节`)
+    const tocEntry = tocLabels.get(item.href) || tocLabels.get(resolveZipPath(opfDir, item.href))
+    const heading = firstHtmlHeading(html)
+    const chapterTitle = normalizeChapterTitle(tocEntry?.label || heading?.title || '', `第 ${chapters.length + 1} 节`)
+    const level = Math.min(6, tocEntry ? tocEntry.depth + 1 : (heading?.level ?? 1))
     content = removeLeadingHeading(content, chapterTitle)
-    if (content) chapters.push({ title: chapterTitle, content })
+    if (content) chapters.push({ title: chapterTitle, content, level })
   }
   if (chapters.length === 0) throw new Error('EPUB 内容为空或无法提取文本')
 
@@ -757,13 +819,17 @@ export async function parseMobi(file: File): Promise<{
   try {
     const metadata = book.getMetadata()
     const chapters: ParsedChapter[] = []
-    const tocLabels = new Map<string, string>()
+    const tocLabels = new Map<string, { label: string; depth: number }>()
     try {
       const toc = book.getToc() as Array<{ label?: string; href?: string; children?: unknown[] }>
-      const walk = (items: Array<{ label?: string; href?: string; children?: unknown[] }>) => {
+      const walk = (items: Array<{ label?: string; href?: string; children?: unknown[] }>, depth = 0) => {
         for (const item of items || []) {
-          if (item?.href && item?.label) tocLabels.set(item.href.split('#')[0], item.label)
-          if (item?.children) walk(item.children as Array<{ label?: string; href?: string; children?: unknown[] }>)
+          if (item?.href && item?.label) {
+            tocLabels.set(item.href.split('#')[0], { label: item.label, depth: Math.min(5, depth) })
+          }
+          if (item?.children) {
+            walk(item.children as Array<{ label?: string; href?: string; children?: unknown[] }>, depth + 1)
+          }
         }
       }
       walk(toc)
@@ -780,13 +846,15 @@ export async function parseMobi(file: File): Promise<{
       }
       let content = html ? htmlToPlainText(html) : (book as { getSpine(): Array<{ text?: string }> }).getSpine().find(entry => entry === item)?.text || ''
       if (!content) continue
-      const heading = html ? firstMatch(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i) : undefined
-      const chapterTitle = normalizeChapterTitle((item.id && tocLabels.get(item.id)) || heading || '', `第 ${chapters.length + 1} 节`)
+      const heading = html ? firstHtmlHeading(html) : undefined
+      const tocEntry = item.id ? tocLabels.get(item.id) : undefined
+      const chapterTitle = normalizeChapterTitle(tocEntry?.label || heading?.title || '', `第 ${chapters.length + 1} 节`)
       content = removeLeadingHeading(normalizeStructuredText(content), chapterTitle)
       if (!content) continue
       chapters.push({
         title: chapterTitle,
-        content
+        content,
+        level: Math.min(6, tocEntry ? tocEntry.depth + 1 : (heading?.level ?? 1))
       })
     }
     if (chapters.length === 0) throw new Error('MOBI 内容为空或无法提取文本')
@@ -898,7 +966,8 @@ export async function parseFb2(file: File): Promise<{
     const sectionTitle = firstMatch(sectionXml, /<title[^>]*>([\s\S]*?)<\/title>/i)
     const chapterTitle = normalizeChapterTitle(sectionTitle || '', `第 ${index + 1} 节`)
     const content = fb2SectionToStructuredText(sectionXml.replace(/<title[^>]*>[\s\S]*?<\/title>/i, ' '))
-    if (content) chapters.push({ title: chapterTitle, content })
+    // 嵌套小节标题会以 `## 小节` 留在正文里，由阅读器补进目录成为子标题。
+    if (content) chapters.push({ title: chapterTitle, content, level: 1 })
   }
   if (sections.length > 0) sections.forEach(collect)
   else collect(body, 0)
@@ -1080,8 +1149,7 @@ export function rtfToPlainText(rtf: string): string {
 async function parseRtfFile(file: File): Promise<{ content: string; chapters?: ParsedChapter[] }> {
   const rtf = await file.text()
   const content = rtfToPlainText(rtf)
-  const markdownChapters = splitMarkdownChapters(content)
-  return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
+  return { content, chapters: splitExtractedChapters(content) }
 }
 
 // ========================================
@@ -1186,26 +1254,30 @@ async function parsePDF(file: File): Promise<{ content: string; title?: string; 
     }
 
     const outline = await pdf.getOutline().catch(() => null)
-    const outlineTitles: string[] = []
-    const walkOutline = (items: unknown) => {
+    const outlineEntries: Array<{ title: string; level: number }> = []
+    const walkOutline = (items: unknown, depth = 0) => {
       if (!Array.isArray(items)) return
       items.forEach(item => {
         const value = item as { title?: unknown; items?: unknown }
-        if (typeof value.title === 'string' && value.title.trim()) outlineTitles.push(value.title.trim())
-        walkOutline(value.items)
+        if (typeof value.title === 'string' && value.title.trim()) {
+          outlineEntries.push({ title: value.title.trim(), level: Math.min(6, depth + 1) })
+        }
+        walkOutline(value.items, depth + 1)
       })
     }
     walkOutline(outline)
     const chapters: ParsedChapter[] = []
     let cursor = 0
-    outlineTitles.forEach((heading, index) => {
-      const start = content.indexOf(heading, cursor)
+    outlineEntries.forEach((heading, index) => {
+      const start = content.indexOf(heading.title, cursor)
       if (start < 0) return
       if (start > cursor && !chapters.length) chapters.push({ title: '序', content: content.slice(cursor, start).trim() })
-      const nextHeading = outlineTitles.slice(index + 1).map(item => content.indexOf(item, start + heading.length)).find(value => value >= 0)
+      const nextHeading = outlineEntries.slice(index + 1)
+        .map(item => content.indexOf(item.title, start + heading.title.length))
+        .find(value => value >= 0)
       const end = nextHeading ?? content.length
-      const body = content.slice(start + heading.length, end).trim()
-      if (body) chapters.push({ title: heading, content: body })
+      const body = content.slice(start + heading.title.length, end).trim()
+      if (body) chapters.push({ title: heading.title, content: body, level: heading.level })
       cursor = end
     })
     if (chapters.length === 0) chapters.push({ title: title || '正文', content })
@@ -1238,8 +1310,7 @@ async function parseWord(file: File): Promise<{ content: string; chapters?: Pars
       result = await mammoth.convertToHtml({ buffer: Buffer.from(arrayBuffer) }, options)
     }
     const content = htmlToPlainText(result.value)
-    const markdownChapters = splitMarkdownChapters(content)
-    return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
+    return { content, chapters: splitExtractedChapters(content) }
   } catch (error) {
     logger.error('Word 解析错误:', error)
     throw new Error('Word 文档解析失败，仅支持 .docx 格式')
@@ -1258,13 +1329,11 @@ async function parseLegacyWordFile(file: File): Promise<{ content: string; chapt
   const head = text.slice(0, 4096).trimStart().toLowerCase()
   if (head.startsWith('{\\rtf')) {
     const content = rtfToPlainText(text)
-    const markdownChapters = splitMarkdownChapters(content)
-    return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
+    return { content, chapters: splitExtractedChapters(content) }
   }
   if (head.startsWith('<!doctype html') || head.startsWith('<html')) {
     const content = htmlToPlainText(text)
-    const markdownChapters = splitMarkdownChapters(content)
-    return { content, chapters: markdownChapters.length > 1 || /^#{1,3}\s/m.test(content) ? markdownChapters : splitPlainTextChapters(content) }
+    return { content, chapters: splitExtractedChapters(content) }
   }
 
   throw new Error('无法识别这个 .doc 文件的内容结构。请用 Word / WPS 打开后另存为 .docx，或导出为 PDF 后重试。')
@@ -1350,11 +1419,21 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
   }
 
   const chapters = parsed.chapters
-    ?.map((chapter, index) => ({
-      title: normalizeChapterTitle(chapter.title, `第 ${index + 1} 节`),
-      content: cleanExtractedText(chapter.content)
-    }))
-    .filter(chapter => chapter.content.length > 0)
+    ?.map((chapter, index) => {
+      const level = normalizeChapterLevel(chapter.level)
+      return {
+        title: normalizeChapterTitle(chapter.title, `第 ${index + 1} 节`),
+        content: cleanExtractedText(chapter.content),
+        ...(level ? { level } : {})
+      }
+    })
+    // 没有正文的章节不能一概丢掉：Markdown / HTML 里的标题本身就带着正文，
+    // 删掉会让书里少一段文字。只丢弃连标题都没有的占位空章节。
+    .filter((chapter, index, list) => (
+      chapter.content.length > 0 ||
+      chapter.title !== `第 ${index + 1} 节` ||
+      (chapter.level ?? 1) < (list[index + 1]?.level ?? 0)
+    ))
   // DocumentUpload 的章节定位按 `标题\n\n正文` 建索引；这里统一由章节反向合成全文，
   // 防止不同格式返回的 content 与 chapters 偏移不一致，造成跳章、划线和引用错位。
   const content = chapters && chapters.length > 0

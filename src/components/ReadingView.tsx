@@ -2261,6 +2261,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
               setBook(updatedBook)
               setNoteRecords(updatedBook.noteRecords || [])
             }
+            onBack()
           }}
           onClose={() => setShowHighlightImport(false)}
         />

@@ -29,6 +29,10 @@ const WECHAT_NOTES = `《人类简史》
 虚构故事让智人得以大规模协作。
 `
 
+const READWISE_CSV = `Highlight,Book Title,Book Author,Note
+"虚构故事让智人得以大规模协作。","人类简史","尤瓦尔·赫拉利","与《自私的基因》对照"
+`
+
 const existingBook = {
   id: 'existing-book',
   name: '《人类简史》',
@@ -161,6 +165,37 @@ describe('HighlightImportDialog book association', () => {
       [expect.objectContaining({ source: 'import', quote: '虚构故事让智人得以大规模协作。' })]
     ))
     expect(mockUpdateBook).not.toHaveBeenCalled()
+  })
+
+  it('imports a Readwise CSV and closes the dialog after saving', async () => {
+    const created = { ...existingBook, id: 'csv-book', name: '人类简史', status: 'unread' as const }
+    const onClose = jest.fn()
+    const onImported = jest.fn()
+    mockAddBook.mockReturnValue(created)
+    mockGetBook.mockImplementation(id => id === created.id ? created : undefined)
+    render(<HighlightImportDialog lang="zh" onClose={onClose} onImported={onImported} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /导入文本/ }))
+    fireEvent.change(screen.getByLabelText('笔记来源'), { target: { value: 'csv' } })
+    fireEvent.change(screen.getByLabelText('粘贴笔记内容'), { target: { value: READWISE_CSV } })
+    fireEvent.click(screen.getByRole('button', { name: '解析内容' }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('将新建《人类简史》')
+    fireEvent.click(screen.getByRole('button', { name: '导入 1 条' }))
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(onImported).toHaveBeenCalledTimes(1)
+    expect(onImported).toHaveBeenCalledWith(created.id, 1)
+    expect(mockAddBook).toHaveBeenCalledWith(
+      '人类简史',
+      '尤瓦尔·赫拉利',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      [expect.objectContaining({ quote: '虚构故事让智人得以大规模协作。', content: '与《自私的基因》对照' })]
+    )
   })
 
   it('uses the reading-page target before metadata matching', () => {
