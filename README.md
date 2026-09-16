@@ -15,7 +15,7 @@
 
 费曼读书助手是基于费曼学习法的 AI 阅读工作台。围绕一本书建立六阶段阅读框架，用自己的话讲解，再通过评分和三个角色的追问发现理解漏洞。笔记、金句和费曼小助手把一次练习连接到后续阅读与复习。
 
-产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.4.3](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.3)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。每次上线的源码都在 GitHub 上留有 `deploy-` 快照标签，例如 [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0)。
+产品地址：**[https://reader.deline.top/](https://reader.deline.top/)**。当前版本：[v0.4.4](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.4)；[更新记录](CHANGELOG.md) · [版本发布与恢复](docs/operations/releases-and-rollback.md)。每次上线的源码都在 GitHub 上留有 `deploy-` 快照标签，例如 [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0)。
 
 ![当前桌面书架，展示五本书、学习状态、得分与复习建议](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
@@ -62,7 +62,7 @@
 
 <p><img src="docs/product/screenshots/v0.2.1/assistant-desktop.png" alt="费曼小助手桌面会话，围绕追风筝的人讨论愧疚与赎罪" width="672"></p>
 
-小助手结合当前账号的相关学习资料继续讨论。你可以切换会话、引用书籍或上传参考资料；明确提出“记住”等请求时，可以保存学习偏好，并在账号中心管理记忆开关、删除或导出记忆。
+小助手按本轮明确引用的对象继续讨论：提到或选择书籍时会查找相关的该书学习记录，使用附件提问时会读取当前会话附件；只有同时引用多类对象时才综合使用。你可以切换会话、引用书籍或上传参考资料；明确提出“记住”等请求时，可以保存学习偏好，并在账号中心管理记忆开关、删除或导出记忆。
 
 <details>
 <summary>手机端：书架、费曼小助手与账号中心</summary>
@@ -128,7 +128,7 @@ flowchart TD
 | --- | --- |
 | 阶段分析 | 书名、作者、阶段提示及可用的文档参考片段。文档按长度选取上下文，不保证每次发送整本原文。 |
 | 教学评估与问答 | 用户讲解、选择的角色、当前轮次的问题与回答。模型提供评分建议，程序校验有效分数、轮次关系和完成条件。 |
-| 费曼小助手 | 当前账号的相关书籍、学习记录、金句、历史会话及启用的偏好记忆；没有明确书籍匹配时，可使用近期书籍摘要。上下文有长度限制。 |
+| 费曼小助手 | 仅以本轮明确引用的对象为回答依据：引用书籍时读取与当前问题相关的该书学习记录；使用附件提问或未指定书籍时读取当前会话附件；只有同时引用多类对象时才综合使用。历史会话用于保持连续性，长期偏好用于个性化，均不扩展本轮引用范围。上下文有长度限制。 |
 | 参考附件与记忆 | 小助手最多附加 5 份资料，单份最多 12,000 字符、合计最多 30,000 字符。长期偏好需明确请求并保存成功，用户可管理与关闭。 |
 
 小助手不具备联网搜索、代码执行或自主操作工具。AI 分析、评分和建议是学习辅助，不保证事实正确；重要结论请结合原书核验。你的解释与判断仍是学习的主体。

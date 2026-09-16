@@ -6,7 +6,7 @@ export interface AssistantOpenRequest {
   prompt?: string
   /** A selected passage or record that should remain attached to this draft. */
   source?: AssistantSource
-  /** Associates the continuing session even when the question omits the title. */
+  /** Explicitly references this book for the current turn when no selected source is attached. */
   bookId?: string
 }
 

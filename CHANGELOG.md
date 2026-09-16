@@ -2,6 +2,16 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.4.4] - 2026-09-16
+
+### Fixed
+
+- Scope assistant replies to the objects explicitly referenced in the current turn. Mentioning or selecting a book uses that book's relevant learning records; asking about an attachment or not pointing to a book uses the current session's attachments; the assistant combines book and attachment material only when both are referenced.
+- Stop automatically adding the active reader book, the session's last book, recent book summaries, global quotes, or unrelated historical-session snippets to assistant context.
+- Keep review reminders and earlier replies from becoming prerequisites for a direct answer. If the referenced material is insufficient, the assistant states the gap instead of padding the reply with unrequested review or attachment content.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.4.4.md).
+
 ## [0.4.3] - 2026-09-13
 
 ### Fixed

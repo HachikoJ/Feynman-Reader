@@ -109,20 +109,36 @@ describe('assistant account context sources', () => {
     ]))
   })
 
-  it('falls back to recent book sources when no learning record matches', async () => {
+  it('does not use recent books when no book is explicitly referenced', async () => {
     const response = await POST(request({ query: 'unmatched-zebra' }))
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload.context).toContain('书籍概览：测试书籍')
-    expect(payload.sources).toEqual([
-      expect.objectContaining({
-        kind: 'book',
-        bookId: 'book-1',
-        label: '最近学习',
-        title: '测试书籍'
-      })
-    ])
+    expect(payload).toEqual({ context: '', sources: [] })
+  })
+
+  it('returns no context for an unknown explicit book', async () => {
+    const response = await POST(request({ query: '创伤记忆', bookId: 'missing-book' }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ context: '', sources: [] })
+  })
+
+  it('does not mix global quotes or prior sessions into a referenced book', async () => {
+    exportUserData.mockResolvedValueOnce({
+      settings: { quotes: [{ text: '不应发送的金句', author: '测试' }] },
+      assistantSessions: [{
+        title: '旧会话',
+        data: { messages: [{ content: '不应发送的历史会话' }] }
+      }]
+    })
+
+    const response = await POST(request({ query: '不应发送', bookId: 'book-1' }))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.context).not.toContain('不应发送的金句')
+    expect(payload.context).not.toContain('不应发送的历史会话')
   })
 
   it.each([

@@ -14,7 +14,7 @@ export interface PrivacyPolicyContent {
 export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
   zh: {
     title: '隐私政策',
-    lastUpdated: '最后更新：2026年9月9日',
+    lastUpdated: '最后更新：2026年9月16日',
     sections: [
       {
         title: '1. 信息处理范围',
@@ -57,7 +57,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
 
 正式服务中的密钥只允许在登录后配置，并由服务端加密存储。请勿在共享或不受信任的设备上配置密钥。
 
-使用 AI 功能时，可能发送的内容包括书名、作者、简介、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。登录后上传文档的解析原文作为阅读资料按账号保存在服务端；调用 AI 时，较短文档可能发送完整原文，较长文档会从完整原文中选取与当前任务相关且覆盖不同位置的片段。费曼小助手还可使用当前账号的相关书籍、学习记录、金句、历史会话、主动上传的参考附件及启用的偏好记忆；没有明确书籍匹配时，可使用近期书籍摘要，上下文有长度限制。请勿在这些内容中填写不希望提供给所选 AI 服务的个人敏感信息。
+使用 AI 功能时，可能发送的内容包括书名、作者、简介、阶段学习输入、教学模拟内容、角色问答及用于生成推荐的相关学习内容。登录后上传文档的解析原文作为阅读资料按账号保存在服务端；调用 AI 时，较短文档可能发送完整原文，较长文档会从完整原文中选取与当前任务相关且覆盖不同位置的片段。费曼小助手以本轮明确引用对象为回答依据：提到或选择书籍时，可读取与当前问题相关的该书学习记录；使用附件提问或未另行指定书籍时，可读取当前会话中的附件内容；只有同时引用多类对象时才会综合使用。历史会话仅用于维持对话连续性，长期偏好仅用于个性化，二者不会替代或扩展本轮引用对象；上下文有长度限制。请勿在这些内容中填写不希望提供给所选 AI 服务的个人敏感信息。
 
 **Token 消耗与费用说明**：当前正式服务通过 TokenDance 使用 **DeepSeek V4 Flash**。每次 AI 调用成功后，本应用会按当前账号记录接口实际返回的输入、输出及合计 Token，您可在“账号中心 > 数据管理”查看并随备份导出。API 返回 Token 数，但不返回实际扣费金额。实际费用取决于调用次数、输入与输出长度、附件内容、模型价格及所选线路，请以 TokenDance 实时价目和账单为准。限时优惠不代表固定价格承诺。
 
@@ -131,7 +131,7 @@ export const privacyPolicyContent: Record<Language, PrivacyPolicyContent> = {
   },
   en: {
     title: 'Privacy Policy',
-    lastUpdated: 'Last Updated: September 9, 2026',
+    lastUpdated: 'Last Updated: September 16, 2026',
     sections: [
       {
         title: '1. Information Processing',
@@ -175,7 +175,7 @@ Local history that has not been migrated and has no backup cannot be recovered f
 
 Keys in the production service can only be configured after sign-in and are encrypted on the server. Do not configure keys on shared or untrusted devices.
 
-AI features may send the book title, author, description, learning-phase input, teaching-practice content, persona Q&A, and related learning content used to generate recommendations. After sign-in, parsed document text is saved as reading material on the server under your account. Short documents may be sent in full for an AI request; for longer documents, excerpts relevant to the task and covering different source positions are selected. Feynman Assistant can also use related books, learning records, quotes, prior sessions, explicitly uploaded reference attachments, and enabled preferences from the current account. Recent book summaries may be used when no specific book matches, and context length is bounded. Do not include personal sensitive information that you do not want to provide to the selected AI service.
+AI features may send the book title, author, description, learning-phase input, teaching-practice content, persona Q&A, and related learning content used to generate recommendations. After sign-in, parsed document text is saved as reading material on the server under your account. Short documents may be sent in full for an AI request; for longer documents, excerpts relevant to the task and covering different source positions are selected. Feynman Assistant answers from the objects explicitly referenced in the current turn: when you mention or select a book, it may read relevant learning records for that book; when you ask with an attachment or do not point to a book, it may read attachments in the current session; it combines multiple kinds of objects only when the current turn references them together. Prior conversation is used only to maintain continuity, and saved preferences only to personalize replies; neither replaces or expands the current reference scope. Context length is bounded. Do not include personal sensitive information that you do not want to provide to the selected AI service.
 
 **Token usage and cost**: The current production service uses **DeepSeek V4 Flash** through TokenDance. After each successful AI call, the app records the input, output, and total token counts returned by the API for the current account. You can view them under Account Center > Data Management and include them in backups. The API returns token counts, not the billed amount. Actual costs depend on request count, input and output length, attachment content, model pricing, and route. Consult TokenDance's live pricing and billing records; limited-time offers are not permanent pricing promises.
 

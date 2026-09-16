@@ -3,11 +3,15 @@ import type { AssistantAttachment } from '@/lib/assistantSessions'
 import {
   buildAssistantAttachmentContext,
   buildAssistantBookContext,
+  buildAssistantReferenceScopeInstruction,
+  buildAssistantReferenceScopeHint,
   deriveAssistantSessionTitle,
   filterAssistantMentionBooks,
   findAssistantMentionedBook,
   getAssistantMentionQuery,
   clampAssistantPosition,
+  hasAssistantAttachmentIntent,
+  resolveAssistantContextAttachments,
   resolveAssistantContextBook,
   shouldDeriveAssistantSessionTitle
 } from '../AssistantWorkspace'
@@ -34,6 +38,22 @@ function makeBook(id: string, name: string): Book {
 
 describe('Feynman Assistant context helpers', () => {
   const books = [makeBook('kite', '追风筝的人'), makeBook('short', '活着')]
+  const attachments: AssistantAttachment[] = [
+    {
+      id: 'attachment-1',
+      fileName: 'research.md',
+      fileType: 'md',
+      content: '研究资料',
+      createdAt: 1
+    },
+    {
+      id: 'attachment-2',
+      fileName: 'notes.pdf',
+      fileType: 'application/pdf',
+      content: '阅读笔记',
+      createdAt: 2
+    }
+  ]
 
   it('detects both @ mentions and directly typed book names', () => {
     expect(findAssistantMentionedBook('请结合 @追风筝的人 解释背叛', books)?.id).toBe('kite')
@@ -41,11 +61,85 @@ describe('Feynman Assistant context helpers', () => {
     expect(findAssistantMentionedBook('今天聊点别的', books)).toBeUndefined()
   })
 
-  it('keeps active and session-associated book context when the question omits a title', () => {
-    expect(resolveAssistantContextBook('这段话和我之前的笔记有什么关系？', books, books[1])?.id).toBe('short')
-    expect(resolveAssistantContextBook('回顾一下我上次哪里没讲清楚', books, null, 'kite')?.id).toBe('kite')
-    expect(resolveAssistantContextBook('继续解释', books, books[1], 'short', 'kite')?.id).toBe('kite')
-    expect(resolveAssistantContextBook('请解释追风筝的人的救赎', books, books[1], 'short', 'short')?.id).toBe('kite')
+  it('uses a book only when this message names it or explicitly requests its id', () => {
+    expect(resolveAssistantContextBook('这段话和我之前的笔记有什么关系？', books)).toBeUndefined()
+    expect(resolveAssistantContextBook('继续解释', books, 'short')?.id).toBe('short')
+    expect(resolveAssistantContextBook('请解释追风筝的人的救赎', books, 'short')?.id).toBe('kite')
+    expect(resolveAssistantContextBook('继续解释', books, 'missing')).toBeUndefined()
+  })
+
+  it('scopes attachments to the object referenced by the current message', () => {
+    expect(resolveAssistantContextAttachments('请解释追风筝的人', attachments, true)).toEqual([])
+    expect(resolveAssistantContextAttachments('请解释这段选中内容', attachments, true)).toEqual([])
+    expect(resolveAssistantContextAttachments('请直接回答这个问题', attachments, false)).toEqual(attachments)
+    expect(resolveAssistantContextAttachments('请解释 research.md', attachments, true).map(item => item.id))
+      .toEqual(['attachment-1'])
+    expect(resolveAssistantContextAttachments('请根据 PDF 附件回答', attachments, false).map(item => item.id))
+      .toEqual(['attachment-2'])
+    expect(resolveAssistantContextAttachments('请结合追风筝的人和 research.md', attachments, true).map(item => item.id))
+      .toEqual(['attachment-1'])
+    expect(resolveAssistantContextAttachments('请分析 report.pdf', attachments, false)).toEqual([])
+    expect(resolveAssistantContextAttachments('请分析 research.txt', attachments, false)).toEqual([])
+    expect(resolveAssistantContextAttachments('请根据 DOCX 附件回答', attachments, false)).toEqual([])
+    expect(hasAssistantAttachmentIntent('普通问题')).toBe(false)
+    expect(hasAssistantAttachmentIntent('请分析 report.pdf')).toBe(true)
+  })
+
+  it('states the current reference scope without forcing review or extra objects', () => {
+    const bookOnly = buildAssistantReferenceScopeInstruction(books[0], [])
+    const attachmentOnly = buildAssistantReferenceScopeInstruction(undefined, [attachments[0]])
+    const combined = buildAssistantReferenceScopeInstruction(books[0], [attachments[0]])
+    const selectedOnly = buildAssistantReferenceScopeInstruction(undefined, [], {
+      id: 'original:kite:1',
+      kind: 'original',
+      bookId: 'kite',
+      offset: 1,
+      label: '原文',
+      title: '追风筝的人 · 第一章',
+      excerpt: '选中内容'
+    })
+
+    expect(bookOnly).toContain('本轮只引用书籍《追风筝的人》')
+    expect(bookOnly).toContain('不得要求用户先复习')
+    expect(bookOnly).not.toContain('1 个附件')
+    expect(attachmentOnly).toContain('本轮只引用1 个附件')
+    expect(attachmentOnly).not.toContain('书籍《')
+    expect(combined).toContain('书籍《追风筝的人》')
+    expect(combined).toContain('1 个附件')
+    expect(selectedOnly).toContain('用户选中内容')
+    expect(selectedOnly).not.toContain('书籍《')
+    expect(buildAssistantReferenceScopeInstruction(undefined, []))
+      .toContain('本轮没有明确引用书籍或附件')
+    expect(buildAssistantReferenceScopeInstruction(undefined, [], undefined, true))
+      .toContain('当前会话没有匹配的附件')
+    expect(buildAssistantReferenceScopeInstruction(books[0], [], undefined, true))
+      .toContain('用户另外引用的附件当前会话中没有匹配项')
+  })
+
+  it('shows the same reference scope that will be sent to the model', () => {
+    const selectedSource = {
+      id: 'original:kite:1',
+      kind: 'original' as const,
+      bookId: 'kite',
+      offset: 1,
+      label: '原文',
+      title: '追风筝的人 · 第一章',
+      excerpt: '选中内容'
+    }
+
+    expect(buildAssistantReferenceScopeHint(undefined, [], selectedSource, 'zh'))
+      .toBe('本次将只使用用户选中内容“追风筝的人 · 第一章”作答')
+    expect(buildAssistantReferenceScopeHint(books[0], [], null, 'zh'))
+      .toBe('本次将只使用书籍《追风筝的人》作答')
+    expect(buildAssistantReferenceScopeHint(undefined, [attachments[0]], null, 'zh'))
+      .toBe('本次将只使用1 个附件作答')
+    expect(buildAssistantReferenceScopeHint(books[0], [attachments[0]], selectedSource, 'zh'))
+      .toBe('本次将只使用书籍《追风筝的人》、用户选中内容“追风筝的人 · 第一章”、1 个附件作答')
+    expect(buildAssistantReferenceScopeHint(undefined, [], null, 'en')).toBeNull()
+    expect(buildAssistantReferenceScopeHint(undefined, [], null, 'zh', true))
+      .toBe('本次引用了附件，但当前会话没有匹配的附件')
+    expect(buildAssistantReferenceScopeHint(books[0], [], null, 'en', true))
+      .toBe('This reply will use only material related to 追风筝的人; the referenced attachment is unavailable')
   })
 
   it('returns the active @ query at the cursor', () => {

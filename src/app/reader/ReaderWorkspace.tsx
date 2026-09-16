@@ -630,7 +630,7 @@ function ReaderWorkspaceContent() {
         <div className="min-h-screen">
           <AppDialogHost lang={lang} />
           <AITaskStatus lang={lang} />
-          {assistantReady && <AssistantWorkspace lang={lang} settings={settings} books={assistantBooks} activeBook={selectedBook} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} onOpenSource={handleOpenAssistantSource} />}
+          {assistantReady && <AssistantWorkspace lang={lang} settings={settings} books={assistantBooks} onOpenSettings={handleOpenApiSettings} onQuoteAdded={handleSettingsChange} onOpenSource={handleOpenAssistantSource} />}
           {storageWriteError && (
             <div role="alert" className={`sticky top-0 z-50 border-b px-4 py-3 text-sm ${storageWriteError.code === 'local' ? 'border-amber-500/50 bg-amber-950 text-amber-100' : 'border-red-500/50 bg-red-950 text-red-100'}`}>
               <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">

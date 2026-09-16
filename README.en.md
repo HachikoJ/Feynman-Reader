@@ -15,7 +15,7 @@
 
 Feynman Reader is an AI reading workspace built around the Feynman technique. Build a six-phase understanding of a book, teach it in your own words, and use feedback and questions from three roles to identify gaps. Notes, quotes, and the Feynman Assistant connect each practice session to future reading and review.
 
-Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.4.3](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.3). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md). Every deployment keeps its source on GitHub under a `deploy-` snapshot tag, for example [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0).
+Product website: **[https://reader.deline.top/](https://reader.deline.top/)**. Current release: [v0.4.4](https://github.com/HachikoJ/Feynman-Reader/releases/tag/v0.4.4). [Changelog](CHANGELOG.md) · [Version and recovery guide](docs/operations/releases-and-rollback.md). Every deployment keeps its source on GitHub under a `deploy-` snapshot tag, for example [deploy-v0.4.0-a3b2ab0](https://github.com/HachikoJ/Feynman-Reader/releases/tag/deploy-v0.4.0-a3b2ab0).
 
 ![Current desktop bookshelf with five books, learning status, scores, and a review suggestion](docs/product/screenshots/v0.2.1/bookshelf-desktop.png)
 
@@ -62,7 +62,7 @@ Source reading, phase learning, teaching practice, notes, and recommendations ar
 
 <p><img src="docs/product/screenshots/v0.2.1/assistant-desktop.png" alt="Desktop Feynman Assistant discussing guilt and redemption in The Kite Runner" width="672"></p>
 
-Continue a discussion using relevant material from your account. Switch sessions, reference a book, or attach source material. Explicit Chinese requests such as “记住” can save learning preferences; Account Center provides memory controls and export. Automatic extraction of equivalent English requests is not currently implemented.
+The assistant answers from the objects explicitly referenced in the current turn: mentioning or selecting a book looks up relevant learning records for that book, while asking with an attachment reads attachments in the current session; multiple kinds of objects are combined only when they are referenced together. Switch sessions, reference a book, or attach source material. Explicit Chinese requests such as “记住” can save learning preferences; Account Center provides memory controls and export. Automatic extraction of equivalent English requests is not currently implemented.
 
 <details>
 <summary>Mobile bookshelf, assistant, and Account Center</summary>
@@ -128,7 +128,7 @@ Production uses `deepseek-v4-flash-0731` through TokenDance. The browser calls `
 | --- | --- |
 | Phase analysis | Book metadata, phase instructions, and available document excerpts. Context is selected within length limits; the full source is not necessarily sent. |
 | Teaching and Q&A | The explanation, selected roles, and the current round's questions and answers. The model proposes scores; application rules validate them and enforce round matching and completion. |
-| Assistant | Relevant books, learning records, quotes, prior sessions, and enabled preferences from the current account. Recent book summaries can be used when no specific book matches. Context length is bounded. |
+| Assistant | Answers only from objects explicitly referenced in the current turn: a referenced book uses relevant learning records for that book; an attachment question or no book reference uses current-session attachments; multiple kinds of objects are combined only when referenced together. Prior conversation maintains continuity and saved preferences personalize replies, but neither expands the reference scope. Context length is bounded. |
 | Attachments and memory | Up to five assistant attachments, at most 12,000 characters each and 30,000 total. Preferences require an explicit request and a successful save; users can manage or disable them. |
 
 The assistant has no web search, code execution, or autonomous action tools. Analysis and feedback are learning aids, not guarantees of factual correctness. Check important claims against the original book and your own judgment.
