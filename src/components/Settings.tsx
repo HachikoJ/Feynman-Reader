@@ -1207,7 +1207,7 @@ export default function Settings({
             disabled={savingQuickSetting || saving || updatingAiPrivacy}
             className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--bg-secondary)]"
             aria-label={lang === 'zh' ? 'Switch to English' : '切换至中文'}
-            title={lang === 'zh' ? 'Switch to English' : '切换至中文'}
+            data-tip={lang === 'zh' ? 'Switch to English' : '切换至中文'}
           >
             <Languages size={18} aria-hidden="true" />
           </button>
@@ -1219,7 +1219,7 @@ export default function Settings({
             aria-label={settings.theme === 'dark'
               ? (lang === 'zh' ? '切换至浅色主题' : 'Switch to light theme')
               : (lang === 'zh' ? '切换至深色主题' : 'Switch to dark theme')}
-            title={settings.theme === 'dark'
+            data-tip={settings.theme === 'dark'
               ? (lang === 'zh' ? '切换至浅色主题' : 'Switch to light theme')
               : (lang === 'zh' ? '切换至深色主题' : 'Switch to dark theme')}
           >
@@ -1781,7 +1781,7 @@ export default function Settings({
                               onClick={() => startEdit(idx)}
                               className="text-[var(--accent)] hover:bg-[var(--accent)]/10 p-1.5 rounded"
                               aria-label={lang === 'zh' ? '编辑金句' : 'Edit quote'}
-                              title={lang === 'zh' ? '编辑' : 'Edit'}
+                              data-tip={lang === 'zh' ? '编辑' : 'Edit'}
                             >
                               <Pencil size={16} aria-hidden="true" />
                             </button>
@@ -1789,7 +1789,7 @@ export default function Settings({
                               onClick={() => removeQuote(idx)}
                               className="text-red-400 hover:bg-red-400/10 p-1.5 rounded"
                               aria-label={lang === 'zh' ? '删除金句' : 'Delete quote'}
-                              title={lang === 'zh' ? '删除' : 'Delete'}
+                              data-tip={lang === 'zh' ? '删除' : 'Delete'}
                             >
                               <Trash2 size={16} aria-hidden="true" />
                             </button>

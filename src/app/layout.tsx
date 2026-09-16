@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import 'katex/dist/katex.min.css'
+import InstantTooltip from '@/components/InstantTooltip'
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://reader.deline.top'),
@@ -96,7 +97,10 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#315efb" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
       </head>
-      <body className="font-sans" suppressHydrationWarning>{children}</body>
+      <body className="font-sans" suppressHydrationWarning>
+        {children}
+        <InstantTooltip />
+      </body>
     </html>
   )
 }

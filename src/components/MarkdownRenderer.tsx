@@ -59,7 +59,7 @@ function CopyCodeButton({ value, inline = false }: { value: string; inline?: boo
         ? 'markdown-inline-code-copy'
         : 'markdown-code-copy'}
       aria-label={label}
-      title={label}
+      data-tip={label}
     >
       {copied ? <Check size={inline ? 11 : 14} aria-hidden="true" /> : <Copy size={inline ? 11 : 14} aria-hidden="true" />}
       {!inline && (failed ? '失败 / Failed' : copied ? '已复制 / Copied' : '复制 / Copy')}
@@ -153,7 +153,7 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
         <div key={`table-${elements.length}`} className="markdown-table-wrap" role="region" aria-label="Markdown 表格 / Markdown table" tabIndex={0}>
           <div className="markdown-table-toolbar">
             <span>表格 / Table</span>
-            <button type="button" className="markdown-table-download" onClick={() => void downloadTableAsExcel({ headers, rows }, 'feynman-table.xlsx')} aria-label="下载 Excel / Download Excel" title="下载 Excel / Download Excel">
+            <button type="button" className="markdown-table-download" onClick={() => void downloadTableAsExcel({ headers, rows }, 'feynman-table.xlsx')} aria-label="下载 Excel / Download Excel" data-tip="下载 Excel / Download Excel">
               <Download size={13} aria-hidden="true" />
               <span>Excel</span>
             </button>
@@ -615,7 +615,7 @@ export default function MarkdownRenderer({ content, className = '', showWordDown
     <>
       {showWordDownload && (
         <div className="markdown-export-toolbar">
-          <button type="button" className="markdown-word-download" onClick={() => void downloadMarkdownAsWord(content, 'feynman-ai-reply.docx')} aria-label="下载 Word / Download Word" title="下载 Word / Download Word">
+          <button type="button" className="markdown-word-download" onClick={() => void downloadMarkdownAsWord(content, 'feynman-ai-reply.docx')} aria-label="下载 Word / Download Word" data-tip="下载 Word / Download Word">
             <Download size={14} aria-hidden="true" />
             <span>下载 Word / Word</span>
           </button>

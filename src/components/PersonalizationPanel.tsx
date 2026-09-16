@@ -276,7 +276,7 @@ export default function PersonalizationPanel({ lang, onClose }: PersonalizationP
             onClick={onClose}
             className="p-2 hover:bg-[var(--bg-secondary)] rounded-lg transition-colors"
             aria-label={text.close}
-            title={text.close}
+            data-tip={text.close}
           >
             <AppIcon name="close" tone="muted" size={20} />
           </button>

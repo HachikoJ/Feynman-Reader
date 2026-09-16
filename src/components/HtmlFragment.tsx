@@ -18,7 +18,7 @@ export default function HtmlFragment({ html, block = false }: { html: string; bl
         <div className="markdown-table-wrap" role="region" aria-label="HTML 表格 / HTML table" tabIndex={0}>
           <div className="markdown-table-toolbar">
             <span>表格 / Table</span>
-            <button type="button" className="markdown-table-download" onClick={() => void downloadTableAsExcel({ headers, rows }, 'feynman-table.xlsx')} aria-label="下载 Excel / Download Excel" title="下载 Excel / Download Excel">
+            <button type="button" className="markdown-table-download" onClick={() => void downloadTableAsExcel({ headers, rows }, 'feynman-table.xlsx')} aria-label="下载 Excel / Download Excel" data-tip="下载 Excel / Download Excel">
               <Download size={13} aria-hidden="true" />
               <span>Excel</span>
             </button>

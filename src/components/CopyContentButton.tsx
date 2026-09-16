@@ -38,7 +38,7 @@ export default function CopyContentButton({ content, lang, label }: Props) {
       onClick={() => void copy()}
       className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/50"
       aria-label={accessibleLabel}
-      title={accessibleLabel}
+      data-tip={accessibleLabel}
     >
       {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
       <span className="sr-only">{accessibleLabel}</span>

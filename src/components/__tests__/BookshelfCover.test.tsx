@@ -42,7 +42,7 @@ class ControlledReader {
 const originalReader = globalThis.FileReader
 function openEditor() {
   const view = render(<Bookshelf lang="zh" onSelectBook={jest.fn()} />)
-  fireEvent.click(screen.getByTitle('编辑'))
+  fireEvent.click(screen.getByRole('button', { name: '编辑' }))
   return view
 }
 function selectCover(file = new File(['image'], 'cover.png', { type: 'image/png' })) {
@@ -107,7 +107,7 @@ describe('bookshelf cover editing', () => {
     openEditor()
     const reader = selectCover()
     fireEvent.click(screen.getByRole('button', { name: '关闭书籍窗口' }))
-    fireEvent.click(screen.getByTitle('编辑'))
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
     act(() => reader.complete('data:image/png;base64,c3RhbGU='))
     expect(screen.getByAltText('Cover')).toHaveAttribute('src', testBook.cover)
     expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()

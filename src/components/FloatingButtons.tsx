@@ -34,10 +34,11 @@ export default function FloatingButtons() {
       {showTop && (
         <button
           onClick={scrollToTop}
-          className="w-12 h-12 rounded-full bg-[var(--accent)] text-white shadow-lg 
+          className="w-12 h-12 rounded-full bg-[var(--accent)] text-white shadow-lg
                      hover:scale-110 transition-all flex items-center justify-center
                      animate-fade-in"
-          title="回到顶部"
+          aria-label="回到顶部"
+          data-tip="回到顶部"
         >
           ↑
         </button>
@@ -45,10 +46,11 @@ export default function FloatingButtons() {
       {showBottom && (
         <button
           onClick={scrollToBottom}
-          className="w-12 h-12 rounded-full bg-[var(--bg-card)] border border-[var(--border)] 
-                     text-[var(--text-primary)] shadow-lg hover:scale-110 transition-all 
+          className="w-12 h-12 rounded-full bg-[var(--bg-card)] border border-[var(--border)]
+                     text-[var(--text-primary)] shadow-lg hover:scale-110 transition-all
                      flex items-center justify-center animate-fade-in"
-          title="去到底部"
+          aria-label="去到底部"
+          data-tip="去到底部"
         >
           ↓
         </button>

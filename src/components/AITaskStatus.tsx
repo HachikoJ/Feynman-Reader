@@ -58,7 +58,7 @@ export default function AITaskStatus({ lang }: { lang: Language }) {
           disabled={state.cancelling}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 disabled:opacity-50"
           aria-label={lang === 'zh' ? '取消当前 AI 任务' : 'Cancel current AI task'}
-          title={lang === 'zh' ? '取消当前 AI 任务' : 'Cancel current AI task'}
+          data-tip={lang === 'zh' ? '取消当前 AI 任务' : 'Cancel current AI task'}
         >
           <Square size={15} fill="currentColor" aria-hidden="true" />
         </button>

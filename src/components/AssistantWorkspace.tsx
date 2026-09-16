@@ -881,7 +881,7 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
         style={launcherPosition ? { left: launcherPosition.x, top: launcherPosition.y, right: 'auto', bottom: 'auto' } : undefined}
         className="fixed bottom-24 right-4 z-40 flex h-14 w-14 touch-none select-none items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--bg-card)] text-[var(--accent)] shadow-[0_12px_28px_color-mix(in_srgb,var(--accent)_18%,transparent)] transition-[transform,filter,box-shadow] hover:scale-[1.03] hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/5 hover:shadow-[0_14px_32px_color-mix(in_srgb,var(--accent)_24%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 md:right-6"
         aria-label={buttonLabel}
-        title={buttonLabel}
+        data-tip={buttonLabel}
         aria-roledescription={isZh ? '可拖动按钮' : 'Draggable button'}
       >
         <span className="relative flex h-8 w-8 items-center justify-center" aria-hidden="true">
@@ -905,7 +905,7 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                 className="flex h-full w-full items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--bg-card)] text-[var(--accent)] shadow-[0_12px_28px_color-mix(in_srgb,var(--accent)_18%,transparent)] hover:bg-[var(--accent)]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 onClick={() => setMinimized(false)}
                 aria-label={isZh ? '展开费曼小助手' : 'Expand Feynman Assistant'}
-                title={isZh ? '展开费曼小助手' : 'Expand Feynman Assistant'}
+                data-tip={isZh ? '展开费曼小助手' : 'Expand Feynman Assistant'}
               >
                 <span className="relative flex h-8 w-8 items-center justify-center" aria-hidden="true">
                   <BookOpen size={27} strokeWidth={2.15} />
@@ -926,8 +926,8 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button type="button" className="icon-button" onClick={() => setMinimized(true)} aria-label={isZh ? '收起助手' : 'Minimize assistant'} title={isZh ? '收起助手' : 'Minimize assistant'}><BookOpen size={17} aria-hidden="true" /></button>
-                <button type="button" className="icon-button" onClick={() => setOpen(false)} aria-label={isZh ? '关闭助手' : 'Close assistant'} title={isZh ? '关闭助手' : 'Close assistant'}><X size={18} aria-hidden="true" /></button>
+                <button type="button" className="icon-button" onClick={() => setMinimized(true)} aria-label={isZh ? '收起助手' : 'Minimize assistant'} data-tip={isZh ? '收起助手' : 'Minimize assistant'}><BookOpen size={17} aria-hidden="true" /></button>
+                <button type="button" className="icon-button" onClick={() => setOpen(false)} aria-label={isZh ? '关闭助手' : 'Close assistant'} data-tip={isZh ? '关闭助手' : 'Close assistant'}><X size={18} aria-hidden="true" /></button>
               </div>
             </header>}
 
@@ -935,15 +935,15 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
               <section className="hidden min-h-0 border-r border-[var(--border)] bg-[var(--bg-secondary)]/50 md:flex md:flex-col">
                 <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-3">
                   <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">{isZh ? '会话' : 'Sessions'}</span>
-                  <button type="button" className="icon-button" onClick={() => void handleNewSession()} aria-label={isZh ? '新建会话' : 'New session'} title={isZh ? '新建会话' : 'New session'}><Plus size={17} aria-hidden="true" /></button>
+                  <button type="button" className="icon-button" onClick={() => void handleNewSession()} aria-label={isZh ? '新建会话' : 'New session'} data-tip={isZh ? '新建会话' : 'New session'}><Plus size={17} aria-hidden="true" /></button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-2">
                   {sessions.length === 0 && <p className="px-2 py-4 text-xs leading-5 text-[var(--text-secondary)]">{isZh ? '还没有会话，发送第一条消息开始。' : 'No sessions yet. Send a message to begin.'}</p>}
                   {sessions.map(session => (
                     <div key={session.id} className={`group mb-1 flex items-center gap-1 rounded-lg px-2 py-2 text-sm ${session.id === activeSessionId ? 'bg-[var(--accent)]/15 text-[var(--accent)]' : 'hover:bg-[var(--bg-secondary)]'}`}>
                       <button type="button" onClick={() => setActiveSessionId(session.id)} className="min-w-0 flex-1 truncate text-left">{session.title}</button>
-                      <button type="button" onClick={() => beginRename(session)} className="icon-button h-8 w-8 opacity-0 group-hover:opacity-100" aria-label={isZh ? `重命名${session.title}` : `Rename ${session.title}`} title={isZh ? '重命名' : 'Rename'}><Pencil size={14} aria-hidden="true" /></button>
-                      <button type="button" onClick={() => void handleDeleteSession(session)} className="icon-button h-8 w-8 opacity-0 group-hover:opacity-100" aria-label={isZh ? `删除${session.title}` : `Delete ${session.title}`} title={isZh ? '删除' : 'Delete'}><Trash2 size={14} aria-hidden="true" /></button>
+                      <button type="button" onClick={() => beginRename(session)} className="icon-button h-8 w-8 opacity-0 group-hover:opacity-100" aria-label={isZh ? `重命名${session.title}` : `Rename ${session.title}`} data-tip={isZh ? '重命名' : 'Rename'}><Pencil size={14} aria-hidden="true" /></button>
+                      <button type="button" onClick={() => void handleDeleteSession(session)} className="icon-button h-8 w-8 opacity-0 group-hover:opacity-100" aria-label={isZh ? `删除${session.title}` : `Delete ${session.title}`} data-tip={isZh ? '删除' : 'Delete'}><Trash2 size={14} aria-hidden="true" /></button>
                     </div>
                   ))}
                 </div>
@@ -960,8 +960,8 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                     {!sessions.length && <option value="">{isZh ? '新会话' : 'New session'}</option>}
                     {sessions.map(session => <option key={session.id} value={session.id}>{session.title}</option>)}
                   </select>
-                  {activeSession && <button type="button" className="icon-button" onClick={() => beginRename(activeSession)} aria-label={isZh ? '重命名会话' : 'Rename session'} title={isZh ? '重命名' : 'Rename'}><Pencil size={15} aria-hidden="true" /></button>}
-                  {activeSession && <button type="button" className="icon-button" onClick={() => void handleDeleteSession(activeSession)} aria-label={isZh ? '删除会话' : 'Delete session'} title={isZh ? '删除' : 'Delete'}><Trash2 size={15} aria-hidden="true" /></button>}
+                  {activeSession && <button type="button" className="icon-button" onClick={() => beginRename(activeSession)} aria-label={isZh ? '重命名会话' : 'Rename session'} data-tip={isZh ? '重命名' : 'Rename'}><Pencil size={15} aria-hidden="true" /></button>}
+                  {activeSession && <button type="button" className="icon-button" onClick={() => void handleDeleteSession(activeSession)} aria-label={isZh ? '删除会话' : 'Delete session'} data-tip={isZh ? '删除' : 'Delete'}><Trash2 size={15} aria-hidden="true" /></button>}
                   <button type="button" className="btn-secondary min-h-11 shrink-0 px-2 py-1.5 text-xs sm:px-3" onClick={() => void handleNewSession()}><Plus size={15} aria-hidden="true" /><span className="hidden sm:inline">{isZh ? '新会话' : 'New'}</span></button>
                 </div>
                 {renamingId && (
@@ -998,13 +998,13 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                             />
                           </div>
                           <div className="flex min-h-11 flex-wrap items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                            <button type="button" onClick={() => void copyMessage(message.id, message.content)} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={isZh ? '复制消息' : 'Copy message'} title={isZh ? '复制消息' : 'Copy message'}>
+                            <button type="button" onClick={() => void copyMessage(message.id, message.content)} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={isZh ? '复制消息' : 'Copy message'} data-tip={isZh ? '复制消息' : 'Copy message'}>
                               {copiedMessageId === message.id ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
                               {copiedMessageId === message.id ? (isZh ? '已复制' : 'Copied') : (isZh ? '复制' : 'Copy')}
                             </button>
-                            {message.role === 'assistant' && <button type="button" onClick={() => void downloadMarkdownAsWord(message.content, `feynman-assistant-${message.id}.docx`)} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={isZh ? '下载 Word 文档' : 'Download Word document'} title={isZh ? '下载 Word 文档' : 'Download Word document'}><FileText size={13} aria-hidden="true" />Word</button>}
-                            {message.role === 'assistant' && <button type="button" onClick={() => void branchFromMessage(message)} disabled={branchingMessageId === message.id} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50" aria-label={isZh ? '从此回复创建分支' : 'Branch from this reply'} title={isZh ? '从此回复创建分支' : 'Branch from this reply'}><GitBranch size={13} aria-hidden="true" />{isZh ? '分支' : 'Branch'}</button>}
-                            {message.role === 'user' && <button type="button" onClick={() => beginEditMessage(message)} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={isZh ? '编辑并重发消息' : 'Edit and resend message'} title={isZh ? '编辑并重发' : 'Edit and resend'}><Pencil size={13} aria-hidden="true" />{isZh ? '编辑重发' : 'Edit & resend'}</button>}
+                            {message.role === 'assistant' && <button type="button" onClick={() => void downloadMarkdownAsWord(message.content, `feynman-assistant-${message.id}.docx`)} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={isZh ? '下载 Word 文档' : 'Download Word document'} data-tip={isZh ? '下载 Word 文档' : 'Download Word document'}><FileText size={13} aria-hidden="true" />Word</button>}
+                            {message.role === 'assistant' && <button type="button" onClick={() => void branchFromMessage(message)} disabled={branchingMessageId === message.id} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50" aria-label={isZh ? '从此回复创建分支' : 'Branch from this reply'} data-tip={isZh ? '从此回复创建分支' : 'Branch from this reply'}><GitBranch size={13} aria-hidden="true" />{isZh ? '分支' : 'Branch'}</button>}
+                            {message.role === 'user' && <button type="button" onClick={() => beginEditMessage(message)} className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={isZh ? '编辑并重发消息' : 'Edit and resend message'} data-tip={isZh ? '编辑并重发' : 'Edit and resend'}><Pencil size={13} aria-hidden="true" />{isZh ? '编辑重发' : 'Edit & resend'}</button>}
                           </div>
                         </div>
                       </div>
@@ -1030,7 +1030,7 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                     <div className="mb-3 rounded-lg border border-[var(--accent)]/35 bg-[var(--accent)]/5 p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <p className="flex items-center gap-1.5 text-xs font-medium text-[var(--accent)]"><RotateCcw size={14} aria-hidden="true" />{isZh ? '编辑消息并重发' : 'Edit and resend'}</p>
-                        <button type="button" onClick={cancelEditMessage} className="icon-button h-8 w-8" aria-label={isZh ? '取消编辑' : 'Cancel edit'} title={isZh ? '取消编辑' : 'Cancel edit'}><X size={15} aria-hidden="true" /></button>
+                        <button type="button" onClick={cancelEditMessage} className="icon-button h-8 w-8" aria-label={isZh ? '取消编辑' : 'Cancel edit'} data-tip={isZh ? '取消编辑' : 'Cancel edit'}><X size={15} aria-hidden="true" /></button>
                       </div>
                       <textarea value={editValue} onChange={event => setEditValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void handleEditResend() } }} className="input-field min-h-20 resize-y py-2 text-sm" aria-label={isZh ? '编辑中的消息' : 'Message being edited'} disabled={busy} autoFocus />
                       <div className="mt-2 flex justify-end gap-2">
@@ -1064,7 +1064,7 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                       <button type="button" className="icon-button h-8 w-8 shrink-0" onClick={() => {
                         setDraftSource(null)
                         setRequestedBookId(null)
-                      }} aria-label={isZh ? '移除选中内容' : 'Remove selected context'} title={isZh ? '移除选中内容' : 'Remove selected context'}><X size={14} aria-hidden="true" /></button>
+                      }} aria-label={isZh ? '移除选中内容' : 'Remove selected context'} data-tip={isZh ? '移除选中内容' : 'Remove selected context'}><X size={14} aria-hidden="true" /></button>
                     </div>
                   )}
                   {referenceScopeHint && (
@@ -1079,7 +1079,7 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                           <FileText size={14} className="shrink-0 text-[var(--accent)]" aria-hidden="true" />
                           <span className="max-w-48 truncate">{attachment.fileName}</span>
                           {attachment.originalCharCount && attachment.originalCharCount > attachment.content.length && <span className="shrink-0 text-[var(--text-secondary)]">{isZh ? '已节选' : 'excerpt'}</span>}
-                          <button type="button" onClick={() => void removeAttachment(attachment.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-black/10" aria-label={isZh ? `移除文件 ${attachment.fileName}` : `Remove file ${attachment.fileName}`} title={isZh ? '移除文件' : 'Remove file'}><X size={13} aria-hidden="true" /></button>
+                          <button type="button" onClick={() => void removeAttachment(attachment.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-black/10" aria-label={isZh ? `移除文件 ${attachment.fileName}` : `Remove file ${attachment.fileName}`} data-tip={isZh ? '移除文件' : 'Remove file'}><X size={13} aria-hidden="true" /></button>
                         </span>
                       ))}
                     </div>
@@ -1113,13 +1113,13 @@ export default function AssistantWorkspace({ lang, settings, books, onOpenSettin
                     />
                     <div className="flex min-h-12 items-center justify-between gap-2 px-2 pb-2">
                       <div className="flex min-w-0 items-center gap-1">
-                        <button type="button" onClick={openBookMentions} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent)]" aria-label={isZh ? '选择书籍并加载学习记录' : 'Choose a book and load learning history'} title={isZh ? '选择书籍并加载学习记录' : 'Choose a book and load learning history'}>
+                        <button type="button" onClick={openBookMentions} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent)]" aria-label={isZh ? '选择书籍并加载学习记录' : 'Choose a book and load learning history'} data-tip={isZh ? '选择书籍并加载学习记录' : 'Choose a book and load learning history'}>
                           <AtSign size={17} aria-hidden="true" />{isZh ? '书籍' : 'Book'}
                         </button>
-                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy || parsingFile} className="icon-button shrink-0" aria-label={isZh ? '上传参考文件' : 'Upload a reference file'} title={isZh ? '上传 PDF、DOCX、TXT、Markdown 或 JSON 参考文件' : 'Upload a PDF, DOCX, TXT, Markdown, or JSON reference file'}><Paperclip size={18} aria-hidden="true" /></button>
+                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy || parsingFile} className="icon-button shrink-0" aria-label={isZh ? '上传参考文件' : 'Upload a reference file'} data-tip={isZh ? '上传 PDF、DOCX、TXT、Markdown 或 JSON 参考文件' : 'Upload a PDF, DOCX, TXT, Markdown, or JSON reference file'}><Paperclip size={18} aria-hidden="true" /></button>
                         {parsingFile && <span className="truncate text-xs text-[var(--text-secondary)]">{isZh ? '正在读取文件…' : 'Reading file…'}</span>}
                       </div>
-                      <button type="button" onClick={() => void handleSend()} disabled={busy || !draft.trim()} className="assistant-send-button h-11 w-11" aria-label={isZh ? '发送消息' : 'Send message'} title={isZh ? '发送消息' : 'Send message'}><ArrowUp size={19} strokeWidth={2.5} aria-hidden="true" /></button>
+                      <button type="button" onClick={() => void handleSend()} disabled={busy || !draft.trim()} className="assistant-send-button h-11 w-11" aria-label={isZh ? '发送消息' : 'Send message'} data-tip={isZh ? '发送消息' : 'Send message'}><ArrowUp size={19} strokeWidth={2.5} aria-hidden="true" /></button>
                     </div>
                   </div>
                   <p className="mt-2 flex items-start justify-center gap-1.5 pb-[max(0px,env(safe-area-inset-bottom))] text-center text-[11px] leading-4 text-[var(--text-secondary)]">

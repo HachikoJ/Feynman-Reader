@@ -59,7 +59,7 @@ export default function TokenDanceMigrationNotice({ lang, onClose, onOpenSetting
             onClick={handleClose}
             className="icon-button shrink-0"
             aria-label={isZh ? '关闭通知' : 'Close notice'}
-            title={isZh ? '关闭通知' : 'Close notice'}
+            data-tip={isZh ? '关闭通知' : 'Close notice'}
           >
             <X size={18} aria-hidden="true" />
           </button>

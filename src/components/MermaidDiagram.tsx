@@ -60,7 +60,7 @@ export default function MermaidDiagram({ source }: { source: string }) {
           className="markdown-code-copy"
           onClick={() => void copySource()}
           aria-label={copyState === 'copied' ? '已复制 Mermaid 源码 / Mermaid source copied' : copyState === 'error' ? '复制 Mermaid 源码失败 / Failed to copy Mermaid source' : '复制 Mermaid 源码 / Copy Mermaid source'}
-          title="复制 Mermaid 源码 / Copy Mermaid source"
+          data-tip="复制 Mermaid 源码 / Copy Mermaid source"
         >
           {copyState === 'copied' ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
           {copyState === 'copied' ? '已复制 / Copied' : copyState === 'error' ? '失败 / Failed' : '复制 / Copy'}

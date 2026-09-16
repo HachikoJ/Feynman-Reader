@@ -110,7 +110,8 @@ export default function UndoRedoControls({ lang }: Props) {
               : 'opacity-40 cursor-not-allowed text-[var(--text-secondary)]'
             }
           `}
-          title={canUndo ? undoDesc || (lang === 'zh' ? '撤销' : 'Undo') : (lang === 'zh' ? '无法撤销' : 'Cannot undo')}
+          aria-label={canUndo ? undoDesc || (lang === 'zh' ? '撤销' : 'Undo') : (lang === 'zh' ? '无法撤销' : 'Cannot undo')}
+          data-tip={canUndo ? undoDesc || (lang === 'zh' ? '撤销' : 'Undo') : (lang === 'zh' ? '无法撤销' : 'Cannot undo')}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
@@ -134,7 +135,8 @@ export default function UndoRedoControls({ lang }: Props) {
               : 'opacity-40 cursor-not-allowed text-[var(--text-secondary)]'
             }
           `}
-          title={canRedo ? redoDesc || (lang === 'zh' ? '重做' : 'Redo') : (lang === 'zh' ? '无法重做' : 'Cannot redo')}
+          aria-label={canRedo ? redoDesc || (lang === 'zh' ? '重做' : 'Redo') : (lang === 'zh' ? '无法重做' : 'Cannot redo')}
+          data-tip={canRedo ? redoDesc || (lang === 'zh' ? '重做' : 'Redo') : (lang === 'zh' ? '无法重做' : 'Cannot redo')}
         >
           <span className="text-sm">{lang === 'zh' ? '重做' : 'Redo'}</span>
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -152,7 +154,8 @@ export default function UndoRedoControls({ lang }: Props) {
               onClick={() => { if (!busy) undoRedoManager.clear() }}
               disabled={busy}
               className="px-3 py-2.5 rounded-xl text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-400/10 transition-all"
-              title={lang === 'zh' ? '清空历史' : 'Clear history'}
+              aria-label={lang === 'zh' ? '清空历史' : 'Clear history'}
+              data-tip={lang === 'zh' ? '清空历史' : 'Clear history'}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

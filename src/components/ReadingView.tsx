@@ -1957,7 +1957,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 onClick={() => setShowHighlightImport(true)}
                 disabled={noteSaving}
                 className="btn-secondary !px-3 !py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                title={lang === 'zh' ? '导入微信读书、Kindle、Readwise 等平台的划线与笔记' : 'Import highlights and notes from WeChat Reading, Kindle, Readwise, and more'}
+                data-tip={lang === 'zh' ? '导入微信读书、Kindle、Readwise 等平台的划线与笔记' : 'Import highlights and notes from WeChat Reading, Kindle, Readwise, and more'}
               >
                 <AppIcon name="download" tone="amber" size={16} />
                 {lang === 'zh' ? '导入笔记' : 'Import notes'}
@@ -2283,7 +2283,7 @@ export default function ReadingView({ book: initialBook, apiKey, lang, quotes = 
                 onClick={() => setShowBookOrganizer(false)}
                 className="icon-button"
                 aria-label={lang === 'zh' ? '关闭书籍整理' : 'Close book organizer'}
-                title={lang === 'zh' ? '关闭' : 'Close'}
+                data-tip={lang === 'zh' ? '关闭' : 'Close'}
               >
                 <AppIcon name="close" size={20} />
               </button>

@@ -42,7 +42,7 @@ describe('BookListManager dialogs', () => {
       </>
     )
 
-    fireEvent.click(screen.getByTitle('删除书单'))
+    fireEvent.click(screen.getByRole('button', { name: '删除书单' }))
 
     expect(screen.getByRole('heading', { name: '确认删除书单' })).toBeInTheDocument()
     expect(screen.getByText('确定删除书单“验证书单”吗？书籍本身及其学习记录不会被删除。')).toBeInTheDocument()

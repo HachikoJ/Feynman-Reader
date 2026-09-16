@@ -2,6 +2,16 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.4.5] - 2026-09-16
+
+### Improved
+
+- Replace the browser's delayed native tooltips on interactive controls with an immediate tooltip that follows pointer movement and appears as soon as the pointer reaches the target.
+- Apply the shared tooltip to the bookshelf card actions, bookshelf toolbar, reader controls, Feynman Assistant, settings, account center, import dialogs, and other icon-only or compact controls.
+- Keep the tooltip inside the viewport, support light and dark themes, reveal it on keyboard focus, dismiss it with Escape, and provide fallbacks for disabled controls without affecting touch input.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.4.5.md).
+
 ## [0.4.4] - 2026-09-16
 
 ### Fixed

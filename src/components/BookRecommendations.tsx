@@ -452,7 +452,7 @@ export default function BookRecommendations({
                   onClick={generateRecommendations}
                   disabled={loadingRecommendations}
                   className="btn-secondary flex items-center gap-2 text-sm"
-                  title={lang === 'zh' ? '基于相同逻辑重新生成推荐' : 'Regenerate with same logic'}
+                  data-tip={lang === 'zh' ? '基于相同逻辑重新生成推荐' : 'Regenerate with same logic'}
                 >
                   <AppIcon name="refresh" tone="violet" size={16} />{lang === 'zh' ? '重新推荐' : 'Regenerate'}
                 </button>

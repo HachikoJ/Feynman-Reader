@@ -1409,7 +1409,7 @@ export default function AccountPage() {
                   onClick={() => profileAvatarInputRef.current?.click()}
                   className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)]/10 text-xl font-semibold text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   aria-label="上传头像"
-                  title="点击更换头像"
+                  data-tip="点击更换头像"
                 >
                   <AccountAvatar
                     avatarUrl={profileAvatar}
@@ -1910,7 +1910,7 @@ export default function AccountPage() {
                                   disabled={busy}
                                   className="icon-button h-9 w-9 text-[var(--accent)]"
                                   aria-label="编辑金句"
-                                  title="编辑金句"
+                                  data-tip="编辑金句"
                                 >
                                   <Pencil size={15} aria-hidden="true" />
                                 </button>
@@ -1922,7 +1922,7 @@ export default function AccountPage() {
                                   disabled={busy}
                                   className="icon-button h-9 w-9 text-red-600"
                                   aria-label="删除金句"
-                                  title="删除金句"
+                                  data-tip="删除金句"
                                 >
                                   <Trash2 size={15} aria-hidden="true" />
                                 </button>
@@ -2070,7 +2070,7 @@ export default function AccountPage() {
                           disabled={busy}
                           className="icon-button h-9 w-9 shrink-0 text-red-600"
                           aria-label="删除长期记忆"
-                          title="删除长期记忆"
+                          data-tip="删除长期记忆"
                         >
                           <Trash2 size={15} aria-hidden="true" />
                         </button>

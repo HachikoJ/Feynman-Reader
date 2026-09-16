@@ -132,7 +132,7 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
       <span
         className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--bg-secondary)]/55 px-2.5 text-sm font-medium text-[var(--text-secondary)] sm:px-3"
         aria-label={lang === 'zh' ? '备案期间本地模式' : 'Local-only mode during domain filing'}
-        title={lang === 'zh' ? '备案期间本地模式' : 'Local-only mode'}
+        data-tip={lang === 'zh' ? '备案期间本地模式' : 'Local-only mode'}
       >
         <UserRound size={16} aria-hidden="true" />
         <span className="hidden sm:inline">{lang === 'zh' ? '本地模式' : 'Local mode'}</span>
@@ -145,7 +145,7 @@ function AccountEntry({ lang, returnTo }: { lang: AppSettings['language']; retur
       href={signedIn ? '/account' : accountLoginHref(returnTo)}
       className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[10px] border border-[var(--accent)]/35 bg-[var(--accent)]/10 px-2.5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/15 sm:px-3"
       aria-label={signedIn ? (lang === 'zh' ? '打开账号中心' : 'Open Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用【观猹】登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
-      title={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用【观猹】登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
+      data-tip={signedIn ? (lang === 'zh' ? '账号中心' : 'Account Center') : (lang === 'zh' ? (watchaEnabled ? '使用【观猹】登录' : '登录账号') : (watchaEnabled ? 'Sign in with Watcha' : 'Sign in'))}
       aria-disabled={checking}
     >
       <AccountAvatar avatarUrl={user?.avatarUrl} name={user?.displayName} watcha={user ? Boolean(user.tokendanceSubject) : watchaEnabled} />
@@ -184,7 +184,7 @@ function AccountCloudNotice({ lang, hidden, returnTo }: { lang: AppSettings['lan
         <a href={accountLoginHref(returnTo)} className="shrink-0 font-medium text-[var(--accent)] hover:underline">
           {lang === 'zh' ? '登录' : 'Sign in'}
         </a>
-        <button type="button" onClick={dismiss} className="icon-button h-8 w-8 shrink-0" aria-label={lang === 'zh' ? '关闭通知' : 'Dismiss notice'} title={lang === 'zh' ? '关闭通知' : 'Dismiss'}>
+        <button type="button" onClick={dismiss} className="icon-button h-8 w-8 shrink-0" aria-label={lang === 'zh' ? '关闭通知' : 'Dismiss notice'} data-tip={lang === 'zh' ? '关闭通知' : 'Dismiss'}>
           <X size={15} aria-hidden="true" />
         </button>
       </div>
@@ -675,7 +675,7 @@ function ReaderWorkspaceContent() {
                 }}
                 className="flex min-h-11 min-w-0 shrink items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)] sm:gap-3"
                 aria-label={lang === 'zh' ? '返回书架首页' : 'Return to bookshelf home'}
-                title={lang === 'zh' ? '返回书架首页' : 'Bookshelf home'}
+                data-tip={lang === 'zh' ? '返回书架首页' : 'Bookshelf home'}
               >
                 <div className="relative h-11 w-11 shrink-0 overflow-hidden sm:h-12 sm:w-12">
                   <Image
@@ -717,21 +717,21 @@ function ReaderWorkspaceContent() {
                 </div>
                 <AccountEntry lang={lang} returnTo={currentWorkspaceHref} />
                 <div className="hidden items-center gap-0.5 border-l border-[var(--border)] pl-1 sm:flex">
-                  <a href={APP_ROUTES.website} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '访问官网' : 'Open the website'} title={lang === 'zh' ? '访问官网' : 'Website'}><ExternalLink size={17} aria-hidden="true" /></a>
-                  <button type="button" onClick={handleOpenOnboarding} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '打开使用引导' : 'Open user guide'} title={lang === 'zh' ? '使用引导' : 'User guide'}><CircleHelp size={18} aria-hidden="true" /></button>
+                  <a href={APP_ROUTES.website} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '访问官网' : 'Open the website'} data-tip={lang === 'zh' ? '访问官网' : 'Website'}><ExternalLink size={17} aria-hidden="true" /></a>
+                  <button type="button" onClick={handleOpenOnboarding} className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '打开使用引导' : 'Open user guide'} data-tip={lang === 'zh' ? '使用引导' : 'User guide'}><CircleHelp size={18} aria-hidden="true" /></button>
                 <a
                   href="https://github.com/HachikoJ/Feynman-Reader"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
                   aria-label={lang === 'zh' ? '访问 GitHub 开源项目' : 'Open the GitHub repository'}
-                  title={lang === 'zh' ? 'GitHub 开源项目' : 'GitHub repository'}
+                  data-tip={lang === 'zh' ? 'GitHub 开源项目' : 'GitHub repository'}
                 >
                   <GitHubMark />
                 </a>
                 </div>
                 <div className="sm:hidden">
-                  <button type="button" onClick={() => setShowHeaderMenu(open => !open)} className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] border border-[var(--border)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '打开更多入口' : 'Open more options'} aria-expanded={showHeaderMenu} title={lang === 'zh' ? '更多' : 'More'}><Menu size={18} aria-hidden="true" /></button>
+                  <button type="button" onClick={() => setShowHeaderMenu(open => !open)} className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] border border-[var(--border)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]" aria-label={lang === 'zh' ? '打开更多入口' : 'Open more options'} aria-expanded={showHeaderMenu} data-tip={lang === 'zh' ? '更多' : 'More'}><Menu size={18} aria-hidden="true" /></button>
                   {showHeaderMenu && <div className="absolute right-0 top-full z-50 mt-2 w-44 rounded-lg border border-[var(--border)] bg-[var(--surface-glass-strong)] p-1.5 shadow-[var(--brand-shadow)]">
                     <a href={APP_ROUTES.website} onClick={() => setShowHeaderMenu(false)} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"><ExternalLink size={16} aria-hidden="true" />{lang === 'zh' ? '访问官网' : 'Website'}</a>
                     <button type="button" onClick={() => { setShowHeaderMenu(false); handleOpenOnboarding() }} className="flex min-h-10 w-full items-center gap-2 rounded-md px-3 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"><CircleHelp size={16} aria-hidden="true" />{lang === 'zh' ? '使用引导' : 'Guide'}</button>

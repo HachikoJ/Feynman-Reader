@@ -907,7 +907,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   book.bestScore >= 60
                     ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                     : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                }`} title={lang === 'zh' ? '费曼实践最高分' : 'Best Feynman practice score'}>
+                }`} data-tip={lang === 'zh' ? '费曼实践最高分' : 'Best Feynman practice score'}>
                   <AppIcon name="target" size={13} />
                   {lang === 'zh' ? `费曼 ${book.bestScore} 分` : `Feynman ${book.bestScore}`}
                 </span>
@@ -915,7 +915,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               {readingPercentage !== null && (
                 <span
                   className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--accent)]/10 px-1.5 py-0.5 text-xs font-semibold text-[var(--accent)]"
-                  title={lang === 'zh' ? '原文阅读进度' : 'Source reading progress'}
+                  data-tip={lang === 'zh' ? '原文阅读进度' : 'Source reading progress'}
                 >
                   <AppIcon name="bookOpen" size={13} />
                   {lang === 'zh' ? `已读 ${readingPercentage}%` : `${readingPercentage}% read`}
@@ -926,7 +926,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                 aria-label={lang === 'zh'
                   ? `费曼阶段进度 ${book.currentPhase}/${LEARNING_PHASES.length}`
                   : `Learning phase progress ${book.currentPhase}/${LEARNING_PHASES.length}`}
-                title={lang === 'zh' ? '已完成的学习阶段（与阅读进度无关）' : 'Completed learning phases (separate from reading progress)'}
+                data-tip={lang === 'zh' ? '已完成的学习阶段（与阅读进度无关）' : 'Completed learning phases (separate from reading progress)'}
               >
                 <span>{book.currentPhase}/{LEARNING_PHASES.length}</span>
                 <span className="flex items-center gap-0.5" aria-hidden="true">
@@ -955,7 +955,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                       onClick={() => handleGenerateTags(book.id, book.name, book.author, book.description)}
                       className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] hover:text-[var(--accent)]"
                       disabled={generatingTags}
-                      title={t(lang, 'bookshelf.tags.regenerate')}
+                      data-tip={t(lang, 'bookshelf.tags.regenerate')}
                       aria-label={t(lang, 'bookshelf.tags.regenerate')}
                     >
                       <AppIcon name="refresh" size={13} />
@@ -978,13 +978,13 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
 
         {!batchMode && (
           <div className="absolute right-3 top-3 flex items-center gap-1">
-            <button type="button" onClick={() => handleSelectBook(book)} className="icon-button h-9 w-9 text-[var(--accent)]" aria-label={lang === 'zh' ? '阅读' : 'Read'} title={lang === 'zh' ? '阅读' : 'Read'}>
+            <button type="button" onClick={() => handleSelectBook(book)} className="icon-button h-9 w-9 text-[var(--accent)]" aria-label={lang === 'zh' ? '阅读' : 'Read'} data-tip={lang === 'zh' ? '阅读' : 'Read'}>
               <AppIcon name="bookOpen" size={15} />
             </button>
-            <button type="button" onClick={() => openEditModal(book)} className="icon-button h-9 w-9 text-amber-600" aria-label={lang === 'zh' ? '编辑' : 'Edit'} title={lang === 'zh' ? '编辑' : 'Edit'}>
+            <button type="button" onClick={() => openEditModal(book)} className="icon-button h-9 w-9 text-amber-600" aria-label={lang === 'zh' ? '编辑' : 'Edit'} data-tip={lang === 'zh' ? '编辑' : 'Edit'}>
               <AppIcon name="edit" size={15} />
             </button>
-            <button type="button" onClick={() => handleDeleteBook(book)} className="icon-button h-9 w-9 text-red-500" aria-label={lang === 'zh' ? '删除' : 'Delete'} title={lang === 'zh' ? '删除' : 'Delete'}>
+            <button type="button" onClick={() => handleDeleteBook(book)} className="icon-button h-9 w-9 text-red-500" aria-label={lang === 'zh' ? '删除' : 'Delete'} data-tip={lang === 'zh' ? '删除' : 'Delete'}>
               <AppIcon name="trash" size={15} />
             </button>
           </div>
@@ -1046,7 +1046,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               </div>
               <div className="col-span-2 grid grid-cols-2 gap-1.5 sm:col-span-1 sm:flex sm:shrink-0 sm:items-center">
                 <button type="button" onClick={() => onSelectBook(reviewBook)} className="btn-primary min-h-10 shrink-0 whitespace-nowrap px-2.5 text-xs"><AppIcon name="arrowRight" size={15} aria-hidden="true" /><span>{reviewBook.isSample ? (lang === 'zh' ? '查看示例' : 'Explore') : (lang === 'zh' ? '开始复习' : 'Review')}</span></button>
-                <button type="button" onClick={() => openAssistantWithPrompt(lang === 'zh' ? `请根据《${reviewBook.name}》的学习记录，为我安排今天的费曼复习：先指出最值得复述的记录，再给出 5 分钟练习步骤。` : `Based on my learning history for ${reviewBook.name}, plan today's Feynman review: choose the best item to explain again and give me a five-minute practice plan.`)} className="btn-secondary min-h-10 shrink-0 gap-1.5 whitespace-nowrap px-2.5 text-xs" aria-label={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'} title={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'}><AppIcon name="sparkles" size={15} /><span>{lang === 'zh' ? '小助手安排' : 'Ask Assistant'}</span></button>
+                <button type="button" onClick={() => openAssistantWithPrompt(lang === 'zh' ? `请根据《${reviewBook.name}》的学习记录，为我安排今天的费曼复习：先指出最值得复述的记录，再给出 5 分钟练习步骤。` : `Based on my learning history for ${reviewBook.name}, plan today's Feynman review: choose the best item to explain again and give me a five-minute practice plan.`)} className="btn-secondary min-h-10 shrink-0 gap-1.5 whitespace-nowrap px-2.5 text-xs" aria-label={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'} data-tip={lang === 'zh' ? '让费曼小助手安排复习' : 'Ask Feynman Assistant'}><AppIcon name="sparkles" size={15} /><span>{lang === 'zh' ? '小助手安排' : 'Ask Assistant'}</span></button>
               </div>
             </div>
           </section>
@@ -1104,16 +1104,16 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
           </div>
         )}
         <div className="ml-auto flex shrink-0 gap-1">
-          <button data-testid="add-book-button" onClick={openAddModal} className="btn-primary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={t(lang, 'bookshelf.addBook')} title={t(lang, 'bookshelf.addBook')}>
+          <button data-testid="add-book-button" onClick={openAddModal} className="btn-primary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={t(lang, 'bookshelf.addBook')} data-tip={t(lang, 'bookshelf.addBook')}>
             <AppIcon name="plus" size={17} />
             <span className="hidden lg:inline">{t(lang, 'bookshelf.addBook')}</span>
           </button>
           {books.length > 0 && (
-            <button onClick={() => setShowHighlightImport(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '导入笔记' : 'Import notes'} title={lang === 'zh' ? '导入笔记（微信读书、Kindle、Readwise 等平台的划线与笔记）' : 'Import notes (highlights and notes from WeChat Reading, Kindle, Readwise, and more)'}>
+            <button onClick={() => setShowHighlightImport(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '导入笔记' : 'Import notes'} data-tip={lang === 'zh' ? '导入笔记（微信读书、Kindle、Readwise 等平台的划线与笔记）' : 'Import notes (highlights and notes from WeChat Reading, Kindle, Readwise, and more)'}>
               <AppIcon name="note" tone="amber" size={17} /><span className="hidden lg:inline">{lang === 'zh' ? '导入笔记' : 'Import Notes'}</span>
             </button>
           )}
-          <button onClick={() => setShowBookLists(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '管理书单' : 'Manage lists'} title={lang === 'zh' ? '书单' : 'Lists'}>
+          <button onClick={() => setShowBookLists(true)} className="btn-secondary h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5" aria-label={lang === 'zh' ? '管理书单' : 'Manage lists'} data-tip={lang === 'zh' ? '书单' : 'Lists'}>
             <AppIcon name="bookMarked" tone="violet" size={17} />
             <span className="hidden lg:inline">{lang === 'zh' ? '书单' : 'Lists'}</span>
           </button>
@@ -1122,7 +1122,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
               onClick={toggleBatchMode}
               className={`${batchMode ? "btn-primary" : "btn-secondary"} h-11 min-h-11 w-11 min-w-11 whitespace-nowrap !px-0 py-2 text-xs lg:!w-auto lg:!px-3.5`}
               aria-label={lang === 'zh' ? (batchMode ? '退出批量管理' : '批量管理') : (batchMode ? 'Exit batch mode' : 'Batch manage')}
-              title={lang === 'zh' ? (batchMode ? '退出批量' : '批量管理') : (batchMode ? 'Exit Batch' : 'Batch')}
+              data-tip={lang === 'zh' ? (batchMode ? '退出批量' : '批量管理') : (batchMode ? 'Exit Batch' : 'Batch')}
             >
               <AppIcon name={batchMode ? 'check' : 'clipboard'} size={17} />
               <span className="hidden lg:inline">{lang === 'zh' ? (batchMode ? '退出批量' : '批量管理') : (batchMode ? 'Exit Batch' : 'Batch')}</span>
@@ -1160,7 +1160,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
             onClick={() => setViewMode('grid')}
             className={`flex h-10 w-10 items-center justify-center rounded ${viewMode === 'grid' ? 'bg-[var(--accent)] text-white' : ''}`}
             aria-label={lang === 'zh' ? '网格视图' : 'Grid view'}
-            title={lang === 'zh' ? '网格视图' : 'Grid view'}
+            data-tip={lang === 'zh' ? '网格视图' : 'Grid view'}
           >
             <LayoutGrid size={18} aria-hidden="true" />
           </button>
@@ -1168,7 +1168,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
             onClick={() => setViewMode('list')}
             className={`flex h-10 w-10 items-center justify-center rounded ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : ''}`}
             aria-label={lang === 'zh' ? '列表视图' : 'List view'}
-            title={lang === 'zh' ? '列表视图' : 'List view'}
+            data-tip={lang === 'zh' ? '列表视图' : 'List view'}
           >
             <List size={18} aria-hidden="true" />
           </button>
@@ -1369,7 +1369,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                       onClick={(e) => { e.stopPropagation(); handleSelectBook(book) }}
                       type="button"
                       className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent)] text-sm text-white shadow-sm transition-transform hover:scale-110"
-                      title={lang === 'zh' ? '阅读' : 'Read'}
+                      aria-label={lang === 'zh' ? '阅读' : 'Read'}
+                      data-tip={lang === 'zh' ? '阅读' : 'Read'}
                     >
                       <AppIcon name="bookOpen" size={16} />
                     </button>
@@ -1377,7 +1378,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                       onClick={(e) => { e.stopPropagation(); openEditModal(book) }}
                       type="button"
                       className="flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-sm text-gray-700 shadow-sm transition-transform hover:scale-110"
-                      title={lang === 'zh' ? '编辑' : 'Edit'}
+                      aria-label={lang === 'zh' ? '编辑' : 'Edit'}
+                      data-tip={lang === 'zh' ? '编辑' : 'Edit'}
                     >
                       <AppIcon name="edit" size={16} />
                     </button>
@@ -1385,7 +1387,8 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                       onClick={(e) => { e.stopPropagation(); handleDeleteBook(book) }}
                       type="button"
                       className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-sm text-white shadow-sm transition-transform hover:scale-110"
-                      title={lang === 'zh' ? '删除' : 'Delete'}
+                      aria-label={lang === 'zh' ? '删除' : 'Delete'}
+                      data-tip={lang === 'zh' ? '删除' : 'Delete'}
                     >
                       <AppIcon name="trash" size={16} />
                     </button>
@@ -1406,7 +1409,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   return (
                     <div
                       className="mt-1.5 flex items-center gap-1.5"
-                      title={lang === 'zh' ? `原文阅读进度 ${readingPercentage}%` : `${readingPercentage}% of the source read`}
+                      data-tip={lang === 'zh' ? `原文阅读进度 ${readingPercentage}%` : `${readingPercentage}% of the source read`}
                     >
                       <span className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--border)]">
                         <span className="block h-full rounded-full bg-[var(--accent)]" style={{ width: `${readingPercentage}%` }} />
@@ -1461,7 +1464,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                 onClick={() => setShowBookLists(false)}
                 className="icon-button"
                 aria-label={lang === 'zh' ? '关闭书单管理' : 'Close list manager'}
-                title={lang === 'zh' ? '关闭' : 'Close'}
+                data-tip={lang === 'zh' ? '关闭' : 'Close'}
               >
                 <AppIcon name="close" size={20} />
               </button>
@@ -1490,7 +1493,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                   <p>{editingBook ? (lang === 'zh' ? '更新书籍信息与阅读标签' : 'Update book details and tags') : (lang === 'zh' ? '创建一个清晰、可持续学习的阅读条目' : 'Create a focused reading entry')}</p>
                 </div>
               </div>
-              <button type="button" onClick={closeBookModal} disabled={savingBook} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭书籍窗口' : 'Close book dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
+              <button type="button" onClick={closeBookModal} disabled={savingBook} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭书籍窗口' : 'Close book dialog'} data-tip={lang === 'zh' ? '关闭' : 'Close'}>
                 <AppIcon name="close" size={20} />
               </button>
             </div>
@@ -1847,7 +1850,7 @@ export default function Bookshelf({ lang, onSelectBook, onOpenSettings }: Props)
                 onClick={() => setShowTagManagement(false)}
                 className="icon-button"
                 aria-label={lang === 'zh' ? '关闭标签管理' : 'Close tag management'}
-                title={lang === 'zh' ? '关闭' : 'Close'}
+                data-tip={lang === 'zh' ? '关闭' : 'Close'}
               >
                 <AppIcon name="close" size={20} />
               </button>

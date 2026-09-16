@@ -396,10 +396,10 @@ function LibraryListEditor({
               </p>
             </div>
             <div className="flex gap-1">
-              <button type="button" onClick={() => onEditList(selectedList)} className="icon-button" title={lang === 'zh' ? '编辑书单' : 'Edit list'}>
+              <button type="button" onClick={() => onEditList(selectedList)} className="icon-button" aria-label={lang === 'zh' ? '编辑书单' : 'Edit list'} data-tip={lang === 'zh' ? '编辑书单' : 'Edit list'}>
                 <AppIcon name="edit" tone="amber" size={18} />
               </button>
-              <button type="button" onClick={() => onDeleteList(selectedList)} className="icon-button" title={lang === 'zh' ? '删除书单' : 'Delete list'}>
+              <button type="button" onClick={() => onDeleteList(selectedList)} className="icon-button" aria-label={lang === 'zh' ? '删除书单' : 'Delete list'} data-tip={lang === 'zh' ? '删除书单' : 'Delete list'}>
                 <AppIcon name="trash" tone="red" size={18} />
               </button>
             </div>
@@ -549,7 +549,7 @@ function BookOrganizer({
                   </span>
                   {relation.note && <span className="mt-1 block text-xs text-[var(--text-secondary)]">{relation.note}</span>}
                 </button>
-                <button type="button" onClick={() => onDeleteRelation(relation.id)} disabled={busy} className="icon-button" title={lang === 'zh' ? '删除关系' : 'Delete relationship'}>
+                <button type="button" onClick={() => onDeleteRelation(relation.id)} disabled={busy} className="icon-button" aria-label={lang === 'zh' ? '删除关系' : 'Delete relationship'} data-tip={lang === 'zh' ? '删除关系' : 'Delete relationship'}>
                   <AppIcon name="trash" tone="red" size={17} />
                 </button>
               </div>

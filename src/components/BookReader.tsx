@@ -1002,7 +1002,7 @@ export default function BookReader({
             disabled={sectionIndex === 0}
             className="btn-secondary h-9 w-9 !p-0 disabled:opacity-40"
             aria-label={zh ? '上一节' : 'Previous section'}
-            title={zh ? '上一节（←）' : 'Previous section (←)'}
+            data-tip={zh ? '上一节（←）' : 'Previous section (←)'}
           >
             <AppIcon name="chevronLeft" size={17} />
           </button>
@@ -1012,7 +1012,7 @@ export default function BookReader({
             disabled={sectionIndex >= sections.length - 1}
             className="btn-secondary h-9 w-9 !p-0 disabled:opacity-40"
             aria-label={zh ? '下一节' : 'Next section'}
-            title={zh ? '下一节（→）' : 'Next section (→)'}
+            data-tip={zh ? '下一节（→）' : 'Next section (→)'}
           >
             <AppIcon name="chevronRight" size={17} />
           </button>
@@ -1027,7 +1027,7 @@ export default function BookReader({
             onClick={() => setFontSize(size => Math.max(MIN_FONT_SIZE, size - 1))}
             className="btn-secondary h-9 w-9 !p-0"
             aria-label={zh ? '缩小字号' : 'Decrease font size'}
-            title={zh ? '缩小字号' : 'Decrease font size'}
+            data-tip={zh ? '缩小字号' : 'Decrease font size'}
           >
             <AppIcon name="minus" size={16} />
           </button>
@@ -1036,7 +1036,7 @@ export default function BookReader({
             onClick={() => setFontSize(size => Math.min(MAX_FONT_SIZE, size + 1))}
             className="btn-secondary h-9 w-9 !p-0"
             aria-label={zh ? '放大字号' : 'Increase font size'}
-            title={zh ? '放大字号' : 'Increase font size'}
+            data-tip={zh ? '放大字号' : 'Increase font size'}
           >
             <AppIcon name="plus" size={16} />
           </button>
@@ -1045,7 +1045,7 @@ export default function BookReader({
             onClick={() => setTheme(current => current === 'light' ? 'paper' : current === 'paper' ? 'dark' : 'light')}
             className="btn-secondary h-9 gap-1.5 !px-2.5 !text-xs"
             aria-label={zh ? '切换阅读背景' : 'Switch reading background'}
-            title={zh ? '切换阅读背景' : 'Switch reading background'}
+            data-tip={zh ? '切换阅读背景' : 'Switch reading background'}
           >
             <AppIcon name="eye" size={15} />
             {theme === 'light' ? (zh ? '白底' : 'Light') : theme === 'paper' ? (zh ? '纸张' : 'Paper') : (zh ? '夜间' : 'Night')}
@@ -1059,7 +1059,7 @@ export default function BookReader({
             aria-label={currentSectionBookmark
               ? (zh ? '本节已有书签，打开书签列表' : 'This section is bookmarked; open the list')
               : (zh ? '在本节添加书签' : 'Bookmark this section')}
-            title={currentSectionBookmark
+            data-tip={currentSectionBookmark
               ? (zh ? '本节已有书签' : 'Bookmarked')
               : (zh ? '添加书签' : 'Add bookmark')}
           >
@@ -1071,7 +1071,7 @@ export default function BookReader({
             onClick={() => (showPanel && panelTab === 'search' ? closePanel() : openPanel('search'))}
             className="btn-secondary h-9 w-9 !p-0"
             aria-label={zh ? '在全书中检索' : 'Search in this book'}
-            title={zh ? '在全书中检索' : 'Search in this book'}
+            data-tip={zh ? '在全书中检索' : 'Search in this book'}
           >
             <AppIcon name="search" size={15} />
           </button>
@@ -1261,7 +1261,8 @@ export default function BookReader({
                                   type="button"
                                   onClick={() => jumpToHighlight(record)}
                                   className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                  title={zh ? '回到原文位置' : 'Jump to source'}
+                                  aria-label={zh ? '回到原文位置' : 'Jump to source'}
+                                  data-tip={zh ? '回到原文位置' : 'Jump to source'}
                                 >
                                   <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${HIGHLIGHT_DOT_CLASSES[color]}`} aria-hidden />
                                   <span className="min-w-0 truncate text-xs text-[var(--text-secondary)]">
@@ -1274,7 +1275,7 @@ export default function BookReader({
                                     onClick={() => setHighlightEdit(editing ? null : { id: record.id, note: noteText, color, tags: recordTags })}
                                     className="icon-button h-7 w-7"
                                     aria-label={zh ? '编辑划线' : 'Edit highlight'}
-                                    title={zh ? '编辑备注与颜色' : 'Edit note and color'}
+                                    data-tip={zh ? '编辑备注与颜色' : 'Edit note and color'}
                                   >
                                     <AppIcon name="edit" size={14} />
                                   </button>
@@ -1284,7 +1285,7 @@ export default function BookReader({
                                     disabled={panelBusy}
                                     className="icon-button h-7 w-7 text-red-500 disabled:opacity-50"
                                     aria-label={zh ? '删除划线' : 'Delete highlight'}
-                                    title={zh ? '删除划线' : 'Delete highlight'}
+                                    data-tip={zh ? '删除划线' : 'Delete highlight'}
                                   >
                                     <AppIcon name="trash" size={14} />
                                   </button>
@@ -1372,7 +1373,8 @@ export default function BookReader({
                                 closePanel()
                               }}
                               className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                              title={zh ? '回到书签位置' : 'Jump to bookmark'}
+                              aria-label={zh ? '回到书签位置' : 'Jump to bookmark'}
+                              data-tip={zh ? '回到书签位置' : 'Jump to bookmark'}
                             >
                               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${HIGHLIGHT_DOT_CLASSES[color]}`} aria-hidden />
                               <span className="min-w-0 truncate text-xs text-[var(--text-secondary)]">
@@ -1385,7 +1387,7 @@ export default function BookReader({
                                 onClick={() => setBookmarkEdit(editing ? null : { id: bookmark.id, label: bookmark.label || '', color })}
                                 className="icon-button h-7 w-7"
                                 aria-label={zh ? '编辑书签' : 'Edit bookmark'}
-                                title={zh ? '编辑备注与颜色' : 'Edit note and color'}
+                                data-tip={zh ? '编辑备注与颜色' : 'Edit note and color'}
                               >
                                 <AppIcon name="edit" size={14} />
                               </button>
@@ -1395,7 +1397,7 @@ export default function BookReader({
                                 disabled={panelBusy}
                                 className="icon-button h-7 w-7 text-red-500 disabled:opacity-50"
                                 aria-label={zh ? '删除书签' : 'Delete bookmark'}
-                                title={zh ? '删除书签' : 'Delete bookmark'}
+                                data-tip={zh ? '删除书签' : 'Delete bookmark'}
                               >
                                 <AppIcon name="trash" size={14} />
                               </button>

@@ -361,7 +361,7 @@ export default function DocumentUpload({ lang, onBookAdded, onClose, onOpenSetti
               <p>{lang === 'zh' ? '导入原文后，书名、作者、封面、标签都可以自由修改' : 'Import a source, then edit title, author, cover, and tags freely'}</p>
             </div>
           </div>
-          <button type="button" onClick={handleClose} disabled={saving} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭导入窗口' : 'Close import dialog'} title={lang === 'zh' ? '关闭' : 'Close'}>
+          <button type="button" onClick={handleClose} disabled={saving} className="icon-button shrink-0" aria-label={lang === 'zh' ? '关闭导入窗口' : 'Close import dialog'} data-tip={lang === 'zh' ? '关闭' : 'Close'}>
             <AppIcon name="close" size={20} />
           </button>
         </div>
