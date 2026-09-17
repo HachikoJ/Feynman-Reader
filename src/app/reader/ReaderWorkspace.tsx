@@ -844,7 +844,7 @@ function ReaderWorkspaceContent() {
               <WatchaProductBadge lang={lang} />
 
               <div className="min-w-0 text-center text-xs text-[var(--text-secondary)] md:justify-self-end md:text-right">
-                <p className="leading-5">© 2026 {lang === 'zh' ? '费曼读书助手 · 保留所有权利' : 'Feynman Reader · All Rights Reserved'}</p>
+                <p className="leading-5">© 2026 {lang === 'zh' ? '费曼读书助手 · MIT 开源' : 'Feynman Reader · MIT licensed'}</p>
                 <a
                   href="https://beian.miit.gov.cn/"
                   target="_blank"

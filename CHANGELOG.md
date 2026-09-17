@@ -2,6 +2,14 @@
 
 Notable changes to Feynman Reader are recorded here.
 
+## [0.4.6] - 2026-09-17
+
+### Fixed
+
+- Update the footer licence line to state that the open-source project is released under the MIT licence, in both Chinese and English, matching the repository's `LICENSE` file.
+
+No database schema, account permission, or stored credential behavior changes. See [release notes](docs/releases/v0.4.6.md).
+
 ## [0.4.5] - 2026-09-16
 
 ### Improved
